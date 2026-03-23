@@ -25,6 +25,7 @@ export default function Calendar() {
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [eventsCache, setEventsCache] = useState<Record<string, any[]>>({});
 
   // Manual Event Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,9 +46,17 @@ export default function Calendar() {
   const days = getCalendarDays(month, year);
 
   useEffect(() => {
-    fetchEvents();
     fetchInitialUser();
-  }, [month, year]);
+  }, []);
+
+  useEffect(() => {
+    const key = `${year}-${month}`;
+    if (eventsCache[key]) {
+      setEvents(eventsCache[key]);
+    } else {
+      fetchEvents();
+    }
+  }, [month, year, eventsCache]);
 
   const fetchInitialUser = async () => {
     try {
@@ -60,11 +69,18 @@ export default function Calendar() {
     }
   };
 
-  const fetchEvents = async () => {
+  const fetchEvents = async (forceRefresh = false) => {
+    const key = `${year}-${month}`;
+    if (!forceRefresh && eventsCache[key]) {
+      setEvents(eventsCache[key]);
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await eventsAPI.getAll(familyId, month, year);
       setEvents(response.data);
+      setEventsCache((prev) => ({ ...prev, [key]: response.data }));
     } catch (error) {
       console.error('Failed to fetch events:', error);
     } finally {
@@ -157,7 +173,7 @@ export default function Calendar() {
         await eventsAPI.create(familyId, creatorId, payload);
         toast.success('Đã thêm sự kiện');
       }
-      fetchEvents();
+      fetchEvents(true);
       setIsModalOpen(false);
     } catch (error) {
       console.error('Failed to save event:', error);
@@ -170,7 +186,7 @@ export default function Calendar() {
     try {
       await eventsAPI.delete(id, familyId);
       toast.success('Đã xóa sự kiện');
-      fetchEvents();
+      fetchEvents(true);
     } catch (error) {
       console.error('Failed to delete event:', error);
       toast.error('Không thể xóa sự kiện');
