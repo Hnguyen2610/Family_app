@@ -1,0 +1,152 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================
+// User & Family
+// ============================================
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String
+  role      String?
+  birthday  DateTime?
+  familyId  String
+  family    Family     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  
+  createdEvents Event[]
+  mealPreferences MealPreference[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Family {
+  id    String     @id @default(cuid())
+  name  String
+  users User[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// Calendar & Events
+// ============================================
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        DateTime // Solar date
+  lunarDate   String?  // Ex: "30/12" (day/month in lunar calendar)
+  type        EventType @default(GENERAL)
+  
+  isRecurring Boolean  @default(false)
+  recurring   String?  // CRON expression (if recurring)
+  
+  familyId    String
+  createdBy   String
+  user        User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([date])
+  @@index([familyId])
+}
+
+enum EventType {
+  BIRTHDAY
+  ANNIVERSARY
+  HOLIDAY
+  APPOINTMENT
+  TASK
+  GENERAL
+}
+
+// ============================================
+// Meals & Preferences
+// ============================================
+model Meal {
+  id        String     @id @default(cuid())
+  name      String
+  category  MealCategory
+  tags      String[]   // ["healthy", "fast", "vegan", etc.]
+  
+  preferences MealPreference[]
+  history     MealHistory[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MealCategory {
+  MAIN_COURSE
+  VEGETABLE
+  SOUP
+}
+
+model MealPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealId    String
+  meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, mealId])
+}
+
+model MealHistory {
+  id        String   @id @default(cuid())
+  mealId    String
+  meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  date      DateTime
+  category  MealCategory
+  
+  createdAt DateTime @default(now())
+  
+  @@index([date])
+  @@index([mealId])
+}
+
+// ============================================
+// AI Chat
+// ============================================
+model ChatSession {
+  id        String   @id @default(cuid())
+  familyId  String
+  title     String
+  
+  messages  ChatMessage[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([familyId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  familyId  String
+  sessionId String?
+  session   ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String   // "user" or "assistant"
+  content   String
+  
+  createdAt DateTime @default(now())
+  
+  @@index([familyId])
+  @@index([sessionId])
+  @@index([createdAt])
+}
