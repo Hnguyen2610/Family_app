@@ -223,15 +223,18 @@ CRITICAL RULES:
                   { type: 'image_url', image_url: { url: image } }
                 ]
               }
-            ]
+            ],
+            max_tokens: 1024,
+            temperature: 0.1,
           });
           const desc = visionResponse.choices[0]?.message?.content;
           if (desc) {
             finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
           }
-        } catch (visionError) {
+        } catch (visionError: any) {
           console.error('Vision processing error:', visionError);
-          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích.]`;
+          const errMsg = visionError.message || visionError.toString();
+          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích: ${errMsg}]`;
         }
       }
 
