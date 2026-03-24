@@ -220,7 +220,7 @@ CRITICAL RULES:
           if (match) {
             const mimeType = match[1];
             const data = match[2];
-            const model = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = this.gemini.getGenerativeModel({ model: "gemini-2.5-flash" });
             const result = await model.generateContent([
               'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
               { inlineData: { data, mimeType } }
@@ -341,7 +341,7 @@ CRITICAL RULES:
           if (match) {
             const mimeType = match[1];
             const data = match[2];
-            const model = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = this.gemini.getGenerativeModel({ model: "gemini-2.5-flash" });
             const result = await model.generateContent([
               'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
               { inlineData: { data, mimeType } }
