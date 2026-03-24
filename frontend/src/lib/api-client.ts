@@ -51,17 +51,18 @@ export const mealsAPI = {
 
 // Chat API
 export const chatAPI = {
-  sendMessage: (familyId: string, content: string, userId?: string) =>
+  sendMessage: (familyId: string, content: string, userId?: string, image?: string) =>
     apiClient.post('/api/chat/message', {
       familyId,
       content,
       userId,
+      image,
     }),
-  sendMessageStream: async (familyId: string, content: string, userId: string | undefined, sessionId: string | null, onChunk: (text: string) => void, onSessionId: (id: string) => void) => {
+  sendMessageStream: async (familyId: string, content: string, userId: string | undefined, sessionId: string | null, image: string | undefined, onChunk: (text: string) => void, onSessionId: (id: string) => void) => {
     const response = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ familyId, content, userId, sessionId }),
+      body: JSON.stringify({ familyId, content, userId, sessionId, image }),
     });
 
     if (!response.body) throw new Error('No readable stream');

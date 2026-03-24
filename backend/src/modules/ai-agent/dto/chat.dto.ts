@@ -10,6 +10,10 @@ export class ChatMessageDto {
   @IsOptional()
   @IsString()
   userId?: string;
+
+  @IsOptional()
+  @IsString()
+  image?: string;
 }
 
 export class GetChatHistoryDto {

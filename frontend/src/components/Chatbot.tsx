@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { chatAPI } from '@/lib/api-client';
 import { useChatStore } from '@/stores/store';
-import { FiSend, FiZap, FiCoffee, FiCalendar, FiArrowRight, FiPlus, FiClock, FiTrash2, FiX, FiMessageSquare } from 'react-icons/fi';
+import { FiSend, FiZap, FiCoffee, FiCalendar, FiArrowRight, FiPlus, FiClock, FiTrash2, FiX, FiMessageSquare, FiImage } from 'react-icons/fi';
 
 export default function Chatbot() {
   const { 
@@ -12,9 +12,12 @@ export default function Chatbot() {
     sessions, setSessions, currentSessionId, setCurrentSessionId 
   } = useChatStore();
   const [input, setInput] = useState('');
+  const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const familyId = process.env.NEXT_PUBLIC_FAMILY_ID || 'default-family';
 
@@ -84,14 +87,38 @@ export default function Chatbot() {
     }
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Vui lòng chọn ảnh dưới 5MB!');
+        return;
+      }
+      setImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSend = async (e?: React.FormEvent, text?: string) => {
     e?.preventDefault();
     const messageText = text || input;
-    if (!messageText.trim() || isLoading) return;
+    if ((!messageText.trim() && !image) || isLoading) return;
 
-    const userMessage = { role: 'user' as const, content: messageText };
+    const userMessage = { role: 'user' as const, content: messageText || '[Đã gửi một hình ảnh]' };
     addMessage(userMessage);
     if (!text) setInput('');
+    const currentImage = imagePreview; // Capture before clearing
+    removeImage();
     setIsLoading(true);
 
     // Initial loading state skeleton
@@ -104,6 +131,7 @@ export default function Chatbot() {
         messageText, 
         undefined, 
         currentSessionId,
+        currentImage || undefined,
         (chunk) => {
           setIsLoading(false); // Stop pulse animation once data flows
           currentResponse += chunk;
@@ -305,22 +333,53 @@ export default function Chatbot() {
 
       {/* Input area */}
       <div className="p-4 md:p-8 bg-white border-t border-slate-100 relative shrink-0">
-        <form onSubmit={handleSend} className="relative group">
+        {imagePreview && (
+          <div className="mb-3 relative inline-block animate-in fade-in slide-in-from-bottom-2">
+            <img src={imagePreview} alt="Preview" className="h-20 md:h-24 rounded-xl object-cover border-2 border-slate-100" />
+            <button
+              type="button"
+              onClick={removeImage}
+              className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:bg-rose-600 transition-all"
+            >
+              <FiX size={14} />
+            </button>
+          </div>
+        )}
+        <form onSubmit={handleSend} className="relative flex items-center gap-2">
           <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Hỏi tôi bất cứ điều gì..."
-            className="w-full pl-6 pr-16 py-3.5 md:py-4 bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.5rem] md:rounded-2xl outline-none transition-all font-medium text-slate-700 text-sm md:text-base placeholder:text-slate-300"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleImageChange}
             disabled={isLoading}
           />
           <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-10 md:w-12 h-10 md:h-12 bg-indigo-600 text-white rounded-xl md:rounded-2xl flex items-center justify-center hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-30 disabled:shadow-none"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="w-10 md:w-12 h-10 md:h-12 flex-shrink-0 bg-slate-50 text-indigo-400 rounded-xl md:rounded-2xl flex items-center justify-center hover:bg-indigo-50 hover:text-indigo-600 transition-all cursor-pointer disabled:opacity-50 border-2 border-transparent"
+            title="Đính kèm ảnh"
           >
-            <FiSend />
+            <FiImage size={20} />
           </button>
+          <div className="relative flex-1 group">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={imagePreview ? "Thêm mô tả cho ảnh..." : "Hỏi tôi bất cứ điều gì..."}
+              className="w-full pl-6 pr-14 py-3.5 md:py-4 bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.5rem] md:rounded-2xl outline-none transition-all font-medium text-slate-700 text-sm md:text-base placeholder:text-slate-300"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={(!input.trim() && !image) || isLoading}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 md:w-11 h-9 md:h-11 bg-indigo-600 text-white rounded-xl md:rounded-2xl flex items-center justify-center hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 disabled:opacity-30 disabled:shadow-none"
+            >
+              <FiSend />
+            </button>
+          </div>
         </form>
       </div>
     </div>

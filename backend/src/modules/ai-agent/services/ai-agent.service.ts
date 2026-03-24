@@ -207,10 +207,36 @@ CRITICAL RULES:
 - After calling a tool, present the results clearly and naturally.`;
   }
 
-  async chat(familyId: string, userMessage: string, userIds: string[] = []) {
+  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string) {
     try {
+      let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
+
+      if (image) {
+        try {
+          const visionResponse = await this.openai.chat.completions.create({
+            model: 'llama-3.2-90b-vision-preview',
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.' },
+                  { type: 'image_url', image_url: { url: image } }
+                ]
+              }
+            ]
+          });
+          const desc = visionResponse.choices[0]?.message?.content;
+          if (desc) {
+            finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
+          }
+        } catch (visionError) {
+          console.error('Vision processing error:', visionError);
+          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích.]`;
+        }
+      }
+
       // Save user message
-      await this.chatService.saveMessage(familyId, 'user', userMessage);
+      await this.chatService.saveMessage(familyId, 'user', finalUserMessage);
 
       // Build user profiles for the prompt context
       const allUsers = await this.prisma.user.findMany({ where: { familyId } });
@@ -236,7 +262,7 @@ CRITICAL RULES:
       // Add current user message
       messages.push({
         role: 'user',
-        content: userMessage,
+        content: finalUserMessage,
       });
 
       // Call LLM with tools
@@ -301,10 +327,36 @@ CRITICAL RULES:
     }
   }
 
-  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string) {
+  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string) {
     try {
+      let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
+
+      if (image) {
+        try {
+          const visionResponse = await this.openai.chat.completions.create({
+            model: 'llama-3.2-90b-vision-preview',
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.' },
+                  { type: 'image_url', image_url: { url: image } }
+                ]
+              }
+            ]
+          });
+          const desc = visionResponse.choices[0]?.message?.content;
+          if (desc) {
+            finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
+          }
+        } catch (visionError) {
+          console.error('Vision processing error:', visionError);
+          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích.]`;
+        }
+      }
+
       // Save user message
-      await this.chatService.saveMessage(familyId, 'user', userMessage, sessionId);
+      await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
 
       // Build user profiles for the prompt context
       const allUsers = await this.prisma.user.findMany({ where: { familyId } });
@@ -329,7 +381,7 @@ CRITICAL RULES:
 
       messages.push({
         role: 'user',
-        content: userMessage,
+        content: finalUserMessage,
       });
 
       // Call LLM with tools
