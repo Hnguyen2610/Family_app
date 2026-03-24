@@ -13,9 +13,9 @@ export class AiAgentService {
   private readonly gemini: GoogleGenerativeAI;
 
   constructor(
-    private chatService: ChatService,
-    private mealsService: MealsService,
-    private eventsService: EventsService,
+    private readonly chatService: ChatService,
+    private readonly mealsService: MealsService,
+    private readonly eventsService: EventsService,
     private readonly prisma: PrismaService,
   ) {
     this.openai = new OpenAI({
@@ -164,6 +164,17 @@ export class AiAgentService {
     ];
   }
 
+  private getGeminiTools() {
+    const tools = this.getTools();
+    return [{
+      functionDeclarations: tools.map((t) => ({
+        name: t.function.name,
+        description: t.function.description,
+        parameters: t.function.parameters as any,
+      })),
+    }];
+  }
+
   private getSystemPrompt(familyInfo: string = ''): string {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
@@ -186,6 +197,9 @@ AVAILABLE TOOLS AND WHEN TO USE THEM:
 2. createEvent - Call this when user wants to create, add, or schedule any event in the calendar.
 3. getEventsByMonth - Call this when user asks about events in a specific month.
 4. generateFamilyMenu - Call this when user asks "hôm nay ăn gì", or wants meal/menu suggestions. It generates a perfectly balanced combo of a Main Course, Vegetable, and Soup based on family preferences.
+5. updateEvent - Use this to update/change an event.
+6. deleteEvent - Use this to remove an event.
+7. getSolarDateFromLunar - Use this to convert Lunar to Solar date before setting event.
 
 AVAILABLE SUB-AGENTS (PERSONAS):
 1. Chuyên gia Tử Vi (Horoscope Expert): Automatically adopt this persona whenever the user asks about "tử vi", "xem bói", "cung hoàng đạo", "phong thủy", or specific astrology/fortune-telling questions.
@@ -210,305 +224,45 @@ CRITICAL RULES:
 - After calling a tool, present the results clearly and naturally.`;
   }
 
-  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string) {
-    try {
-      let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
-
-      if (image) {
-        try {
-          const match = image.match(/^data:(image\/[a-zA-Z0-9+]+);base64,(.+)$/);
-          if (match) {
-            const mimeType = match[1];
-            const data = match[2];
-            const model = this.gemini.getGenerativeModel({ model: "gemini-flash-latest" });
-            const result = await model.generateContent([
-              'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
-              { inlineData: { data, mimeType } }
-            ]);
-            const desc = result.response.text();
-            if (desc) {
-              finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
-            }
-          } else {
-             finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
-          }
-        } catch (visionError: any) {
-          console.error('Vision processing error:', visionError);
-          const errMsg = visionError.message || visionError.toString();
-          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích: ${errMsg}]`;
-        }
-      }
-
-      // Save user message
-      await this.chatService.saveMessage(familyId, 'user', finalUserMessage);
-
-      // Build user profiles for the prompt context
-      const allUsers = await this.prisma.user.findMany({ where: { familyId } });
-      const familyInfo = allUsers
-        .map(
-          (u) =>
-            `- ${u.name} (Vai trò: ${u.role || 'Chưa rõ'}, Ngày sinh dương lịch: ${
-              u.birthday ? u.birthday.toISOString().split('T')[0] : 'Chưa cập nhật'
-            })`
-        )
-        .join('\n');
-
-      // Get chat history (last 10 messages)
-      const history = await this.chatService.getHistory(familyId, undefined, 10);
-      const messages: any[] = [
-        { role: 'system', content: this.getSystemPrompt(familyInfo) },
-        ...history.reverse().map((msg: any) => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        })),
-      ];
-
-      // Add current user message
-      messages.push({
-        role: 'user',
-        content: finalUserMessage,
-      });
-
-      // Handle Gemini Fallback/Selection
-      if (modelSelection === 'gemini') {
-        try {
-          const genModel = this.gemini.getGenerativeModel({ 
-            model: "gemini-flash-latest",
-            systemInstruction: this.getSystemPrompt(familyInfo),
-          });
-          const chat = genModel.startChat({
-            history: [...history].reverse().map((msg) => ({
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: msg.content }]
-            })),
-          });
-
-          const result = await chat.sendMessage(finalUserMessage);
-          const assistantContent = result.response.text();
-
-          await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
-          return { content: assistantContent, familyId };
-        } catch (geminiError) {
-          console.error('Gemini Chat Error:', geminiError);
-          throw new HttpException('Gemini service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
-        }
-      }
-
-      // Call LLM with tools (Groq/OpenAI)
-      let response = await this.openai.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-        tools: this.getTools() as any,
-        tool_choice: 'auto',
-      });
-
-      let assistantContent = '';
-      const choice = response.choices[0];
-      const toolCalls = choice.message.tool_calls || [];
-      console.log('AI Response Tool Calls:', toolCalls.length > 0 ? toolCalls.map(dc => dc.function.name) : 'NONE');
-
-      // Process tool calls
-      if (toolCalls.length > 0) {
-        // Add the assistant message with tool_calls
-        messages.push(choice.message);
-
-        for (const toolCall of toolCalls) {
-          const result = await this.executeTool(
-            toolCall.function.name,
-            JSON.parse(toolCall.function.arguments),
-            familyId,
-            userIds,
-          );
-          console.log(`Tool Result (${toolCall.function.name}):`, result);
-
-          // Add tool result with proper role
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(result),
-          });
-        }
-
-        // Get final response after tool calls
-        response = await this.openai.chat.completions.create({
-          model: 'llama-3.3-70b-versatile',
-          messages,
-        });
-
-        assistantContent = response.choices[0].message.content || 'Unable to process request';
-      } else {
-        assistantContent = response.choices[0].message.content || 'No response';
-      }
-
-      // Save assistant response
-      await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
-
-      return {
-        content: assistantContent,
-        familyId,
-      };
-    } catch (error) {
-      console.error('AI Agent Error:', error);
-      throw new HttpException(
-        'Failed to process AI request',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+  private async getFamilyContext(familyId: string): Promise<string> {
+    const allUsers = await this.prisma.user.findMany({ where: { familyId } });
+    return allUsers
+      .map(
+        (u) =>
+          `- ${u.name} (Vai trò: ${u.role || 'Chưa rõ'}, Ngày sinh dương lịch: ${
+            u.birthday ? u.birthday.toISOString().split('T')[0] : 'Chưa cập nhật'
+          })`
+      )
+      .join('\n');
   }
 
-  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
+  private async processVisionImage(userMessage: string, image?: string): Promise<string> {
+    let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
+    if (!image) return finalUserMessage;
+
     try {
-      let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
-
-      if (image) {
-        try {
-          const match = image.match(/^data:(image\/[a-zA-Z0-9+]+);base64,(.+)$/);
-          if (match) {
-            const mimeType = match[1];
-            const data = match[2];
-            const model = this.gemini.getGenerativeModel({ model: "gemini-flash-latest" });
-            const result = await model.generateContent([
-              'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
-              { inlineData: { data, mimeType } }
-            ]);
-            const desc = result.response.text();
-            if (desc) {
-              finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
-            }
-          } else {
-             finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
-          }
-        } catch (visionError: any) {
-          console.error('Vision processing error:', visionError);
-          const errMsg = visionError.message || visionError.toString();
-          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích: ${errMsg}]`;
+      const match = image.match(/^data:(image\/[a-zA-Z0-9+]+);base64,(.+)$/);
+      if (match) {
+        const mimeType = match[1];
+        const data = match[2];
+        const model = this.gemini.getGenerativeModel({ model: "gemini-flash-latest" });
+        const result = await model.generateContent([
+          'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
+          { inlineData: { data, mimeType } }
+        ]);
+        const desc = result.response.text();
+        if (desc) {
+          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
         }
+      } else {
+         finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
       }
-
-      // Save user message
-      await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
-
-      // Build user profiles for the prompt context
-      const allUsers = await this.prisma.user.findMany({ where: { familyId } });
-      const familyInfo = allUsers
-        .map(
-          (u) =>
-            `- ${u.name} (Vai trò: ${u.role || 'Chưa rõ'}, Ngày sinh dương lịch: ${
-              u.birthday ? u.birthday.toISOString().split('T')[0] : 'Chưa cập nhật'
-            })`
-        )
-        .join('\n');
-
-      // Get chat history
-      const history = await this.chatService.getHistory(familyId, sessionId, 10);
-      const messages: any[] = [
-        { role: 'system', content: this.getSystemPrompt(familyInfo) },
-        ...history.reverse().map((msg: any) => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        })),
-      ];
-
-      messages.push({
-        role: 'user',
-        content: finalUserMessage,
-      });
-
-      // Handle Gemini Selection for Streaming
-      if (modelSelection === 'gemini') {
-        try {
-          const genModel = this.gemini.getGenerativeModel({ 
-            model: "gemini-flash-latest",
-            systemInstruction: this.getSystemPrompt(familyInfo),
-          });
-          const chat = genModel.startChat({
-            history: [...history].reverse().map((msg) => ({
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: msg.content }]
-            })),
-          });
-
-          const result = await chat.sendMessageStream(finalUserMessage);
-          let assistantContent = '';
-          for await (const chunk of result.stream) {
-            const chunkText = chunk.text();
-            assistantContent += chunkText;
-            res.write(`data: ${JSON.stringify({ content: chunkText })}\n\n`);
-          }
-
-          res.write(`data: [DONE]\n\n`);
-          res.end();
-          await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
-          return;
-        } catch (geminiError) {
-          console.error('Gemini Stream Error:', geminiError);
-          res.write(`data: ${JSON.stringify({ content: 'Lỗi khi kết nối với Gemini. Vui lòng thử lại.' })}\n\n`);
-          res.write('data: [DONE]\n\n');
-          res.end();
-          return;
-        }
-      }
-
-      // Call LLM with tools
-      let response = await this.openai.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-        tools: this.getTools() as any,
-        tool_choice: 'auto',
-      });
-
-      let assistantContent = '';
-      const choice = response.choices[0];
-      const toolCalls = choice.message.tool_calls || [];
-      console.log('AI Stream Tool Calls:', toolCalls.length > 0 ? toolCalls.map(dc => dc.function.name) : 'NONE');
-
-      if (toolCalls.length > 0) {
-        messages.push(choice.message);
-
-        for (const toolCall of toolCalls) {
-          const result = await this.executeTool(
-            toolCall.function.name,
-            JSON.parse(toolCall.function.arguments),
-            familyId,
-            userIds,
-          );
-          console.log(`Tool Result (${toolCall.function.name}):`, result);
-
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(result),
-          });
-        }
-      }
-
-      // Stream the final response
-      const stream = await this.openai.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        if (content) {
-          assistantContent += content;
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
-        }
-      }
-
-      res.write(`data: [DONE]\n\n`);
-      res.end();
-
-      // Save assistant response
-      await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
-
-    } catch (error) {
-      console.error('AI Agent Stream Error:', error);
-      res.write(`data: ${JSON.stringify({ content: 'Xin lỗi, tôi gặp chút lỗi kỹ thuật. Hãy thử lại sau nhé!' })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
+    } catch (visionError: any) {
+      console.error('Vision processing error:', visionError);
+      const errMsg = visionError.message || visionError.toString();
+      finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích: ${errMsg}]`;
     }
+    return finalUserMessage;
   }
 
   private async executeTool(
@@ -517,84 +271,87 @@ CRITICAL RULES:
     familyId: string,
     userIds: string[] = [],
   ): Promise<any> {
-    switch (toolName) {
-      case 'generateFamilyMenu':
-        return await this.mealsService.generateFamilyMenu(familyId);
-
-      case 'getGoldPrice':
-        return await this.getGoldPrice();
-
-      case 'getEventsByMonth':
-        return await this.eventsService.getEventsByMonth(
-          args.familyId || familyId,
-          args.month,
-          args.year,
-        );
-
-      case 'createEvent': {
-        // Find a valid user in the family, or create a default one
-        let user = await this.prisma.user.findFirst({
-          where: { familyId },
-        });
-
-        if (!user) {
-          // Ensure the family exists first
-          let family = await this.prisma.family.findUnique({ where: { id: familyId } });
-          family ??= await this.prisma.family.create({
-              data: { id: familyId, name: 'My Family' },
-            });
-          user = await this.prisma.user.create({
-            data: {
-              name: 'Family Member',
-              email: `member@${familyId}.local`,
-              role: 'Thành viên',
-              familyId,
-            },
+    try {
+      console.log(`Executing tool: ${toolName}`, args);
+      switch (toolName) {
+        case 'generateFamilyMenu':
+          return await this.mealsService.generateFamilyMenu(familyId);
+  
+        case 'getGoldPrice':
+          return await this.getGoldPrice();
+  
+        case 'getEventsByMonth':
+          return await this.eventsService.getEventsByMonth(
+            args.familyId || familyId,
+            args.month,
+            args.year,
+          );
+  
+        case 'createEvent': {
+          let user = await this.prisma.user.findFirst({
+            where: { familyId },
           });
+  
+          if (!user) {
+            let family = await this.prisma.family.findUnique({ where: { id: familyId } });
+            family ??= await this.prisma.family.create({
+                data: { id: familyId, name: 'My Family' },
+              });
+            user = await this.prisma.user.create({
+              data: {
+                name: 'Family Member',
+                email: `member@${familyId}.local`,
+                role: 'Thành viên',
+                familyId,
+              },
+            });
+          }
+  
+          const event = await this.eventsService.create(familyId, user.id, {
+            title: args.title,
+            description: args.description,
+            date: new Date(args.date),
+            type: args.type || 'GENERAL',
+          });
+          return { success: true, event };
         }
-
-        const event = await this.eventsService.create(familyId, user.id, {
-          title: args.title,
-          description: args.description,
-          date: new Date(args.date),
-          type: args.type || 'GENERAL',
-        });
-        return { success: true, event };
+  
+        case 'updateEvent': {
+          const result = await this.eventsService.update(args.id, familyId, {
+            title: args.title,
+            description: args.description,
+            date: args.date ? new Date(args.date) : undefined,
+            type: args.type,
+          });
+          return { success: true, result };
+        }
+  
+        case 'deleteEvent': {
+          const result = await this.eventsService.delete(args.id, familyId);
+          return { success: true, result };
+        }
+  
+        case 'getSolarDateFromLunar': {
+          const date = getSolarDateFromLunar(args.day, args.month, args.year);
+          if (!date) return { error: 'Không tìm thấy' };
+          
+          const yyyy = date.getFullYear();
+          const mm = String(date.getMonth() + 1).padStart(2, '0');
+          const dd = String(date.getDate()).padStart(2, '0');
+          const solarDate = `${yyyy}-${mm}-${dd}`;
+          
+          return { 
+            solarDate,
+            formatted: date.toLocaleDateString('vi-VN'),
+          };
+        }
+  
+        default:
+          return { error: 'Unknown tool' };
       }
-
-      case 'updateEvent': {
-        const result = await this.eventsService.update(args.id, familyId, {
-          title: args.title,
-          description: args.description,
-          date: args.date ? new Date(args.date) : undefined,
-          type: args.type,
-        });
-        return { success: true, result };
-      }
-
-      case 'deleteEvent': {
-        const result = await this.eventsService.delete(args.id, familyId);
-        return { success: true, result };
-      }
-
-      case 'getSolarDateFromLunar': {
-        const date = getSolarDateFromLunar(args.day, args.month, args.year);
-        if (!date) return { error: 'Không tìm thấy' };
-        
-        // Use local date formatting to avoid timezone shifts
-        const yyyy = date.getFullYear();
-        const mm = String(date.getMonth() + 1).padStart(2, '0');
-        const dd = String(date.getDate()).padStart(2, '0');
-        const solarDate = `${yyyy}-${mm}-${dd}`;
-        
-        return { 
-          solarDate,
-          formatted: date.toLocaleDateString('vi-VN'),
-        };
-      }
-
-      default:
-        return { error: 'Unknown tool' };
+    } catch (e: any) {
+      console.error(`Tool execution error for ${toolName}:`, e);
+      return { error: e.message || 'Error executing tool' };
     }
   }
 
@@ -643,6 +400,225 @@ CRITICAL RULES:
         error: true,
         message: 'Không thể kết nối với máy chủ giá vàng. Vui lòng kiểm tra tại sjc.com.vn hoặc giavang.doji.vn',
       };
+    }
+  }
+
+  // ==== HANDLERS ====
+
+  private async handleGeminiChat(
+    familyId: string,
+    history: any[],
+    familyInfo: string,
+    finalUserMessage: string,
+    userIds: string[],
+  ) {
+    const genModel = this.gemini.getGenerativeModel({
+      model: 'gemini-flash-latest',
+      systemInstruction: this.getSystemPrompt(familyInfo),
+      tools: this.getGeminiTools(),
+    });
+    const chat = genModel.startChat({
+      history: [...history].reverse().map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
+    });
+
+    let currentInput: any = finalUserMessage;
+    let assistantContent = '';
+    let loopCount = 0;
+
+    while (loopCount < 5) {
+      const result = await chat.sendMessage(currentInput);
+      const candidates = result.response.candidates;
+      const part = candidates?.[0]?.content?.parts?.[0];
+
+      if (part?.functionCall) {
+        loopCount++;
+        const res = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userIds);
+        currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
+      } else {
+        assistantContent = result.response.text();
+        break;
+      }
+    }
+    await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
+    return { content: assistantContent, familyId };
+  }
+
+  private async handleGroqChat(
+    familyId: string,
+    history: any[],
+    familyInfo: string,
+    finalUserMessage: string,
+    userIds: string[],
+  ) {
+    const messages = [
+      { role: 'system', content: this.getSystemPrompt(familyInfo) },
+      ...[...history].reverse().map((m) => ({ role: m.role as any, content: m.content })),
+      { role: 'user', content: finalUserMessage },
+    ];
+
+    let response = await this.openai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      tools: this.getTools() as any,
+    });
+
+    let assistantContent = '';
+    const toolCalls = response.choices[0].message.tool_calls;
+    if (toolCalls) {
+      messages.push(response.choices[0].message as any);
+      for (const tc of toolCalls) {
+        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userIds);
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
+      }
+      const final = await this.openai.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages });
+      assistantContent = final.choices[0].message.content || '';
+    } else {
+      assistantContent = response.choices[0].message.content || '';
+    }
+
+    await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
+    return { content: assistantContent, familyId };
+  }
+
+  private async handleGeminiStream(
+    familyId: string,
+    history: any[],
+    familyInfo: string,
+    finalUserMessage: string,
+    userIds: string[],
+    res: any,
+    sessionId?: string,
+  ) {
+    const genModel = this.gemini.getGenerativeModel({
+      model: 'gemini-flash-latest',
+      systemInstruction: this.getSystemPrompt(familyInfo),
+      tools: this.getGeminiTools(),
+    });
+    const chat = genModel.startChat({
+      history: [...history].reverse().map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
+    });
+
+    let currentInput: any = finalUserMessage;
+    let assistantContent = '';
+    let loopCount = 0;
+
+    while (loopCount < 5) {
+      const result = await chat.sendMessageStream(currentInput);
+      let hasToolCall = false;
+      for await (const chunk of result.stream) {
+        const candidates = chunk.candidates;
+        const part = candidates?.[0]?.content?.parts?.[0];
+        if (part?.functionCall) {
+          hasToolCall = true;
+          loopCount++;
+          const toolRes = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userIds);
+          currentInput = [{ functionResponse: { name: part.functionCall.name, response: toolRes } }];
+          break;
+        } else {
+          const text = chunk.text();
+          assistantContent += text;
+          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        }
+      }
+      if (!hasToolCall) break;
+    }
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+    if (assistantContent) await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
+  }
+
+  private async handleGroqStream(
+    familyId: string,
+    history: any[],
+    familyInfo: string,
+    finalUserMessage: string,
+    userIds: string[],
+    res: any,
+    sessionId?: string,
+  ) {
+    const messages = [
+      { role: 'system', content: this.getSystemPrompt(familyInfo) },
+      ...[...history].reverse().map((m) => ({ role: m.role as any, content: m.content })),
+      { role: 'user', content: finalUserMessage },
+    ];
+
+    const response = await this.openai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      tools: this.getTools() as any,
+    });
+
+    let assistantContent = '';
+    const toolCalls = response.choices[0].message.tool_calls;
+    if (toolCalls) {
+      messages.push(response.choices[0].message as any);
+      for (const tc of toolCalls) {
+        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userIds);
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
+      }
+    }
+
+    const stream = await this.openai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content || '';
+      if (text) {
+        assistantContent += text;
+        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+      }
+    }
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+    await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
+  }
+
+  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string) {
+    try {
+      const finalUserMessage = await this.processVisionImage(userMessage, image);
+      await this.chatService.saveMessage(familyId, 'user', finalUserMessage);
+
+      const familyInfo = await this.getFamilyContext(familyId);
+      const history = await this.chatService.getHistory(familyId, undefined, 10);
+
+      if (modelSelection === 'gemini') {
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds);
+      }
+
+      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds);
+    } catch (e: any) {
+      console.error('Chat Error:', e);
+      throw new HttpException('AI Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
+    try {
+      const finalUserMessage = await this.processVisionImage(userMessage, image);
+      await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
+
+      const familyInfo = await this.getFamilyContext(familyId);
+      const history = await this.chatService.getHistory(familyId, sessionId, 10);
+
+      if (modelSelection === 'gemini') {
+        return await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds, res, sessionId);
+      }
+
+      return await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds, res, sessionId);
+    } catch (e: any) {
+      console.error('Stream Error:', e);
+      res.write(`data: ${JSON.stringify({ content: 'Lỗi AI.' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
     }
   }
 }

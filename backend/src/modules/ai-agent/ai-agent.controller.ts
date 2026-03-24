@@ -7,8 +7,8 @@ import { ChatMessageDto } from './dto/chat.dto';
 @Controller('api/chat')
 export class AiAgentController {
   constructor(
-    private aiAgentService: AiAgentService,
-    private chatService: ChatService,
+    private readonly aiAgentService: AiAgentService,
+    private readonly chatService: ChatService,
   ) {}
 
   @Post('message')
@@ -64,7 +64,7 @@ export class AiAgentController {
     @Query('sessionId') sessionId?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.chatService.getHistory(familyId, sessionId, limit ? parseInt(limit) : 50);
+    return this.chatService.getHistory(familyId, sessionId, limit ? Number.parseInt(limit) : 50);
   }
 
   @Delete('history/:familyId')
