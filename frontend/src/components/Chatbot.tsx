@@ -309,7 +309,7 @@ export default function Chatbot() {
                 }`}
               >
                 {m.role === 'user' ? (
-                  m.content
+                  m.content.split('[Hệ thống ghi chú:')[0].trim() || '[Hình ảnh đính kèm]'
                 ) : (
                   <ReactMarkdown>{m.content || '...'}</ReactMarkdown>
                 )}

@@ -11,5 +11,15 @@
       "src": "/(.*)",
       "dest": "src/main.ts"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/notifications/daily",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/notifications/monthly",
+      "schedule": "0 1 1 * *"
+    }
   ]
 }
