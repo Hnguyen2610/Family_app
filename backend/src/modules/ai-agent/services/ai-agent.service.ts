@@ -210,7 +210,7 @@ CRITICAL RULES:
 - After calling a tool, present the results clearly and naturally.`;
   }
 
-  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string) {
+  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string) {
     try {
       let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
 
@@ -269,7 +269,30 @@ CRITICAL RULES:
         content: finalUserMessage,
       });
 
-      // Call LLM with tools
+      // Handle Gemini Fallback/Selection
+      if (modelSelection === 'gemini') {
+        try {
+          const genModel = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+          const chat = genModel.startChat({
+            history: history.reverse().map((msg: any) => ({
+              role: msg.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: msg.content }]
+            })),
+            systemInstruction: this.getSystemPrompt(familyInfo),
+          });
+
+          const result = await chat.sendMessage(finalUserMessage);
+          const assistantContent = result.response.text();
+
+          await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
+          return { content: assistantContent, familyId };
+        } catch (geminiError) {
+          console.error('Gemini Chat Error:', geminiError);
+          throw new HttpException('Gemini service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+        }
+      }
+
+      // Call LLM with tools (Groq/OpenAI)
       let response = await this.openai.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
         messages,
@@ -331,7 +354,7 @@ CRITICAL RULES:
     }
   }
 
-  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string) {
+  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
     try {
       let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
 
@@ -388,6 +411,39 @@ CRITICAL RULES:
         role: 'user',
         content: finalUserMessage,
       });
+
+      // Handle Gemini Selection for Streaming
+      if (modelSelection === 'gemini') {
+        try {
+          const genModel = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+          const chat = genModel.startChat({
+            history: history.reverse().map((msg: any) => ({
+              role: msg.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: msg.content }]
+            })),
+            systemInstruction: this.getSystemPrompt(familyInfo),
+          });
+
+          const result = await chat.sendMessageStream(finalUserMessage);
+          let assistantContent = '';
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            assistantContent += chunkText;
+            res.write(`data: ${JSON.stringify({ content: chunkText })}\n\n`);
+          }
+
+          res.write(`data: [DONE]\n\n`);
+          res.end();
+          await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
+          return;
+        } catch (geminiError) {
+          console.error('Gemini Stream Error:', geminiError);
+          res.write(`data: ${JSON.stringify({ content: 'Lỗi khi kết nối với Gemini. Vui lòng thử lại.' })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+      }
 
       // Call LLM with tools
       let response = await this.openai.chat.completions.create({

@@ -16,6 +16,7 @@ export default function Chatbot() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<'llama' | 'gemini'>('llama');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,12 +133,13 @@ export default function Chatbot() {
         undefined, 
         currentSessionId,
         currentImage || undefined,
-        (chunk) => {
+        selectedModel,
+        (chunk: string) => {
           setIsLoading(false); // Stop pulse animation once data flows
           currentResponse += chunk;
           updateLastMessage(currentResponse);
         },
-        (newId) => {
+        (newId: string) => {
           if (!currentSessionId) {
             setCurrentSessionId(newId);
             fetchSessions();
@@ -333,6 +335,28 @@ export default function Chatbot() {
 
       {/* Input area */}
       <div className="p-4 md:p-8 bg-white border-t border-slate-100 relative shrink-0">
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setSelectedModel('llama')}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+              selectedModel === 'llama' 
+              ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' 
+              : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-indigo-100 hover:text-indigo-600'
+            }`}
+          >
+            Llama 3.3 (Groq)
+          </button>
+          <button
+            onClick={() => setSelectedModel('gemini')}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+              selectedModel === 'gemini' 
+              ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' 
+              : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-indigo-100 hover:text-indigo-600'
+            }`}
+          >
+            Gemini 1.5 Flash
+          </button>
+        </div>
         {imagePreview && (
           <div className="mb-3 relative inline-block animate-in fade-in slide-in-from-bottom-2">
             <img src={imagePreview} alt="Preview" className="h-20 md:h-24 rounded-xl object-cover border-2 border-slate-100" />

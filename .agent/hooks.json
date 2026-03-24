@@ -1,0 +1,26 @@
+{
+  "hooks": [
+    {
+      "trigger": "PreToolUse",
+      "matcher": "tool == 'multi_replace_file_content' || tool == 'replace_file_content'",
+      "action": "python .agent/scripts/hooks/pre_edit_safety.py"
+    },
+    {
+      "trigger": "PostToolUse",
+      "matcher": "tool == 'write_to_file' || tool == 'multi_replace_file_content'",
+      "action": "python .agent/scripts/hooks/post_edit_validation.py"
+    },
+    {
+      "trigger": "SessionStart",
+      "action": "python .agent/scripts/hooks/load_context.py"
+    },
+    {
+      "trigger": "SessionEnd",
+      "action": "python .agent/scripts/hooks/save_instincts.py"
+    }
+  ],
+  "rules": {
+    "warn_on_console_log": true,
+    "require_tests_on_logic_change": true
+  }
+}

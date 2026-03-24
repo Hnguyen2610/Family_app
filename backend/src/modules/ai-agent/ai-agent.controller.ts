@@ -16,7 +16,7 @@ export class AiAgentController {
     @Body() dto: ChatMessageDto,
   ) {
     const userIds = dto.userId ? [dto.userId] : [];
-    return this.aiAgentService.chat(dto.familyId, dto.content, userIds, dto.image);
+    return this.aiAgentService.chat(dto.familyId, dto.content, userIds, dto.image, dto.model);
   }
 
   @Post('stream')
@@ -42,7 +42,7 @@ export class AiAgentController {
       res.write(`data: ${JSON.stringify({ type: 'session_id', sessionId: currentSessionId })}\n\n`);
     }
     
-    await this.aiAgentService.chatStream(dto.familyId, dto.content, userIds, res, currentSessionId, dto.image);
+    await this.aiAgentService.chatStream(dto.familyId, dto.content, userIds, res, currentSessionId, dto.image, dto.model);
   }
 
   @Get('sessions')

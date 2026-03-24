@@ -23,7 +23,9 @@ Antigravity Kit is a modular system consisting of:
 ├── skills/                  # 36 Skills
 ├── workflows/               # 11 Slash Commands
 ├── rules/                   # Global Rules
-└── scripts/                 # Master Validation Scripts
+├── scripts/                 # Master Validation Scripts
+├── hooks.json               # AI Hook system configuration
+└── workflows/               # 11+ Slash Commands
 ```
 
 ---
@@ -165,6 +167,9 @@ Modular knowledge domains that agents can load on-demand. based on task context.
 | `i18n-localization`       | Internationalization      |
 | `performance-profiling`   | Web Vitals, optimization  |
 | `systematic-debugging`    | Troubleshooting           |
+| `continuous-learning`    | Autonomous pattern extraction |
+| `security-scan`          | AgentShield security audit |
+| `cost-optimization`      | Token & budget tracking    |
 
 ---
 
@@ -185,6 +190,9 @@ Slash command procedures. Invoke with `/command`.
 | `/status`        | Check project status     |
 | `/test`          | Run tests                |
 | `/ui-ux-pro-max` | Design with 50 styles    |
+| `/skill-create`  | Generate new skills      |
+| `/pm2`           | Manage services          |
+| `/multi-plan`    | Multi-agent planning     |
 
 ---
 

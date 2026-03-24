@@ -14,6 +14,10 @@ export class ChatMessageDto {
   @IsOptional()
   @IsString()
   image?: string;
+
+  @IsOptional()
+  @IsString()
+  model?: string;
 }
 
 export class GetChatHistoryDto {
