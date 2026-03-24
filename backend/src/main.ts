@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import compression from 'compression';
 import { AppModule } from './app.module';
 
 let cachedApp: any;
@@ -37,6 +38,9 @@ async function bootstrap() {
         transform: true,
       }),
     );
+
+    // Apply compression
+    app.use(compression());
 
     await app.init();
     cachedApp = app.getHttpAdapter().getInstance();
