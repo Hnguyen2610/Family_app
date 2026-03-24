@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import compression from 'compression';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 let cachedApp: any;
@@ -41,6 +42,10 @@ async function bootstrap() {
 
     // Apply compression
     app.use(compression());
+
+    // Increase JSON limit for Base64 image uploads
+    app.use(json({ limit: '10mb' }));
+    app.use(urlencoded({ extended: true, limit: '10mb' }));
 
     await app.init();
     cachedApp = app.getHttpAdapter().getInstance();
