@@ -272,13 +272,15 @@ CRITICAL RULES:
       // Handle Gemini Fallback/Selection
       if (modelSelection === 'gemini') {
         try {
-          const genModel = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+          const genModel = this.gemini.getGenerativeModel({ 
+            model: "gemini-flash-latest",
+            systemInstruction: this.getSystemPrompt(familyInfo),
+          });
           const chat = genModel.startChat({
-            history: history.reverse().map((msg: any) => ({
+            history: [...history].reverse().map((msg) => ({
               role: msg.role === 'assistant' ? 'model' : 'user',
               parts: [{ text: msg.content }]
             })),
-            systemInstruction: this.getSystemPrompt(familyInfo),
           });
 
           const result = await chat.sendMessage(finalUserMessage);
@@ -415,13 +417,15 @@ CRITICAL RULES:
       // Handle Gemini Selection for Streaming
       if (modelSelection === 'gemini') {
         try {
-          const genModel = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+          const genModel = this.gemini.getGenerativeModel({ 
+            model: "gemini-flash-latest",
+            systemInstruction: this.getSystemPrompt(familyInfo),
+          });
           const chat = genModel.startChat({
-            history: history.reverse().map((msg: any) => ({
+            history: [...history].reverse().map((msg) => ({
               role: msg.role === 'assistant' ? 'model' : 'user',
               parts: [{ text: msg.content }]
             })),
-            systemInstruction: this.getSystemPrompt(familyInfo),
           });
 
           const result = await chat.sendMessageStream(finalUserMessage);
