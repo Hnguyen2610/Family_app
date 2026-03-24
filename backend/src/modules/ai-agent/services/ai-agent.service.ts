@@ -1,5 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { OpenAI } from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatService } from './chat.service';
 import { MealsService } from '../../meals/meals.service';
 import { EventsService } from '../../events/events.service';
@@ -8,7 +9,8 @@ import { getSolarDateFromLunar } from '../../../utils/lunar-calendar.util';
 
 @Injectable()
 export class AiAgentService {
-  private openai: OpenAI;
+  private readonly openai: OpenAI;
+  private readonly gemini: GoogleGenerativeAI;
 
   constructor(
     private chatService: ChatService,
@@ -17,9 +19,10 @@ export class AiAgentService {
     private readonly prisma: PrismaService,
   ) {
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.GROQ_API_KEY,
       baseURL: 'https://api.groq.com/openai/v1',
     });
+    this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
   }
 
   // Define tools for the AI agent
@@ -213,23 +216,21 @@ CRITICAL RULES:
 
       if (image) {
         try {
-          const visionResponse = await this.openai.chat.completions.create({
-            model: 'llama-3.2-90b-vision-preview',
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: 'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.' },
-                  { type: 'image_url', image_url: { url: image } }
-                ]
-              }
-            ],
-            max_tokens: 1024,
-            temperature: 0.1,
-          });
-          const desc = visionResponse.choices[0]?.message?.content;
-          if (desc) {
-            finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
+          const match = image.match(/^data:(image\/[a-zA-Z0-9+]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1];
+            const data = match[2];
+            const model = this.gemini.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const result = await model.generateContent([
+              'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
+              { inlineData: { data, mimeType } }
+            ]);
+            const desc = result.response.text();
+            if (desc) {
+              finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
+            }
+          } else {
+             finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
           }
         } catch (visionError: any) {
           console.error('Vision processing error:', visionError);
