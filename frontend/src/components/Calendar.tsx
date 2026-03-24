@@ -33,7 +33,7 @@ export default function Calendar() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    type: 'Event', // Event, Birthday, Lunar
+    type: 'GENERAL',
     time: '09:00',
   });
 
@@ -89,15 +89,12 @@ export default function Calendar() {
   };
 
   const getEventIcon = (type: string) => {
-    const lowerType = type?.toLowerCase();
-    switch (lowerType) {
-      case 'birthday':
+    switch (type) {
+      case 'BIRTHDAY':
         return <FiGift size={12} />;
-      case 'memorial':
-      case 'giỗ':
+      case 'ANNIVERSARY':
         return <FiStar size={12} />;
-      case 'holiday':
-      case 'lunar':
+      case 'HOLIDAY':
         return <FiStar size={12} color="#10b981" />;
       default:
         return <FiBell size={12} />;
@@ -121,7 +118,7 @@ export default function Calendar() {
     setFormData({
       title: '',
       description: '',
-      type: 'Event',
+      type: 'GENERAL',
       time: '09:00',
     });
     setIsModalOpen(true);
@@ -133,7 +130,7 @@ export default function Calendar() {
     setFormData({
       title: event.title,
       description: event.description || '',
-      type: event.type || 'Event',
+      type: event.type || 'GENERAL',
       time: eventDate.toLocaleTimeString('vi-VN', {
         hour: '2-digit',
         minute: '2-digit',
@@ -324,14 +321,13 @@ export default function Calendar() {
                     {dayEvents.slice(0, 4).map((event) => {
                       let badgeClasses =
                         'flex items-center justify-center w-5 h-5 md:w-8 md:h-8 rounded-lg md:rounded-xl shadow-sm transition-all duration-500 hover:scale-110';
-                      const lowerType = event.type?.toLowerCase();
                       if (isSelected) {
                         badgeClasses += ' bg-white/20 text-white backdrop-blur-md';
-                      } else if (lowerType === 'birthday') {
+                      } else if (event.type === 'BIRTHDAY') {
                         badgeClasses += ' bg-rose-500 text-white';
-                      } else if (lowerType === 'giỗ' || lowerType === 'memorial') {
+                      } else if (event.type === 'ANNIVERSARY') {
                         badgeClasses += ' bg-amber-500 text-white';
-                      } else if (lowerType === 'holiday' || lowerType === 'lunar') {
+                      } else if (event.type === 'HOLIDAY') {
                         badgeClasses += ' bg-emerald-500 text-white';
                       } else {
                         badgeClasses += ' bg-indigo-50 text-indigo-600 border border-indigo-100';
@@ -386,7 +382,6 @@ export default function Calendar() {
                 </div>
               ) : (
                 getEventsForDay(selectedDate).map((event) => {
-                  const lowerType = event.type?.toLowerCase();
                   return (
                     <div
                       key={event.id}
@@ -396,22 +391,20 @@ export default function Calendar() {
                       onKeyDown={(e) => e.key === 'Enter' && openEditForm(event)}
                       className="bg-white p-6 rounded-3xl shadow-md border border-slate-50 relative overflow-hidden group cursor-pointer hover:border-indigo-200 hover:shadow-xl transition-all"
                     >
-                      <div
                         className={`absolute top-0 left-0 w-1.5 h-full ${
-                          lowerType === 'birthday'
+                          event.type === 'BIRTHDAY'
                             ? 'bg-rose-500'
-                            : lowerType === 'giỗ' || lowerType === 'memorial'
+                            : event.type === 'ANNIVERSARY'
                               ? 'bg-amber-500'
                               : 'bg-indigo-600'
                         }`}
-                      />
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div
                             className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${
-                              lowerType === 'birthday'
+                              event.type === 'BIRTHDAY'
                                 ? 'bg-rose-50 text-rose-500'
-                                : lowerType === 'giỗ' || lowerType === 'memorial'
+                                : event.type === 'ANNIVERSARY'
                                   ? 'bg-amber-50 text-amber-500'
                                   : 'bg-indigo-50 text-indigo-500'
                             }`}
@@ -509,10 +502,12 @@ export default function Calendar() {
                       onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                       className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none cursor-pointer"
                     >
-                      <option value="Event">Sự kiện</option>
-                      <option value="Birthday">Sinh nhật</option>
-                      <option value="Giỗ">Ngày giỗ</option>
-                      <option value="Lunar">Âm lịch</option>
+                      <option value="GENERAL">Sự kiện chung</option>
+                      <option value="BIRTHDAY">Sinh nhật</option>
+                      <option value="ANNIVERSARY">Ngày kỷ niệm / Giỗ</option>
+                      <option value="HOLIDAY">Ngày lễ</option>
+                      <option value="APPOINTMENT">Cuộc hẹn</option>
+                      <option value="TASK">Công việc / Nhắc nhở</option>
                     </select>
                   </div>
                   <div>
