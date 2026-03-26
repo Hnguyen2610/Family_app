@@ -3,7 +3,7 @@ import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class MailService {
-  private transporter: nodemailer.Transporter;
+  private readonly transporter: nodemailer.Transporter;
   private readonly logger = new Logger(MailService.name);
 
   constructor() {
@@ -43,6 +43,9 @@ export class MailService {
   }
 
   async sendWelcomeEmail(email: string, name: string) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    this.logger.log(`Sending Welcome Email to ${email}. FRONTEND_URL detected as: ${frontendUrl}`);
+    
     const subject = 'Chào mừng bạn đến với Family Calendar! 🏠';
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
@@ -55,7 +58,7 @@ export class MailService {
         </div>
         <p>Hãy đăng nhập và khám phá ngay nhé!</p>
         <div style="text-align: center; margin-top: 30px;">
-          <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #e11d48; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Đăng nhập ngay</a>
+          <a href="${frontendUrl}" style="background-color: #e11d48; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Đăng nhập ngay</a>
         </div>
         <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
         <p style="font-size: 12px; color: #64748b; text-align: center;">© 2026 Family Calendar Team. Kết nối tình thân.</p>
@@ -65,6 +68,9 @@ export class MailService {
   }
 
   async sendFamilyAddedEmail(email: string, name: string, familyName: string) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    this.logger.log(`Sending Family Added Email to ${email}. FRONTEND_URL detected as: ${frontendUrl}`);
+
     const subject = `Bạn đã được thêm vào gia đình ${familyName}! 👥`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
@@ -72,7 +78,7 @@ export class MailService {
         <p>Bạn vừa được mời tham gia vào gia đình <b>${familyName}</b> trên <b>Family Calendar</b>.</p>
         <p>Từ bây giờ, bạn có thể xem danh sách thành viên, cùng lên thực đơn món ngon mỗi ngày và theo dõi các sự kiện chung của gia đình mình.</p>
         <div style="text-align: center; margin-top: 30px;">
-          <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Truy cập Gia đình</a>
+          <a href="${frontendUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Truy cập Gia đình</a>
         </div>
         <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
         <p style="font-size: 12px; color: #64748b; text-align: center;">© 2026 Family Calendar Team. Mỗi bữa cơm đều là một niềm hạnh phúc.</p>
