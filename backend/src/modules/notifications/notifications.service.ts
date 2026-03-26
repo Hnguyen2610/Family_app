@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
@@ -11,10 +11,57 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
+    @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
   ) {}
 
-  // 1. Cron Job: 8:00 AM on the 1st day of every month
+  // --- In-App Notifications ---
+
+  async createNotification(userId: string, data: { type: string; title: string; message: string; metadata?: any }) {
+    try {
+      return await this.prisma.notification.create({
+        data: {
+          userId,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          metadata: data.metadata || {},
+        },
+      });
+    } catch (e) {
+      this.logger.error(`Failed to create notification for user ${userId}`, e);
+    }
+  }
+
+  async getForUser(userId: string) {
+    return this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async markAsRead(id: string, userId: string) {
+    return this.prisma.notification.updateMany({
+      where: { id, userId },
+      data: { isRead: true },
+    });
+  }
+
+  async markAllAsRead(userId: string) {
+    return this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
+    });
+  }
+  
+  async delete(id: string, userId: string) {
+    return this.prisma.notification.deleteMany({
+      where: { id, userId },
+    });
+  }
+
+  // --- Cron Jobs & Email Notifications ---
   @Cron('0 8 1 * *', {
     name: 'monthly-summary',
     timeZone: 'Asia/Ho_Chi_Minh',

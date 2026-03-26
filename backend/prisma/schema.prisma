@@ -26,12 +26,15 @@ model User {
   
   googleId  String?    @unique
   avatarUrl String?
+  notificationSettings Json? @default("{}")
   
   createdEvents Event[]
   mealPreferences MealPreference[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  notifications Notification[]
 }
 
 model Family {
@@ -51,6 +54,7 @@ model Event {
   title       String
   description String?
   date        DateTime // Solar date
+  time        String?  // Ex: "09:00"
   lunarDate   String?  // Ex: "30/12" (day/month in lunar calendar)
   type        EventType @default(GENERAL)
   
@@ -81,6 +85,7 @@ enum EventType {
 
 enum EventScope {
   PRIVATE
+  FAMILY
   GLOBAL
 }
 
@@ -124,11 +129,13 @@ model MealHistory {
   meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
   date      DateTime
   category  MealCategory
+  familyId  String   @default("default-family")
   
   createdAt DateTime @default(now())
   
   @@index([date])
   @@index([mealId])
+  @@index([familyId])
 }
 
 // ============================================
@@ -159,5 +166,25 @@ model ChatMessage {
   
   @@index([familyId])
   @@index([sessionId])
+  @@index([createdAt])
+}
+
+// ============================================
+// Notifications
+// ============================================
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type      String   // e.g., "EVENT_CREATED", "MEAL_ADDED"
+  title     String
+  message   String
+  metadata  Json?    // { eventId: "...", path: "/calendar" }
+  
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
   @@index([createdAt])
 }

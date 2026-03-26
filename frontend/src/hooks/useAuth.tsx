@@ -15,6 +15,7 @@ export interface User {
     id: string;
     name: string;
   } | null;
+  notificationSettings?: any;
 }
 
 interface AuthContextType {
@@ -23,6 +24,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (token: string) => Promise<User>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
+  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -59,6 +62,20 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     localStorage.removeItem('family_token');
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const response = await authAPI.getProfile();
+      const userData = response.data;
+      setUser(userData);
+      localStorage.setItem('family_user', JSON.stringify(userData));
+      if (userData.familyId) {
+        localStorage.setItem('family_id', userData.familyId);
+      }
+    } catch (error) {
+      console.error('AuthProvider: Refresh failed', error);
+    }
+  }, []);
+
   useEffect(() => {
     const savedUser = localStorage.getItem('family_user');
     if (savedUser) {
@@ -77,8 +94,10 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     isLoading,
     isAuthenticated: !!user,
     login,
-    logout
-  }), [user, isLoading, login, logout]);
+    logout,
+    refreshUser,
+    setUser
+  }), [user, isLoading, login, logout, refreshUser]);
 
   return (
     <AuthContext.Provider value={contextValue}>

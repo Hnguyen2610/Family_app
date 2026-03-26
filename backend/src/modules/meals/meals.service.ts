@@ -7,10 +7,14 @@ import {
   RecordMealDto,
   AddCustomMealPreferenceDto,
 } from './dto/meal.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class MealsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   // ========== Meal CRUD ==========
 
@@ -75,21 +79,45 @@ export class MealsService {
   // ========== Meal History ==========
 
   async recordMeal(familyId: string, dto: RecordMealDto) {
-    return this.prisma.mealHistory.create({
+    const mealHistory = await this.prisma.mealHistory.create({
       data: {
         mealId: dto.mealId,
         category: dto.category,
+        familyId,
         date: new Date(),
       },
+      include: { meal: true },
     });
+
+    // Notify family members
+    try {
+      const familyMembers = await this.prisma.user.findMany({
+        where: { familyId },
+        select: { id: true },
+      });
+
+      for (const member of familyMembers) {
+        await this.notificationsService.createNotification(member.id, {
+          type: 'MEAL_ADDED',
+          title: 'Thực đơn hôm nay',
+          message: `Món mới đã được cập nhật: ${mealHistory.meal.name}`,
+          metadata: { mealId: mealHistory.mealId, path: '/meals' },
+        });
+      }
+    } catch (e) {
+      console.error('Failed to send meal notification', e);
+    }
+
+    return mealHistory;
   }
 
-  async getMealHistory(days: number = 30) {
+  async getMealHistory(familyId: string, days: number = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
     return this.prisma.mealHistory.findMany({
       where: {
+        familyId,
         date: {
           gte: startDate,
         },
@@ -176,6 +204,7 @@ export class MealsService {
 
     const recentMeals = await this.prisma.mealHistory.findMany({
       where: {
+        familyId,
         date: { gte: threeDaysAgo },
       },
       select: { mealId: true },

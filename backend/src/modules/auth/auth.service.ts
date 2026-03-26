@@ -45,11 +45,12 @@ export class AuthService {
         throw new UnauthorizedException('Email này chưa được đăng ký trong hệ thống gia đình. Vui lòng liên hệ quản trị viên.');
       }
 
-      // Update user if needed (e.g. googleId if they login with email first, or avatar)
+      // Update user if needed (googleId, name, avatar, or role)
       const isSuperAdmin = email === 'hnguyen261002@gmail.com';
       const user = await this.prisma.user.update({
         where: { id: existingUser.id },
         data: {
+          name: payload.name || existingUser.name,
           googleId: existingUser.googleId || googleId,
           avatarUrl: avatarUrl || existingUser.avatarUrl,
           globalRole: isSuperAdmin ? 'SUPER_ADMIN' : existingUser.globalRole || 'USER',

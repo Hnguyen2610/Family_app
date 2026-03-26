@@ -76,13 +76,19 @@ export class MealsController {
   // ========== History ==========
 
   @Post('history/record')
-  recordMeal(@Body() dto: RecordMealDto) {
-    return this.mealsService.recordMeal('default-family', dto);
+  recordMeal(
+    @Query('familyId') familyId: string,
+    @Body() dto: RecordMealDto,
+  ) {
+    return this.mealsService.recordMeal(familyId, dto);
   }
 
   @Get('history/recent')
-  getMealHistory(@Query('days') days?: string) {
-    return this.mealsService.getMealHistory(days ? parseInt(days) : 30);
+  getMealHistory(
+    @Query('familyId') familyId: string,
+    @Query('days') days?: string,
+  ) {
+    return this.mealsService.getMealHistory(familyId, days ? Number.parseInt(days) : 30);
   }
 
   // ========== Suggestions (AI / Family Menu) ==========

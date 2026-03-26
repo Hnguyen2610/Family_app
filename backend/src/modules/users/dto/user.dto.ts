@@ -45,4 +45,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   birthday?: string;
+
+  @IsOptional()
+  notificationSettings?: any;
 }

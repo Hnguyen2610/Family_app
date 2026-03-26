@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { eventsAPI, usersAPI } from '@/lib/api-client';
-import { getCalendarDays, vietnameseMonths, isToday } from '@/utils/date';
+import { eventsAPI } from '@/lib/api-client';
+import { getCalendarDays, isToday } from '@/utils/date';
+import { useTranslation, TranslationKey } from '@/lib/i18n';
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -12,24 +13,26 @@ import {
   FiX,
   FiCheck,
   FiTrash2,
-  FiEdit3,
   FiGift,
   FiStar,
-  FiBell,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { getLunarDate } from '@/utils/lunar';
+import { getLunarDate, formatLunarDate } from '@/utils/lunar';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Calendar() {
+  const { t, language } = useTranslation();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [eventsCache, setEventsCache] = useState<Record<string, any[]>>({});
 
   // Manual Event Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any>(null);
+  const isDeletable = editingEvent && 
+                      !editingEvent.id?.toString().startsWith('holiday-') && 
+                      !editingEvent.id?.toString().startsWith('birthday-');
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -38,13 +41,25 @@ export default function Calendar() {
     scope: 'GLOBAL',
   });
 
-  const [creatorId, setCreatorId] = useState<string>('');
+  const { user } = useAuth();
+  const [creatorId, setCreatorId] = useState<string>(user?.id || '');
 
-  const familyId = process.env.NEXT_PUBLIC_FAMILY_ID || 'default-family';
+  const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
 
   const month = currentDate.getMonth() + 1;
   const year = currentDate.getFullYear();
   const days = getCalendarDays(month, year);
+
+  const monthKeys: TranslationKey[] = [
+    'calendar.months.jan', 'calendar.months.feb', 'calendar.months.mar', 'calendar.months.apr',
+    'calendar.months.may', 'calendar.months.jun', 'calendar.months.jul', 'calendar.months.aug',
+    'calendar.months.sep', 'calendar.months.oct', 'calendar.months.nov', 'calendar.months.dec'
+  ];
+
+  const dayKeys: TranslationKey[] = [
+    'calendar.days.sun', 'calendar.days.mon', 'calendar.days.tue', 'calendar.days.wed',
+    'calendar.days.thu', 'calendar.days.fri', 'calendar.days.sat'
+  ];
 
   useEffect(() => {
     fetchInitialUser();
@@ -59,14 +74,17 @@ export default function Calendar() {
     }
   }, [month, year, eventsCache]);
 
+  // Background polling for events every 15 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchEvents(true); // forceRefresh=true to bypass cache
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [month, year, familyId, creatorId]);
+
   const fetchInitialUser = async () => {
-    try {
-      const response = await usersAPI.getAll(familyId);
-      if (response.data && response.data.length > 0) {
-        setCreatorId(response.data[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to fetch initial user:', error);
+    if (user?.id) {
+      setCreatorId(user.id);
     }
   };
 
@@ -77,15 +95,12 @@ export default function Calendar() {
       return;
     }
 
-    setLoading(true);
     try {
       const response = await eventsAPI.getAll(familyId, month, year, creatorId);
       setEvents(response.data);
       setEventsCache((prev) => ({ ...prev, [key]: response.data }));
     } catch (error) {
       console.error('Failed to fetch events:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -96,25 +111,23 @@ export default function Calendar() {
       case 'ANNIVERSARY':
         return <FiStar size={12} />;
       case 'HOLIDAY':
-        return <FiStar size={12} color="#10b981" />;
+        return <FiStar size={12} />;
+      case 'TASK':
+      case 'WORK':
+        return <FiCheck size={12} />;
+      case 'APPOINTMENT':
+        return <FiClock size={12} />;
       default:
-        return <FiBell size={12} />;
+        return <FiCalendar size={12} />;
     }
   };
 
-  const getEventsForDay = (day: number) => {
-    return events.filter((event) => {
-      const eventDate = new Date(event.date);
-      return (
-        eventDate.getDate() === day &&
-        eventDate.getMonth() + 1 === month &&
-        eventDate.getFullYear() === year
-      );
-    });
+  const handleDayClick = (day: number) => {
+    setSelectedDate(day);
   };
 
-  const openAddForm = () => {
-    if (!selectedDate) return;
+  const openAddModal = (day: number) => {
+    setSelectedDate(day);
     setEditingEvent(null);
     setFormData({
       title: '',
@@ -126,477 +139,400 @@ export default function Calendar() {
     setIsModalOpen(true);
   };
 
-  const openEditForm = (event: any) => {
-    if (event.createdBy !== creatorId) {
-      toast.error('Bạn không có quyền chỉnh sửa sự kiện này');
-      return;
-    }
-    const eventDate = new Date(event.date);
+  const openEditModal = (event: any) => {
     setEditingEvent(event);
     setFormData({
       title: event.title,
       description: event.description || '',
-      type: event.type || 'GENERAL',
-      scope: event.scope || 'GLOBAL',
-      time: eventDate.toLocaleTimeString('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }),
+      type: event.type,
+      time: event.time || '09:00',
+      scope: event.scope,
     });
     setIsModalOpen(true);
   };
 
   const handleSaveEvent = async () => {
-    if (!formData.title.trim() || !selectedDate) {
-      toast.error('Vui lòng nhập tiêu đề sự kiện');
+    if (!formData.title) {
+      toast.error(language === 'vi' ? 'Vui lòng nhập tiêu đề' : 'Please enter a title');
       return;
     }
 
-    const eventDate = new Date(year, month - 1, selectedDate);
-    const [hours, minutes] = formData.time.split(':');
-    eventDate.setHours(Number.parseInt(hours, 10), Number.parseInt(minutes, 10));
-
+    const eventDate = new Date(year, month - 1, selectedDate!);
     const payload = {
-      title: formData.title,
-      description: formData.description,
-      type: formData.type,
-      scope: formData.scope,
+      ...formData,
       date: eventDate.toISOString(),
+      familyId,
+      creatorId,
     };
 
     try {
       if (editingEvent) {
         await eventsAPI.update(editingEvent.id, familyId, creatorId, payload);
-        toast.success('Đã cập nhật sự kiện');
+        toast.success(t('common.success'));
       } else {
-        if (!creatorId) {
-          toast.error('Không tìm thấy thông tin người tạo');
-          return;
-        }
         await eventsAPI.create(familyId, creatorId, payload);
-        toast.success('Đã thêm sự kiện');
+        toast.success(t('common.success'));
       }
-      fetchEvents(true);
       setIsModalOpen(false);
+      fetchEvents(true);
     } catch (error) {
       console.error('Failed to save event:', error);
-      toast.error('Không thể lưu sự kiện');
+      toast.error(t('common.error'));
     }
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (!globalThis.confirm?.('Bạn có chắc chắn muốn xóa sự kiện này?')) return;
+    if (!confirm(language === 'vi' ? 'Bạn có chắc chắn muốn xóa?' : 'Are you sure?')) return;
     try {
       await eventsAPI.delete(id, familyId, creatorId);
-      toast.success('Đã xóa sự kiện');
-      fetchEvents(true);
+      toast.success(t('common.success'));
       setIsModalOpen(false);
+      setEditingEvent(null);
+      fetchEvents(true);
     } catch (error) {
       console.error('Failed to delete event:', error);
-      toast.error('Không thể xóa sự kiện');
+      toast.error(t('common.error'));
     }
   };
 
-  const nextMonth = () => {
-    setCurrentDate(new Date(year, month, 1));
-    setSelectedDate(null);
-  };
-
-  const prevMonth = () => {
-    setCurrentDate(new Date(year, month - 2, 1));
-    setSelectedDate(null);
-  };
-
   return (
-    <div className="space-y-6 md:space-y-10">
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700">
       {/* Calendar Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl md:text-3xl shadow-xl shadow-indigo-100 shrink-0">
+          <div className="w-12 h-12 md:w-16 md:h-16 rounded-[1.5rem] bg-indigo-600 dark:bg-indigo-500 text-white flex items-center justify-center text-2xl md:text-3xl shadow-xl shadow-indigo-100 dark:shadow-none">
             <FiCalendar />
           </div>
           <div>
-            <h2 className="text-xl md:text-3xl font-black text-slate-800 tracking-tight">
-              {vietnameseMonths[month - 1]} <span className="text-slate-300">/ {year}</span>
+            <h2 className="text-2xl md:text-4xl font-black text-slate-800 dark:text-slate-100">
+              {t(monthKeys[month - 1])} {year}
             </h2>
-            <p className="text-slate-400 text-[10px] md:text-xs font-black uppercase tracking-widest mt-1">
-              {events.length} sự kiện trong tháng
+            <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-[10px] md:text-xs">
+              {t('nav.calendarFull')}
             </p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 md:gap-3 bg-slate-100/50 p-1.5 rounded-2xl md:rounded-3xl border border-slate-100 self-center md:self-auto">
-          <button
-            onClick={prevMonth}
-            className="p-2 md:p-3 hover:bg-white hover:text-indigo-600 rounded-xl md:rounded-2xl transition-all hover:shadow-md"
-            title="Tháng trước"
-          >
-            <FiChevronLeft size={20} />
-          </button>
-          <div className="w-[1px] h-6 bg-slate-200" />
-          <button
-            onClick={nextMonth}
-            className="p-2 md:p-3 hover:bg-white hover:text-indigo-600 rounded-xl md:rounded-2xl transition-all hover:shadow-md"
-            title="Tháng sau"
-          >
-            <FiChevronRight size={20} />
-          </button>
-        </div>
-      </div>
-
-      {/* Calendar Body */}
-      <div className="relative">
-        {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[2px] rounded-3xl">
-            <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {/* Weekday Labels */}
-          <div className="grid grid-cols-7 gap-1 md:gap-3">
-            {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day) => (
-              <div
-                key={day}
-                className={`text-center text-[10px] md:text-xs font-black uppercase tracking-widest py-2 md:py-4 ${
-                  day === 'CN' ? 'text-rose-400' : 'text-slate-300'
-                }`}
-              >
-                {day}
-              </div>
-            ))}
-          </div>
-
-          {/* Days Grid */}
-          <div className="grid grid-cols-7 gap-1.5 md:gap-4">
-            {days.map((day, index) => {
-              if (!day)
-                return (
-                  <div key={`empty-${index}`} className="opacity-0 min-h-[60px] md:min-h-[120px]" />
-                );
-
-              const dayEvents = getEventsForDay(day);
-              const isSelected = selectedDate === day;
-              const isTdy = isToday(new Date(year, month - 1, day));
-
-              let containerClasses =
-                'relative min-h-[70px] xs:min-h-[80px] md:min-h-[140px] p-1.5 xs:p-2.5 md:p-5 rounded-2xl md:rounded-[2.5rem] border transition-all duration-500 cursor-pointer overflow-hidden text-left w-full h-full flex flex-col outline-none focus:ring-4 focus:ring-indigo-500/10';
-
-              if (isSelected) {
-                containerClasses +=
-                  ' bg-indigo-600 border-indigo-500 shadow-2xl shadow-indigo-100 scale-[1.03] z-20';
-              } else if (isTdy) {
-                containerClasses += ' bg-white border-indigo-600 shadow-lg shadow-indigo-50';
-              } else {
-                containerClasses +=
-                  ' bg-white border-slate-50 hover:border-indigo-100 hover:shadow-xl hover:-translate-y-1';
-              }
-
-              let textClasses =
-                'text-xs xs:text-sm md:text-xl font-black transition-colors duration-500 line-height-1';
-              if (isSelected) {
-                textClasses += ' text-white';
-              } else if (isTdy) {
-                textClasses += ' text-indigo-600';
-              } else {
-                textClasses += ' text-slate-800';
-              }
-
-              return (
-                <button
-                  key={`${year}-${month}-${day}`}
-                  onClick={() => setSelectedDate(day)}
-                  onKeyDown={(e) => e.key === 'Enter' && setSelectedDate(day)}
-                  className={containerClasses}
-                  aria-label={`Ngày ${day} tháng ${month}`}
-                  tabIndex={0}
-                >
-                  <div className="flex flex-col items-center justify-center h-fit">
-                    <div className={textClasses}>{day}</div>
-                    {day && (
-                      <div
-                        className={`text-[9px] md:text-[11px] font-bold leading-none ${
-                          isSelected ? 'text-white/80' : 'text-slate-400'
-                        }`}
-                      >
-                        {getLunarDate(day, month, year).day}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-1 md:gap-1.5 flex-1 w-full text-left overflow-hidden items-start">
-                    {dayEvents.slice(0, 4).map((event) => {
-                      let badgeClasses =
-                        'flex items-center justify-center w-5 h-5 md:w-8 md:h-8 rounded-lg md:rounded-xl shadow-sm transition-all duration-500 hover:scale-110';
-                      if (isSelected) {
-                        badgeClasses += ' bg-white/20 text-white backdrop-blur-md';
-                      } else if (event.type === 'BIRTHDAY') {
-                        badgeClasses += ' bg-rose-500 text-white';
-                      } else if (event.type === 'ANNIVERSARY') {
-                        badgeClasses += ' bg-amber-500 text-white';
-                      } else if (event.type === 'HOLIDAY') {
-                        badgeClasses += ' bg-emerald-500 text-white';
-                      } else {
-                        badgeClasses += ' bg-indigo-50 text-indigo-600 border border-indigo-100';
-                      }
-
-                      return (
-                        <div key={event.id} className={badgeClasses} title={event.title}>
-                          {getEventIcon(event.type)}
-                        </div>
-                      );
-                    })}
-                    {dayEvents.length > 4 && (
-                      <div
-                        className={`text-[7px] md:text-[9px] font-black uppercase tracking-wider px-1 self-center ${
-                          isSelected ? 'text-white/60' : 'text-slate-300'
-                        }`}
-                      >
-                        +{dayEvents.length - 4}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+        
+        <div className="flex items-center gap-3">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl shadow-inner">
+            <button 
+              onClick={() => setCurrentDate(new Date(year, month - 2, 1))}
+              className="p-2 md:p-3 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all text-slate-600 dark:text-slate-300 active:scale-90"
+            >
+              <FiChevronLeft size={20} />
+            </button>
+            <button 
+              onClick={() => setCurrentDate(new Date())}
+              className="px-4 md:px-6 py-2 text-xs md:text-sm font-black text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all uppercase tracking-widest"
+            >
+              {t('calendar.today')}
+            </button>
+            <button 
+              onClick={() => setCurrentDate(new Date(year, month, 1))}
+              className="p-2 md:p-3 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all text-slate-600 dark:text-slate-300 active:scale-90"
+            >
+              <FiChevronRight size={20} />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Selected Day Details (Below calendar) */}
-      <div className="animate-in fade-in slide-in-from-top-4 duration-700">
-        {selectedDate && (
-          <div className="bg-indigo-50/50 p-6 md:p-10 rounded-[2.5rem] border-2 border-dashed border-indigo-100">
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center text-xl font-black text-indigo-600">
-                {selectedDate}
-              </div>
-              <button
-                onClick={openAddForm}
-                className="flex items-center gap-2 bg-indigo-600 text-white px-4 md:px-6 py-2 md:py-3 rounded-2xl font-black text-xs md:text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 group"
-              >
-                <FiPlus className="group-hover:rotate-90 transition-transform" />
-                <span>Thêm sự kiện</span>
-              </button>
+      {/* Calendar Grid */}
+      <div className="relative group">
+        <div className="grid grid-cols-7 gap-1 md:gap-3">
+          {dayKeys.map((dayKey) => (
+            <div key={dayKey} className="pb-4 text-center text-[10px] md:text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+              {t(dayKey)}
             </div>
+          ))}
+          
+          {days.map((day, index) => {
+            const dayKey = day ? `day-${year}-${month}-${day}` : `padding-${index}`;
+            const dayEvents = day ? events.filter(e => {
+              const d = new Date(e.date);
+              return d.getDate() === day && d.getMonth() === month - 1 && d.getFullYear() === year;
+            }) : [];
+            const isTodayDate = day && isToday(new Date(year, month - 1, day));
+            const isSelected = selectedDate === day;
 
-            <div className="grid md:grid-cols-2 gap-4">
-              {getEventsForDay(selectedDate).length === 0 ? (
-                <div className="col-span-full py-10 text-center bg-white/50 rounded-3xl border-2 border-dashed border-indigo-100">
-                  <p className="text-slate-400 font-medium italic">
-                    Không có sự kiện nào cho ngày này.
-                  </p>
-                </div>
-              ) : (
-                getEventsForDay(selectedDate).map((event) => {
-                  return (
-                    <div
-                      key={event.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openEditForm(event)}
-                      onKeyDown={(e) => e.key === 'Enter' && openEditForm(event)}
-                      className="bg-white p-6 rounded-3xl shadow-md border border-slate-50 relative overflow-hidden group cursor-pointer hover:border-indigo-200 hover:shadow-xl transition-all"
-                    >
-                    <div
-                      className={`absolute top-0 left-0 w-1.5 h-full ${
-                        event.type === 'BIRTHDAY'
-                          ? 'bg-rose-500'
-                          : event.type === 'ANNIVERSARY'
-                            ? 'bg-amber-500'
-                            : 'bg-indigo-600'
-                      }`}
-                    />
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <div
-                            className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${
-                              event.type === 'BIRTHDAY'
-                                ? 'bg-rose-50 text-rose-500'
-                                : event.type === 'ANNIVERSARY'
-                                  ? 'bg-amber-50 text-amber-500'
-                                  : 'bg-indigo-50 text-indigo-500'
-                            }`}
-                          >
-                            {getEventIcon(event.type)}
-                          </div>
-                          <h4 className="font-black text-slate-800 truncate group-hover:text-indigo-600 transition-colors uppercase tracking-tight text-sm">
-                            {event.title}
-                          </h4>
-                        </div>
-                        {event.createdBy === creatorId && (
-                          <FiEdit3 className="text-slate-300 group-hover:text-indigo-600 transition-colors flex-shrink-0 mt-1" />
-                        )}
-                      </div>
-                      {event.description && (
-                        <p className="text-slate-500 text-xs leading-relaxed mb-3 line-clamp-2">
-                          {event.description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-1.5">
-                          <FiClock className="text-indigo-400" />{' '}
-                          {new Date(event.date).toLocaleTimeString('vi-VN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+            const getDayStyles = () => {
+              if (!day) return 'bg-transparent border-transparent opacity-0 pointer-events-none';
+              
+              let styles = 'cursor-pointer ';
+              if (isSelected) {
+                styles += 'bg-white dark:bg-slate-800 border-indigo-400 dark:border-indigo-600 shadow-xl shadow-indigo-100 dark:shadow-none z-10 scale-[1.02]';
+              } else if (isTodayDate) {
+                styles += 'bg-indigo-50/50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30';
+              } else {
+                styles += 'bg-white/40 dark:bg-slate-900/40 border-slate-100 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900';
+              }
+              return styles;
+            };
+
+            return (
+              <div
+                key={dayKey}
+                onClick={() => day && handleDayClick(day)}
+                onKeyDown={(e) => {
+                  if (day && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    handleDayClick(day);
+                  }
+                }}
+                role={day ? "button" : undefined}
+                tabIndex={day ? 0 : -1}
+                aria-label={day ? `Day ${day}` : undefined}
+                className={`min-h-[90px] md:min-h-[140px] p-2 md:p-3 rounded-2xl md:rounded-[2rem] border transition-all duration-300 relative group/day ${getDayStyles()}`}
+              >
+                {day && (
+                  <>
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col">
+                        <span className={`text-base md:text-xl font-black ${isTodayDate ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {day}
                         </span>
-                        {event.lunarDate && (
-                          <span className="text-[10px] font-black text-indigo-400/60 uppercase tracking-widest flex items-center gap-1.5">
-                            🌙 {event.lunarDate}
+                        {/* Lunar Date Small - Only for Vietnamese */}
+                        {language === 'vi' && (
+                          <span className="text-[9px] md:text-[10px] font-bold text-slate-400 dark:text-slate-600 -mt-1">
+                            {formatLunarDate(getLunarDate(day, month, year))}
                           </span>
                         )}
                       </div>
+                      
+                      {!!day && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openAddModal(day); }}
+                          className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center opacity-0 group-hover/day:opacity-100 transition-all hover:bg-indigo-600 dark:hover:bg-indigo-500 hover:text-white"
+                        >
+                          <FiPlus size={14} />
+                        </button>
+                      )}
                     </div>
-                  );
-                })
+
+                    <div className="mt-2 space-y-1 overflow-hidden">
+                      {dayEvents.slice(0, 3).map((event) => {
+                        const getEventStyles = () => {
+                          if (event.type === 'BIRTHDAY') return 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/30';
+                          if (event.type === 'IMPORTANT') return 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30';
+                          return 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30';
+                        };
+
+                        return (
+                          <div
+                            key={event.id}
+                            onClick={(e) => { e.stopPropagation(); openEditModal(event); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openEditModal(event);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded-lg text-[9px] md:text-[10px] font-black truncate border transition-all hover:scale-105 active:scale-95 ${getEventStyles()}`}
+                          >
+                            <span className="flex items-center gap-1">
+                              {getEventIcon(event.type)}
+                              {event.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {dayEvents.length > 3 && (
+                        <p className="text-[8px] md:text-[9px] font-black text-slate-400 dark:text-slate-600 text-center uppercase tracking-widest pt-1">
+                          + {dayEvents.length - 3} {language === 'vi' ? 'Sự kiện' : 'Events'}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Side Detail Panel (Mobile toggle or desktop side) */}
+      {selectedDate && (
+        <div className="animate-in slide-in-from-right-4 duration-500 p-6 md:p-8 rounded-[2.5rem] bg-indigo-600 dark:bg-indigo-900/40 text-white shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-white/10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-1000" />
+          
+          <div className="relative z-10">
+            <div className="flex justify-between items-center mb-6 md:mb-8">
+              <div>
+                <h3 className="text-xl md:text-3xl font-black">{selectedDate} {t(monthKeys[month - 1])}</h3>
+                {language === 'vi' && (
+                  <p className="text-indigo-100 dark:text-indigo-300 font-bold text-xs md:text-sm uppercase tracking-widest opacity-80">
+                    {t('calendar.lunar')}: {formatLunarDate(getLunarDate(selectedDate, month, year))}
+                  </p>
+                )}
+              </div>
+              <button 
+                onClick={() => openAddModal(selectedDate)}
+                className="px-4 md:px-6 py-2 md:py-3 bg-white text-indigo-600 rounded-2xl text-xs md:text-sm font-black shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+              >
+                <FiPlus /> {t('calendar.addEvent')}
+              </button>
+            </div>
+
+            <div className="space-y-3 md:space-y-4 max-h-[400px] overflow-y-auto pr-2 no-scrollbar">
+              {events.filter(e => {
+                const d = new Date(e.date);
+                return d.getDate() === selectedDate && d.getMonth() === month - 1 && d.getFullYear() === year;
+              }).length === 0 ? (
+                <div className="py-12 text-center">
+                  <span className="text-4xl block mb-2 opacity-40">🌙</span>
+                  <p className="text-indigo-200 dark:text-indigo-400 font-bold text-sm">{t('calendar.noEvents')}</p>
+                </div>
+              ) : (
+                events
+                  .filter(e => {
+                    const d = new Date(e.date);
+                    return d.getDate() === selectedDate && d.getMonth() === month - 1 && d.getFullYear() === year;
+                  })
+                  .map((event) => (
+                    <div 
+                      key={event.id}
+                      onClick={() => openEditModal(event)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openEditModal(event);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      className="p-4 md:p-5 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all cursor-pointer group/item flex justify-between items-center"
+                    >
+                      <div className="flex gap-4 items-center">
+                        <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl">
+                          {getEventIcon(event.type)}
+                        </div>
+                        <div>
+                          <h4 className="font-black text-sm md:text-lg">{event.title}</h4>
+                          <p className="text-indigo-100 dark:text-indigo-300 text-[10px] md:text-xs font-bold opacity-70 flex items-center gap-1 uppercase tracking-wide">
+                            <FiClock /> {event.time || '09:00'} • {event.type}
+                            {event.user?.name && (
+                                <span className="ml-1 opacity-60">• {language === 'vi' ? 'Bởi ' : 'By '}{event.user.name}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <FiChevronRight className="opacity-0 group-hover/item:opacity-100 group-hover/item:translate-x-1 transition-all" />
+                    </div>
+                  ))
               )}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Event Form Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
-            onClick={() => setIsModalOpen(false)}
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
+            onClick={() => setIsModalOpen(false)} 
+            role="button"
+            tabIndex={-1}
+            aria-label="Close modal"
           />
-          <div className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-300">
-            <div className="bg-indigo-600 p-8 text-white relative">
-              <button
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl p-6 md:p-10 animate-in zoom-in-95 duration-300 border border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h3 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-slate-100">
+                  {editingEvent ? t('calendar.editEvent') : t('calendar.addEvent')}
+                </h3>
+                {editingEvent?.user?.name && (
+                  <p className="text-[10px] md:text-xs font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
+                    {language === 'vi' ? 'Người tạo' : 'Created by'}: {editingEvent.user.name}
+                  </p>
+                )}
+              </div>
+              <button 
                 onClick={() => setIsModalOpen(false)}
-                className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-xl transition-colors"
+                className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-600 dark:hover:text-rose-400 transition-all"
               >
-                <FiX size={24} />
+                <FiX />
               </button>
-              <h3 className="text-2xl font-black">
-                {editingEvent ? 'Chỉnh sửa sự kiện' : 'Thêm sự kiện mới'}
-              </h3>
-              <p className="text-indigo-100 text-sm font-medium mt-1">
-                Ngày {selectedDate} tháng {month}, {year}
-              </p>
             </div>
 
-            <div className="p-8 space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="event-title"
-                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 mb-2 block"
-                  >
-                    Tiêu đề sự kiện
-                  </label>
-                  <input
-                    id="event-title"
-                    type="text"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Nhập tiêu đề..."
-                    className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-slate-800 font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/10 transition-all"
-                    autoFocus
-                  />
-                </div>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventTitle')}</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder={t('calendar.eventTitle')}
+                  className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-600 dark:focus:ring-indigo-500 outline-none transition-all text-slate-700 dark:text-slate-200 font-bold"
+                />
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label
-                      htmlFor="event-type"
-                      className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 mb-2 block"
-                    >
-                      Loại sự kiện
-                    </label>
-                    <select
-                      id="event-type"
-                      value={formData.type}
-                      onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                      className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="GENERAL">Sự kiện chung</option>
-                      <option value="BIRTHDAY">Sinh nhật</option>
-                      <option value="ANNIVERSARY">Ngày kỷ niệm / Giỗ</option>
-                      <option value="HOLIDAY">Ngày lễ</option>
-                      <option value="APPOINTMENT">Cuộc hẹn</option>
-                      <option value="TASK">Công việc / Nhắc nhở</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="event-time"
-                      className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 mb-2 block"
-                    >
-                      Thời gian
-                    </label>
-                    <div className="relative">
-                      <FiClock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" />
-                      <input
-                        id="event-time"
-                        type="time"
-                        value={formData.time}
-                        onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                        className="w-full bg-slate-50 border-none rounded-2xl pl-14 pr-6 py-4 text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="event-scope"
-                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 mb-2 block"
-                  >
-                    Phạm vi thông báo
-                  </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventType')}</label>
                   <select
-                    id="event-scope"
-                    value={formData.scope}
-                    onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
-                    className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none cursor-pointer"
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent outline-none text-slate-700 dark:text-slate-200 font-bold"
                   >
-                    <option value="GLOBAL">Thông báo cho global (Tất cả thành viên)</option>
-                    <option value="PRIVATE">Chỉ thông báo cho người tạo sự kiện</option>
+                    <option value="GENERAL">{t('calendar.type.general')}</option>
+                    <option value="HOLIDAY">{t('calendar.type.holiday')}</option>
+                    <option value="BIRTHDAY">{t('calendar.type.birthday')}</option>
+                    <option value="ANNIVERSARY">{t('calendar.type.anniversary')}</option>
+                    <option value="TASK">{t('calendar.type.task')}</option>
+                    <option value="APPOINTMENT">{t('calendar.type.appointment')}</option>
                   </select>
                 </div>
-
-                <div>
-                  <label
-                    htmlFor="event-description"
-                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 mb-2 block"
-                  >
-                    Mô tả (không bắt buộc)
-                  </label>
-                  <textarea
-                    id="event-description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Thêm chi tiết..."
-                    rows={3}
-                    className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-slate-800 font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/10 transition-all resize-none"
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventTime')}</label>
+                  <input
+                    type="time"
+                    value={formData.time}
+                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                    className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent outline-none text-slate-700 dark:text-slate-200 font-bold"
                   />
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                {editingEvent && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventScope')}</label>
+                <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                  {['GLOBAL', 'FAMILY', 'PERSONAL'].map((s) => {
+                    const isSelectedScope = formData.scope === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setFormData({ ...formData, scope: s })}
+                        className={`flex-1 py-3 rounded-xl text-[10px] md:text-xs font-black transition-all ${
+                          isSelectedScope 
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {s === 'GLOBAL' ? t('calendar.scope.global') : s === 'FAMILY' ? t('calendar.scope.family') : t('calendar.scope.personal')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-6 flex gap-3">
+                {isDeletable && (
                   <button
-                    onClick={() => {
-                      handleDeleteEvent(editingEvent.id);
-                      setIsModalOpen(false);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-rose-500 hover:bg-rose-50 transition-colors border-2 border-rose-50"
+                    onClick={() => handleDeleteEvent(editingEvent.id)}
+                    className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white transition-all active:scale-95"
                   >
-                    <FiTrash2 />
-                    <span>Xóa</span>
+                    <FiTrash2 size={20} />
                   </button>
                 )}
                 <button
                   onClick={handleSaveEvent}
-                  className="flex-[2] flex items-center justify-center gap-2 bg-indigo-600 text-white py-4 rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+                  className="flex-1 p-4 rounded-2xl bg-indigo-600 dark:bg-indigo-500 text-white font-black text-sm shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                 >
-                  <FiCheck />
-                  <span>{editingEvent ? 'Cập nhật' : 'Lưu sự kiện'}</span>
+                  <FiCheck /> {editingEvent ? t('common.save') : t('common.save')}
                 </button>
               </div>
             </div>

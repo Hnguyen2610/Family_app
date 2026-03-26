@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { usersAPI } from '@/lib/api-client';
-import apiClient from '@/lib/api-client';
+import apiClient, { usersAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { FiUsers, FiCpu, FiCheckCircle } from 'react-icons/fi';
+import { useAuth } from '@/hooks/useAuth';
 import MealPreferenceModal from './MealPreferenceModal';
 
 interface Member {
@@ -22,7 +22,8 @@ export default function MealPlanner() {
   const [generatingMenu, setGeneratingMenu] = useState(false);
   const [generatedMenu, setGeneratedMenu] = useState<any>(null);
 
-  const familyId = process.env.NEXT_PUBLIC_FAMILY_ID || 'default-family';
+  const { user } = useAuth();
+  const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
 
   useEffect(() => {
     fetchMembers();
@@ -54,6 +55,20 @@ export default function MealPlanner() {
       setGeneratingMenu(false);
     }
   };
+
+  if (!user?.familyId && user?.globalRole !== 'SUPER_ADMIN') {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+        <div className="w-24 h-24 bg-orange-50 rounded-full flex items-center justify-center text-4xl shadow-inner">
+          🍽️
+        </div>
+        <div className="space-y-2 max-w-sm">
+          <h3 className="text-2xl font-black text-slate-800 tracking-tight">Chưa có kế hoạch ăn uống</h3>
+          <p className="text-slate-500 font-medium">Bạn chưa tham gia vào gia đình nào. Hãy gia nhập gia đình để cùng lên thực đơn nhé!</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 md:space-y-16">

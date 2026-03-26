@@ -154,6 +154,14 @@ export const usersAPI = {
 export const authAPI = {
   loginWithGoogle: (token: string) =>
     apiClient.post('/api/auth/google', { token }),
+  getProfile: () => apiClient.get('/api/auth/profile'),
+};
+
+export const notificationsAPI = {
+  getAll: (userId: string) => apiClient.get('/api/notifications', { params: { userId } }),
+  markAsRead: (id: string, userId: string) => apiClient.patch(`/api/notifications/${id}/read`, null, { params: { userId } }),
+  markAllAsRead: (userId: string) => apiClient.post('/api/notifications/read-all', null, { params: { userId } }),
+  delete: (id: string, userId: string) => apiClient.delete(`/api/notifications/${id}`, { params: { userId } }),
 };
 
 export default apiClient;

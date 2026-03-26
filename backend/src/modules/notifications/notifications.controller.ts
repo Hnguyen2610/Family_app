@@ -1,7 +1,7 @@
-import { Controller, Get, Headers, UnauthorizedException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Headers, UnauthorizedException, Logger } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 
-@Controller('notifications')
+@Controller('api/notifications')
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
@@ -24,6 +24,26 @@ export class NotificationsController {
     this.logger.log('Manually triggering monthly summary via Vercel Cron endpoint');
     await this.notificationsService.sendMonthlySummary();
     return { success: true, message: 'Monthly summary triggered' };
+  }
+
+  @Get()
+  async getForUser(@Query('userId') userId: string) {
+    return this.notificationsService.getForUser(userId);
+  }
+
+  @Patch(':id/read')
+  async markAsRead(@Param('id') id: string, @Query('userId') userId: string) {
+    return this.notificationsService.markAsRead(id, userId);
+  }
+
+  @Post('read-all')
+  async markAllAsRead(@Query('userId') userId: string) {
+    return this.notificationsService.markAllAsRead(userId);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Query('userId') userId: string) {
+    return this.notificationsService.delete(id, userId);
   }
 
   private verifyAuth(authHeader: string) {

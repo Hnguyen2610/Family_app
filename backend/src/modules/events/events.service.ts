@@ -1,11 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEventDto, UpdateEventDto } from './dto/event.dto';
 import { calculateLunarDate } from '../../utils/lunar-calendar.util';
+import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailService: MailService,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async create(familyId: string, userId: string, dto: CreateEventDto) {
     // Auto-calculate lunar date if not provided
@@ -14,70 +21,160 @@ export class EventsService {
       lunarDate = calculateLunarDate(new Date(dto.date));
     }
 
-    return this.prisma.event.create({
+    // Extract extra fields that shouldn't be spread directly into Prisma data
+    const { creatorId, ...eventData } = dto as any;
+
+    const event = await this.prisma.event.create({
       data: {
-        ...dto,
+        ...eventData,
         lunarDate,
         familyId,
         createdBy: userId,
       },
+      include: {
+        user: {
+          select: { name: true, email: true }
+        }
+      }
     });
+
+    // Send notification if scope is FAMILY or GLOBAL
+    if (dto.scope === 'FAMILY' || dto.scope === 'GLOBAL') {
+      this.notifyFamily(familyId, event);
+    }
+
+    return event;
+  }
+
+  private async notifyFamily(familyId: string, event: any) {
+    try {
+      // Determine which users to notify based on scope
+      let usersToNotify: any[] = [];
+      
+      if (event.scope === 'GLOBAL') {
+        // Notify ALL users in the system for global events
+        usersToNotify = await this.prisma.user.findMany({
+          where: {
+            id: { not: event.createdBy } // Exclude creator
+          },
+          select: { id: true, email: true, notificationSettings: true }
+        });
+      } else {
+        // Notify only family members for FAMILY events
+        usersToNotify = await this.prisma.user.findMany({
+          where: { 
+            familyId,
+            id: { not: event.createdBy } // Exclude creator
+          },
+          select: { id: true, email: true, notificationSettings: true }
+        });
+      }
+      
+      const eventType = event.type;
+      
+      // Filter members based on their granular notification settings
+      const filteredMembers = usersToNotify.filter(m => {
+        const settings = (m.notificationSettings as any) || {};
+        if (Object.keys(settings).length === 0) return true;
+        return settings[eventType] !== false;
+      });
+      
+      const emails = filteredMembers.map(m => m.email);
+        
+      if (emails.length > 0) {
+        await this.mailService.sendEventNotificationEmail(emails, {
+          title: event.title,
+          date: new Date(event.date).toLocaleDateString('vi-VN'),
+          description: event.description || undefined,
+          creatorName: event.user?.name || 'Thành viên gia đình'
+        });
+      }
+
+      // Create in-app notifications
+      const creatorName = event.user?.name || 'Thành viên gia đình';
+      for (const member of filteredMembers) {
+        await this.notificationsService.createNotification(member.id, {
+          type: eventType,
+          title: 'Sự kiện mới',
+          message: `${creatorName} đã thêm sự kiện: ${event.title}`,
+          metadata: { eventId: event.id, path: '/calendar' }
+        });
+      }
+    } catch (e) {
+      console.error('Failed to notify users about event', e);
+    }
   }
 
   async findAll(familyId: string, month?: number, year?: number, userId?: string) {
-    let where: any = { 
-      familyId,
-      OR: [
-        { scope: 'GLOBAL' },
-        ...(userId ? [{ scope: 'PRIVATE', createdBy: userId }] : []),
-      ],
-    };
+    let events: any[] = [];
+    const hasFamily = familyId && familyId !== 'null' && familyId !== 'undefined' && familyId !== '';
 
-    if (month && year) {
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
-      where.date = {
-        gte: startDate,
-        lte: endDate,
+    if (hasFamily) {
+      let where: any = { 
+        OR: [
+          { scope: 'GLOBAL' },
+          { familyId, scope: 'FAMILY' },
+          { familyId, scope: 'PRIVATE', ...(userId ? { createdBy: userId } : { id: 'none' }) },
+        ],
       };
-    }
+// ... (rest of findAll stays same, cutting for brevity in task but will include in actual call)
 
-    const events = await this.prisma.event.findMany({
-      where,
-      orderBy: { date: 'asc' },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true },
-        },
-      },
-    });
+      if (month && year) {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0);
+        where.date = {
+          gte: startDate,
+          lte: endDate,
+        };
+      }
 
-    if (month && year) {
-      // Automatically include birthdays as virtual events
-      const usersWithBirthdays = await this.prisma.user.findMany({
-        where: {
-          familyId,
-          birthday: { not: null },
+      events = await this.prisma.event.findMany({
+        where,
+        orderBy: { date: 'asc' },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true },
+          },
         },
       });
+    } else {
+      // Unassigned users see all GLOBAL events + system holidays
+      let where: any = { scope: 'GLOBAL' };
+      events = await this.prisma.event.findMany({ 
+        where, 
+        include: { user: { select: { id: true, name: true, email: true } } } 
+      });
+    }
 
-      const birthdayEvents = usersWithBirthdays
-        .filter((user) => {
-          if (!user.birthday) return false;
-          return user.birthday.getUTCMonth() + 1 === month;
-        })
-        .map((user) => ({
-          id: `birthday-${user.id}`,
-          title: `🎂 Sinh nhật ${user.name}`,
-          description: `Chúc mừng sinh nhật ${user.name}!`,
-          date: new Date(year, user.birthday!.getUTCMonth(), user.birthday!.getUTCDate()),
-          type: 'BIRTHDAY',
-          familyId,
-          createdBy: user.id,
-          user: { id: user.id, name: user.name, email: user.email },
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }));
+    if (month && year) {
+      // Automatically include birthdays as virtual events if familyId exists
+      let birthdayEvents: any[] = [];
+      if (hasFamily) {
+        const usersWithBirthdays = await this.prisma.user.findMany({
+          where: {
+            familyId,
+            birthday: { not: null },
+          },
+        });
+
+        birthdayEvents = usersWithBirthdays
+          .filter((user) => {
+            if (!user.birthday) return false;
+            return user.birthday.getUTCMonth() + 1 === month;
+          })
+          .map((user) => ({
+            id: `birthday-${user.id}`,
+            title: `🎂 Sinh nhật ${user.name}`,
+            description: `Chúc mừng sinh nhật ${user.name}!`,
+            date: new Date(year, user.birthday!.getUTCMonth(), user.birthday!.getUTCDate()),
+            type: 'BIRTHDAY',
+            familyId,
+            createdBy: user.id,
+            user: { id: user.id, name: user.name, email: user.email },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }));
+      }
 
       // Automatically include global holidays
       const solarHolidays = [
@@ -108,7 +205,7 @@ export class EventsService {
             description: 'Ngày lễ toàn quốc',
             date: new Date(year, month - 1, h.day),
             type: 'HOLIDAY',
-            familyId,
+            familyId: hasFamily ? familyId : 'system',
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -128,7 +225,7 @@ export class EventsService {
               description: 'Ngày lễ Âm lịch',
               date: solarDate,
               type: 'HOLIDAY',
-              familyId,
+              familyId: hasFamily ? familyId : 'system',
               createdAt: new Date(),
               updatedAt: new Date(),
             });
@@ -170,19 +267,57 @@ export class EventsService {
       lunarDate = calculateLunarDate(new Date(dto.date));
     }
 
-    return this.prisma.event.updateMany({
+    const result = await this.prisma.event.updateMany({
       where: { id, familyId: familyId, createdBy: userId },
       data: {
         ...dto,
         lunarDate,
       },
     });
+
+    if (result.count > 0 && dto.scope === 'FAMILY') {
+      const updatedEvent = await this.prisma.event.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: { name: true, email: true }
+          }
+        }
+      });
+      if (updatedEvent) {
+        this.notifyFamily(familyId, updatedEvent);
+      }
+    }
+
+    return result;
   }
 
   async delete(id: string, familyId: string, userId: string) {
-    return this.prisma.event.deleteMany({
-      where: { id, familyId, createdBy: userId },
+    // Check if user has permission (is creator or is admin)
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const isAdmin = 
+      user.globalRole === 'ADMIN' || 
+      user.globalRole === 'SUPER_ADMIN' || 
+      user.role?.toLowerCase() === 'admin' ||
+      user.role?.toLowerCase() === 'super_admin';
+    
+    // If not admin, the record must have been created by the user
+    const where: any = { id, familyId };
+    if (!isAdmin) {
+      where.createdBy = userId;
+    }
+
+    const result = await this.prisma.event.deleteMany({
+      where,
     });
+
+    if (result.count === 0) {
+      throw new ForbiddenException('Not authorized to delete this event or event not found');
+    }
+
+    return result;
   }
 
   async getEventsByMonth(familyId: string, month: number, year: number, userId?: string) {

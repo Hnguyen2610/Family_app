@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { eventsAPI } from '@/lib/api-client';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function NewMonthModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,7 +10,8 @@ export default function NewMonthModal() {
   const [loading, setLoading] = useState(false);
   const [monthName, setMonthName] = useState('');
 
-  const familyId = process.env.NEXT_PUBLIC_FAMILY_ID || 'default-family';
+  const { user } = useAuth();
+  const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
 
   useEffect(() => {
     const checkNewMonth = () => {
@@ -49,7 +51,7 @@ export default function NewMonthModal() {
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !familyId) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500">
