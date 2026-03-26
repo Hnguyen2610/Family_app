@@ -38,7 +38,11 @@ export default function AdminDashboard() {
       </div>
 
       <div className="mt-8">
-        {adminTab === 'families' ? <FamilyManager /> : <UserManager />}
+        {adminTab === 'families' ? (
+          <FamilyManager onTabChange={setAdminTab} />
+        ) : (
+          <UserManager />
+        )}
       </div>
     </div>
   );

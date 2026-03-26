@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
-import { FiSend, FiMessageSquare, FiUser, FiCalendar, FiTrash2, FiPlus, FiMessageCircle } from 'react-icons/fi';
+import { chatAPI } from '@/lib/api-client';
+import { FiSend, FiMessageSquare, FiUser, FiCalendar, FiTrash2, FiPlus, FiMessageCircle, FiX } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
@@ -12,10 +12,10 @@ interface Message {
   content: string;
 }
 
-interface Thread {
+interface ChatSession {
   id: string;
   title: string;
-  lastMessageAt: string;
+  updatedAt: string;
 }
 
 export default function Chatbot() {
@@ -23,13 +23,14 @@ export default function Chatbot() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [model, setModel] = useState<'gemini' | 'groq'>('gemini');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
+  const { user, currentFamilyId } = useAuth();
 
-  const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
+  const familyId = currentFamilyId || '';
 
   // Auto-scroll to bottom within the container
   useEffect(() => {
@@ -42,50 +43,53 @@ export default function Chatbot() {
   }, [messages]);
 
   useEffect(() => {
-    if (familyId) fetchThreads();
+    if (familyId) fetchSessions();
   }, [familyId]);
 
-  const fetchThreads = async () => {
+  const fetchSessions = async () => {
     try {
-      const response = await axios.get(`http://localhost:3000/threads/family/${familyId}`);
-      setThreads(response.data);
+      const response = await chatAPI.getSessions(familyId);
+      setSessions(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error('Failed to fetch threads:', error);
+      console.error('Failed to fetch sessions:', error);
+      setSessions([]);
     }
   };
 
-  const startNewThread = () => {
-    setCurrentThreadId(null);
+  const startNewSession = () => {
+    setCurrentSessionId(null);
     setMessages([]);
     setIsSidebarOpen(false);
   };
 
-  const loadThread = async (threadId: string) => {
-    setCurrentThreadId(threadId);
+  const loadSession = async (sessionId: string) => {
+    setCurrentSessionId(sessionId);
     setIsLoading(true);
     try {
-      const response = await axios.get(`http://localhost:3000/threads/${threadId}/messages`);
-      setMessages(response.data.map((m: any) => ({
+      const response = await chatAPI.getHistory(familyId, sessionId);
+      // Backend returns newest first, so we reverse for display
+      const history = Array.isArray(response.data) ? [...response.data].reverse() : [];
+      setMessages(history.map((m: any) => ({
         role: m.role,
         content: m.content
       })));
       setIsSidebarOpen(false);
     } catch (error) {
-      console.error('Failed to load thread messages:', error);
+      console.error('Failed to load session messages:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const deleteThread = async (e: React.MouseEvent, threadId: string) => {
+  const deleteSession = async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     if (!confirm(language === 'vi' ? 'Bạn có chắc chắn muốn xóa hội thoại này?' : 'Delete this conversation?')) return;
     try {
-      await axios.delete(`http://localhost:3000/threads/${threadId}`);
-      if (currentThreadId === threadId) startNewThread();
-      fetchThreads();
+      await chatAPI.deleteSession(sessionId, familyId);
+      if (currentSessionId === sessionId) startNewSession();
+      fetchSessions();
     } catch (error) {
-      console.error('Failed to delete thread:', error);
+      console.error('Failed to delete session:', error);
     }
   };
 
@@ -99,18 +103,34 @@ export default function Chatbot() {
     setIsLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:3000/chat', {
-        message: userMessage,
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+      
+      let assistantResponse = '';
+      await chatAPI.sendMessageStream(
         familyId,
-        threadId: currentThreadId,
-      });
-
-      if (!currentThreadId && response.data.threadId) {
-        setCurrentThreadId(response.data.threadId);
-        fetchThreads();
-      }
-
-      setMessages(prev => [...prev, { role: 'assistant', content: response.data.response }]);
+        userMessage,
+        (content: string) => {
+          assistantResponse += content;
+          setMessages((prev: Message[]) => {
+            const last = prev.at(-1);
+            if (last && last.role === 'assistant') {
+              return [...prev.slice(0, -1), { role: 'assistant', content: assistantResponse }];
+            }
+            return prev;
+          });
+        },
+        (sessionId) => {
+          if (!currentSessionId) {
+            setCurrentSessionId(sessionId);
+            fetchSessions();
+          }
+        },
+        { 
+          sessionId: currentSessionId,
+          model: model,
+          userId: user?.id
+        }
+      );
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: t('common.error') }]);
@@ -130,39 +150,48 @@ export default function Chatbot() {
         />
       )}
 
-      {/* Sidebar - Thread History */}
+      {/* Sidebar - Session History */}
       <div className={`
-        absolute inset-y-0 left-0 w-72 bg-slate-50 dark:bg-slate-950 border-r border-slate-100 dark:border-slate-800 z-50 transition-transform duration-300 md:relative md:translate-x-0
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        absolute inset-y-0 left-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-r border-slate-100 dark:border-slate-800 z-50 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+        ${isSidebarOpen ? 'translate-x-0 w-80 opacity-100 visible shadow-2xl md:shadow-none' : '-translate-x-full md:translate-x-0 w-0 md:w-0 opacity-0 invisible md:border-none'}
+        md:relative
       `}>
         <div className="p-6 h-full flex flex-col">
           <button
-            onClick={startNewThread}
+            onClick={startNewSession}
             className="w-full flex items-center justify-center gap-2 p-4 bg-indigo-600 dark:bg-indigo-500 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-[0.98] mb-6"
           >
             <FiPlus /> {language === 'vi' ? 'Chat mới' : 'New Chat'}
           </button>
 
+          <div className="flex items-center justify-between mb-8 px-2 transition-all duration-300">
+            <h3 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em]">Lịch sử</h3>
+            <button 
+              onClick={() => setIsSidebarOpen(false)} 
+              className="md:hidden w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-rose-500 transition-all active:scale-90"
+            >
+              <FiX size={16} />
+            </button>
+          </div>
           <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
-            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest px-2 mb-4">Lịch sử hội thoại</h3>
-            {threads.map(thread => (
+            {Array.isArray(sessions) && sessions.map(session => (
               <div
-                key={thread.id}
-                onClick={() => loadThread(thread.id)}
+                key={session.id}
+                onClick={() => loadSession(session.id)}
                 className={`group flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${
-                  currentThreadId === thread.id 
+                  currentSessionId === session.id 
                     ? 'bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/40 shadow-sm' 
                     : 'hover:bg-white dark:hover:bg-slate-900 text-slate-500 dark:text-slate-400'
                 }`}
               >
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <FiMessageSquare className={currentThreadId === thread.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'} />
-                  <span className={`text-xs font-bold truncate ${currentThreadId === thread.id ? 'text-slate-800 dark:text-slate-100' : ''}`}>
-                    {thread.title || (language === 'vi' ? 'Hội thoại mới' : 'New Chat')}
+                  <FiMessageSquare className={currentSessionId === session.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'} />
+                  <span className={`text-xs font-bold truncate ${currentSessionId === session.id ? 'text-slate-800 dark:text-slate-100' : ''}`}>
+                    {session.title || (language === 'vi' ? 'Hội thoại mới' : 'New Chat')}
                   </span>
                 </div>
                 <button
-                  onClick={(e) => deleteThread(e, thread.id)}
+                  onClick={(e) => deleteSession(e, session.id)}
                   className="p-1.5 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all"
                 >
                   <FiTrash2 size={14} />
@@ -179,14 +208,15 @@ export default function Chatbot() {
         <header className="p-4 md:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white/50 dark:bg-slate-900/50 backdrop-blur-md sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 md:hidden bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-500"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-500 hover:text-indigo-600 transition-all hover:bg-white dark:hover:bg-slate-700 shadow-sm"
+              title={language === 'vi' ? 'Ẩn/Hiện lịch sử' : 'Toggle History'}
             >
               <FiMessageCircle size={20} />
             </button>
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-indigo-600 dark:bg-indigo-500 text-white flex items-center justify-center text-xl md:text-2xl shadow-xl shadow-indigo-100 dark:shadow-none">
-              🤖
-            </div>
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-indigo-600 dark:bg-indigo-500 text-white flex items-center justify-center text-xl md:text-2xl shadow-xl shadow-indigo-100 dark:shadow-none translate-x-1 sm:translate-x-0">
+               🤖
+             </div>
             <div>
               <h2 className="text-base md:text-xl font-black text-slate-800 dark:text-slate-100">{t('nav.chatFull')}</h2>
               <p className="text-[10px] md:text-xs text-emerald-500 font-black uppercase tracking-widest flex items-center gap-1">
@@ -194,6 +224,21 @@ export default function Chatbot() {
                 AI Assistant Online
               </p>
             </div>
+          </div>
+
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+            <button 
+              onClick={() => setModel('gemini')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all ${model === 'gemini' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+            >
+              Gemini
+            </button>
+            <button 
+              onClick={() => setModel('groq')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all ${model === 'groq' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+            >
+              Groq
+            </button>
           </div>
         </header>
 

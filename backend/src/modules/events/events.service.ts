@@ -63,7 +63,7 @@ export class EventsService {
         // Notify only family members for FAMILY events
         usersToNotify = await this.prisma.user.findMany({
           where: { 
-            familyId,
+            families: { some: { id: familyId } },
             id: { not: event.createdBy } // Exclude creator
           },
           select: { id: true, email: true, notificationSettings: true }
@@ -267,10 +267,11 @@ export class EventsService {
       lunarDate = calculateLunarDate(new Date(dto.date));
     }
 
+    const { creatorId: _c, familyId: _f, ...updateData } = dto as any;
     const result = await this.prisma.event.updateMany({
       where: { id, familyId: familyId, createdBy: userId },
       data: {
-        ...dto,
+        ...updateData,
         lunarDate,
       },
     });

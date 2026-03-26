@@ -36,7 +36,7 @@ export class AuthService {
             { email },
           ],
         },
-        include: { family: true },
+        include: { families: true, family: true },
       });
 
       if (!existingUser) {
@@ -55,7 +55,7 @@ export class AuthService {
           avatarUrl: avatarUrl || existingUser.avatarUrl,
           globalRole: isSuperAdmin ? 'SUPER_ADMIN' : existingUser.globalRole || 'USER',
         },
-        include: { family: true },
+        include: { families: true, family: true },
       });
 
       const payload_jwt = { sub: user.id, email: user.email, role: user.globalRole };

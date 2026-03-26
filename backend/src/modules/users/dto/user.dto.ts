@@ -11,6 +11,9 @@ export class CreateUserDto {
   @IsOptional()
   familyId?: string;
 
+  @IsOptional()
+  familyIds?: string[];
+
   @IsString()
   @IsOptional()
   role?: string;
@@ -42,6 +45,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   familyId?: string;
+
+  @IsOptional()
+  familyIds?: string[];
 
   @IsOptional()
   birthday?: string;

@@ -22,11 +22,14 @@ type TabType = 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' |
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, currentFamilyId, setCurrentFamilyId } = useAuth();
   const { t } = useTranslation();
 
   const slugTab = params.slug?.[0] as TabType;
   const activeTab: TabType = slugTab || 'calendar';
+
+  const families = user?.families || [];
+  const currentFamily = families.find(f => f.id === currentFamilyId) || user?.family;
 
   const setActiveTab = (tab: TabType) => {
     router.push('/' + (tab === 'calendar' ? '' : tab));
@@ -69,7 +72,19 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       {/* Main static header area */}
       <div className={`transition-opacity duration-300 min-h-[280px] md:min-h-[350px] ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <header className="pt-8 md:pt-16 pb-4 md:pb-8 relative z-10 text-center">
-          <div className="absolute top-4 right-4 md:top-8 md:right-8">
+          <div className="absolute top-4 right-4 md:top-8 md:right-8 flex items-center gap-4">
+             {/* Family Selection (Optional if multiple) */}
+            {families.length > 1 && (
+              <select
+                value={currentFamilyId || ''}
+                onChange={(e) => setCurrentFamilyId(e.target.value)}
+                className="bg-card/50 backdrop-blur-md border border-border/40 rounded-xl px-3 py-1.5 text-xs font-bold outline-none ring-indigo-500 focus:ring-1"
+              >
+                {families.map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            )}
             <NotificationDropdown />
           </div>
           <div className="inline-block animate-float mb-4 md:mb-6">
@@ -79,9 +94,16 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             Family <span className="gradient-text">Calendar</span>
           </h1>
           {user && (
-            <p className="mt-4 text-muted-foreground font-bold text-lg">
-              {t('nav.welcome')} {user.name} 👋
-            </p>
+            <div className="mt-4 flex flex-col items-center gap-1">
+              <p className="text-muted-foreground font-bold text-lg">
+                {t('nav.welcome')} {user.name} 👋
+              </p>
+              {currentFamily && (
+                <span className="text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-[0.2em]">
+                   {currentFamily.name}
+                </span>
+              )}
+            </div>
           )}
         </header>
 
@@ -110,17 +132,21 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             <div 
               className="flex items-center gap-2 md:gap-3 group cursor-pointer transition-transform active:scale-95 shrink-0" 
               onClick={() => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                globalThis.window.scrollTo({ top: 0, behavior: 'smooth' });
                 setActiveTab('calendar');
               }}
             >
-              <div className="w-8 h-8 md:w-10 md:h-10 bg-card rounded-xl flex items-center justify-center shadow-sm border border-border/40">
-                <span className="text-lg md:text-xl">👨‍👩‍👧‍👦</span>
-              </div>
-              <div className="hidden lg:block">
-                <h1 className="text-sm md:text-base font-black tracking-tighter leading-tight">
-                  Family <span className="gradient-text">Calendar</span>
-                </h1>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-card rounded-xl flex items-center justify-center shadow-sm border border-border/40">
+                    <span className="text-lg">👨‍👩‍👧‍👦</span>
+                  </div>
+                  <div className="hidden sm:block">
+                    <h1 className="text-sm font-black tracking-tighter leading-tight">
+                      Family <span className="gradient-text">Calendar</span>
+                    </h1>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -139,7 +165,18 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             </nav>
 
             {/* Shortcut */}
-            <div className="shrink-0 items-center flex gap-2">
+            <div className="shrink-0 items-center flex gap-2 md:gap-4">
+               {families.length > 1 && (
+                <select
+                  value={currentFamilyId || ''}
+                  onChange={(e) => setCurrentFamilyId(e.target.value)}
+                  className="bg-muted/50 border-none rounded-lg px-2 py-1 text-[10px] font-black outline-none"
+                >
+                  {families.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              )}
                <NotificationDropdown />
             </div>
           </div>

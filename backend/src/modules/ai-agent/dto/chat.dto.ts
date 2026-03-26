@@ -18,6 +18,10 @@ export class ChatMessageDto {
   @IsOptional()
   @IsString()
   model?: string;
+
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
 }
 
 export class GetChatHistoryDto {

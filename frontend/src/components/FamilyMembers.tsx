@@ -28,8 +28,8 @@ export default function FamilyMembers() {
     birthday: '',
   });
 
-  const { user } = useAuth();
-  const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
+  const { user, currentFamilyId } = useAuth();
+  const familyId = currentFamilyId || '';
 
   useEffect(() => {
     fetchMembers();
@@ -121,7 +121,7 @@ export default function FamilyMembers() {
     });
   };
 
-  if (!user?.familyId && user?.globalRole !== 'SUPER_ADMIN') {
+  if (!currentFamilyId && user?.globalRole !== 'SUPER_ADMIN') {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
         <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center text-4xl shadow-inner">

@@ -101,10 +101,14 @@ export class AiAgentService {
                 type: 'string',
                 description: 'Event date in YYYY-MM-DD format',
               },
-              type: {
+              time: {
                 type: 'string',
-                enum: ['BIRTHDAY', 'ANNIVERSARY', 'HOLIDAY', 'APPOINTMENT', 'TASK', 'GENERAL'],
-                description: 'Type of event',
+                description: 'Event time in HH:mm format (24h), e.g., "18:00"',
+              },
+              scope: {
+                type: 'string',
+                enum: ['PRIVATE', 'FAMILY', 'GLOBAL'],
+                description: 'Scope/Privacy of the event. Use PRIVATE for personal tasks, FAMILY for family events.',
               },
             },
             required: ['title', 'date'],
@@ -296,43 +300,46 @@ CRITICAL RULES:
         case 'createEvent':
         case 'updateEvent':
         case 'deleteEvent': {
-          let user = await this.prisma.user.findFirst({
-            where: { familyId },
-          });
-  
-          if (!user) {
-            let family = await this.prisma.family.findUnique({ where: { id: familyId } });
-            family ??= await this.prisma.family.create({
-              data: { id: familyId, name: 'My Family' },
-            });
-            user = await this.prisma.user.create({
-              data: {
-                name: 'Family Member',
-                email: `member@${familyId}.local`,
-                role: 'Thành viên',
-                familyId,
-              },
-            });
-          }
-  
           if (toolName === 'createEvent') {
-            const event = await this.eventsService.create(familyId, user.id, {
+            // Combine date and time if provided
+            let eventDate = new Date(args.date);
+            if (args.time) {
+              const [hours, minutes] = args.time.split(':').map(Number);
+              if (!isNaN(hours) && !isNaN(minutes)) {
+                eventDate.setHours(hours, minutes, 0, 0);
+              }
+            }
+
+            const event = await this.eventsService.create(familyId, userId, {
               title: args.title,
               description: args.description,
-              date: new Date(args.date),
+              date: eventDate,
+              time: args.time || '09:00',
               type: args.type || 'GENERAL',
+              scope: args.scope || 'FAMILY',
             });
             return { success: true, event };
           } else if (toolName === 'updateEvent') {
-            const result = await this.eventsService.update(args.id, familyId, user.id, {
+            // Combine date and time if provided for update
+            let eventDate = args.date ? new Date(args.date) : undefined;
+            if (eventDate && args.time) {
+              const [hours, minutes] = args.time.split(':').map(Number);
+              if (!isNaN(hours) && !isNaN(minutes)) {
+                eventDate.setHours(hours, minutes, 0, 0);
+              }
+            }
+
+            const result = await this.eventsService.update(args.id, familyId, userId, {
               title: args.title,
               description: args.description,
-              date: args.date ? new Date(args.date) : undefined,
+              date: eventDate,
+              time: args.time,
               type: args.type,
+              scope: args.scope,
             });
             return { success: true, result };
           } else {
-            const result = await this.eventsService.delete(args.id, familyId, user.id);
+            const result = await this.eventsService.delete(args.id, familyId, userId);
             return { success: true, result };
           }
         }
@@ -435,6 +442,7 @@ CRITICAL RULES:
     finalUserMessage: string,
     userId: string,
     userIds: string[],
+    sessionId?: string,
   ) {
     const genModel = this.gemini.getGenerativeModel({
       model: 'gemini-flash-latest',
@@ -466,7 +474,7 @@ CRITICAL RULES:
         break;
       }
     }
-    await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
+    await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
     return { content: assistantContent, familyId };
   }
 
@@ -477,6 +485,7 @@ CRITICAL RULES:
     finalUserMessage: string,
     userId: string,
     userIds: string[],
+    sessionId?: string,
   ) {
     const messages = [
       { role: 'system', content: this.getSystemPrompt(familyInfo) },
@@ -504,7 +513,7 @@ CRITICAL RULES:
       assistantContent = response.choices[0].message.content || '';
     }
 
-    await this.chatService.saveMessage(familyId, 'assistant', assistantContent);
+    await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
     return { content: assistantContent, familyId };
   }
 
@@ -609,19 +618,19 @@ CRITICAL RULES:
     await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
   }
 
-  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string) {
+  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string, sessionId?: string) {
     try {
       const finalUserMessage = await this.processVisionImage(userMessage, image);
-      await this.chatService.saveMessage(familyId, 'user', finalUserMessage);
+      await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
 
       const familyInfo = await this.getFamilyContext(familyId);
-      const history = await this.chatService.getHistory(familyId, undefined, 10);
+      const history = await this.chatService.getHistory(familyId, sessionId, 10);
 
       if (modelSelection === 'gemini') {
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds);
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
       }
 
-      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds);
+      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
     } catch (e: any) {
       console.error('Chat Error:', e);
       throw new HttpException('AI Error', HttpStatus.INTERNAL_SERVER_ERROR);

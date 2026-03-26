@@ -15,22 +15,23 @@ generator client {
 // User & Family
 // ============================================
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String
-  role      String?
+  id         String    @id @default(cuid())
+  email      String    @unique
+  name       String
+  role       String?
   globalRole String    @default("USER")
-  birthday  DateTime?
-  familyId  String?
-  family    Family?     @relation(fields: [familyId], references: [id], onDelete: SetNull)
-  
-  googleId  String?    @unique
-  avatarUrl String?
-  notificationSettings Json? @default("{}")
-  
-  createdEvents Event[]
+  birthday   DateTime?
+  familyId   String?
+  family     Family?   @relation("LegacyFamily", fields: [familyId], references: [id], onDelete: SetNull)
+  families   Family[]  @relation("UserFamilies")
+
+  googleId             String? @unique
+  avatarUrl            String?
+  notificationSettings Json?   @default("{}")
+
+  createdEvents   Event[]
   mealPreferences MealPreference[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -38,10 +39,11 @@ model User {
 }
 
 model Family {
-  id    String     @id @default(cuid())
-  name  String
-  users User[]
-  
+  id          String @id @default(cuid())
+  name        String
+  users       User[] @relation("UserFamilies")
+  legacyUsers User[] @relation("LegacyFamily")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -50,26 +52,26 @@ model Family {
 // Calendar & Events
 // ============================================
 model Event {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   description String?
   date        DateTime // Solar date
-  time        String?  // Ex: "09:00"
-  lunarDate   String?  // Ex: "30/12" (day/month in lunar calendar)
+  time        String? // Ex: "09:00"
+  lunarDate   String? // Ex: "30/12" (day/month in lunar calendar)
   type        EventType @default(GENERAL)
-  
-  isRecurring Boolean  @default(false)
-  recurring   String?  // CRON expression (if recurring)
-  
-  familyId    String
-  createdBy   String
-  user        User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  
-  scope       EventScope @default(GLOBAL)
-  
+
+  isRecurring Boolean @default(false)
+  recurring   String? // CRON expression (if recurring)
+
+  familyId  String
+  createdBy String
+  user      User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  scope EventScope @default(GLOBAL)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@index([date])
   @@index([familyId])
 }
@@ -93,14 +95,14 @@ enum EventScope {
 // Meals & Preferences
 // ============================================
 model Meal {
-  id        String     @id @default(cuid())
-  name      String
-  category  MealCategory
-  tags      String[]   // ["healthy", "fast", "vegan", etc.]
-  
+  id       String       @id @default(cuid())
+  name     String
+  category MealCategory
+  tags     String[] // ["healthy", "fast", "vegan", etc.]
+
   preferences MealPreference[]
   history     MealHistory[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -112,27 +114,27 @@ enum MealCategory {
 }
 
 model MealPreference {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mealId    String
-  meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealId String
+  meal   Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now())
-  
+
   @@unique([userId, mealId])
 }
 
 model MealHistory {
-  id        String   @id @default(cuid())
-  mealId    String
-  meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  date      DateTime
-  category  MealCategory
-  familyId  String   @default("default-family")
-  
+  id       String       @id @default(cuid())
+  mealId   String
+  meal     Meal         @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  date     DateTime
+  category MealCategory
+  familyId String       @default("default-family")
+
   createdAt DateTime @default(now())
-  
+
   @@index([date])
   @@index([mealId])
   @@index([familyId])
@@ -142,28 +144,28 @@ model MealHistory {
 // AI Chat
 // ============================================
 model ChatSession {
-  id        String   @id @default(cuid())
-  familyId  String
-  title     String
-  
-  messages  ChatMessage[]
-  
+  id       String @id @default(cuid())
+  familyId String
+  title    String
+
+  messages ChatMessage[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@index([familyId])
 }
 
 model ChatMessage {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   familyId  String
   sessionId String?
   session   ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  role      String   // "user" or "assistant"
+  role      String // "user" or "assistant"
   content   String
-  
+
   createdAt DateTime @default(now())
-  
+
   @@index([familyId])
   @@index([sessionId])
   @@index([createdAt])
@@ -173,18 +175,18 @@ model ChatMessage {
 // Notifications
 // ============================================
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  type      String   // e.g., "EVENT_CREATED", "MEAL_ADDED"
-  title     String
-  message   String
-  metadata  Json?    // { eventId: "...", path: "/calendar" }
-  
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type     String // e.g., "EVENT_CREATED", "MEAL_ADDED"
+  title    String
+  message  String
+  metadata Json? // { eventId: "...", path: "/calendar" }
+
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
-  
+
   @@index([userId])
   @@index([createdAt])
 }

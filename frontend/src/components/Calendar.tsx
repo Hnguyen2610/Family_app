@@ -41,10 +41,10 @@ export default function Calendar() {
     scope: 'GLOBAL',
   });
 
-  const { user } = useAuth();
+  const { user, currentFamilyId } = useAuth();
   const [creatorId, setCreatorId] = useState<string>(user?.id || '');
 
-  const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
+  const familyId = currentFamilyId || '';
 
   const month = currentDate.getMonth() + 1;
   const year = currentDate.getFullYear();
@@ -500,22 +500,22 @@ export default function Calendar() {
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventScope')}</label>
                 <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
-                  {['GLOBAL', 'FAMILY', 'PERSONAL'].map((s) => {
-                    const isSelectedScope = formData.scope === s;
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => setFormData({ ...formData, scope: s })}
-                        className={`flex-1 py-3 rounded-xl text-[10px] md:text-xs font-black transition-all ${
-                          isSelectedScope 
-                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                        }`}
-                      >
-                        {s === 'GLOBAL' ? t('calendar.scope.global') : s === 'FAMILY' ? t('calendar.scope.family') : t('calendar.scope.personal')}
-                      </button>
-                    );
-                  })}
+                {['GLOBAL', 'FAMILY', 'PRIVATE'].map((s) => {
+                  const isSelectedScope = formData.scope === s;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => setFormData({ ...formData, scope: s })}
+                      className={`flex-1 py-3 rounded-xl text-[10px] md:text-xs font-black transition-all ${
+                        isSelectedScope 
+                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                          : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      {s === 'GLOBAL' ? t('calendar.scope.global') : s === 'FAMILY' ? t('calendar.scope.family') : t('calendar.scope.personal')}
+                    </button>
+                  );
+                })}
                 </div>
               </div>
 

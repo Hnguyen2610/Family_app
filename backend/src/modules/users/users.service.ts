@@ -11,12 +11,23 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto) {
-    const data: any = { ...dto };
+    const { familyIds, ...rest } = dto;
+    const data: any = { ...rest };
     if (dto.birthday) {
       data.birthday = new Date(dto.birthday);
     }
+    
+    if (familyIds && familyIds.length > 0) {
+      data.families = {
+        connect: familyIds.map(id => ({ id }))
+      };
+      // For legacy compatibility
+      data.familyId = familyIds[0];
+    }
+
     const user = await this.prisma.user.create({
       data,
+      include: { families: true }
     });
 
     // Send Welcome Email
@@ -30,14 +41,19 @@ export class UsersService {
   async findAllGlobal() {
     return this.prisma.user.findMany({
       include: {
-        family: true,
+        families: true,
+        family: true, // legacy
       },
     });
   }
 
   async findAll(familyId: string) {
     return this.prisma.user.findMany({
-      where: { familyId },
+      where: { 
+        families: {
+          some: { id: familyId }
+        }
+      },
       select: {
         id: true,
         name: true,
@@ -45,7 +61,8 @@ export class UsersService {
         role: true,
         globalRole: true,
         birthday: true,
-        familyId: true,
+        familyId: true, // legacy
+        families: true,
         createdAt: true,
       },
     });
@@ -61,32 +78,46 @@ export class UsersService {
         role: true,
         globalRole: true,
         birthday: true,
-        familyId: true,
+        familyId: true, // legacy
+        families: true,
         createdAt: true,
       },
     });
   }
 
   async update(id: string, dto: UpdateUserDto) {
-    const data: any = { ...dto };
+    const { familyIds, ...rest } = dto;
+    const data: any = { ...rest };
     if (dto.birthday) {
       data.birthday = new Date(dto.birthday);
     }
 
+    if (familyIds) {
+      data.families = {
+        set: familyIds.map(id => ({ id }))
+      };
+      // Keep legacy column sync'd with first family
+      data.familyId = familyIds.length > 0 ? familyIds[0] : null;
+    }
+
     const oldUser = await this.prisma.user.findUnique({
       where: { id },
-      include: { family: true }
+      include: { families: true }
     });
 
     const user = await this.prisma.user.update({
       where: { id },
       data,
-      include: { family: true }
+      include: { families: true }
     });
 
-    // Send Family Added Email if familyId was just added or changed
-    if (dto.familyId && dto.familyId !== oldUser?.familyId) {
-      const family = await this.prisma.family.findUnique({ where: { id: dto.familyId } });
+    // Send Family Added Email if familyIds changed
+    const oldIds = oldUser?.families.map(f => f.id) || [];
+    const newIds = familyIds || [];
+    const addedIds = newIds.filter(id => !oldIds.includes(id));
+
+    for (const familyId of addedIds) {
+      const family = await this.prisma.family.findUnique({ where: { id: familyId } });
       if (family) {
         this.mailService.sendFamilyAddedEmail(user.email, user.name, family.name).catch(err => 
           console.error('Failed to send family added email', err)

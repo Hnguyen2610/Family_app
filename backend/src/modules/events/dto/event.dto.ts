@@ -16,6 +16,10 @@ export class CreateEventDto {
 
   @IsOptional()
   @IsString()
+  time?: string;
+
+  @IsOptional()
+  @IsString()
   lunarDate?: string;
 
   @IsEnum(EventType)
@@ -47,6 +51,10 @@ export class UpdateEventDto {
   @IsDate()
   @Type(() => Date)
   date?: Date;
+
+  @IsOptional()
+  @IsString()
+  time?: string;
 
   @IsOptional()
   @IsString()
