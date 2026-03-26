@@ -56,7 +56,7 @@ export class AiAgentService {
         type: 'function' as const,
         function: {
           name: 'getEventsByMonth',
-          description: 'Get all events for a specific month',
+          description: 'Get all events for a specific month. Calls this to check the calendar.',
           parameters: {
             type: 'object' as const,
             properties: {
@@ -71,6 +71,10 @@ export class AiAgentService {
               year: {
                 type: 'number',
                 description: 'Year',
+              },
+              userId: {
+                type: 'string',
+                description: 'User ID of the requester to see their private events (optional)',
               },
             },
             required: ['familyId', 'month', 'year'],
@@ -269,6 +273,7 @@ CRITICAL RULES:
     toolName: string,
     args: any,
     familyId: string,
+    userId: string,
     userIds: string[] = [],
   ): Promise<any> {
     try {
@@ -285,9 +290,12 @@ CRITICAL RULES:
             args.familyId || familyId,
             args.month,
             args.year,
+            args.userId || userId,
           );
   
-        case 'createEvent': {
+        case 'createEvent':
+        case 'updateEvent':
+        case 'deleteEvent': {
           let user = await this.prisma.user.findFirst({
             where: { familyId },
           });
@@ -295,8 +303,8 @@ CRITICAL RULES:
           if (!user) {
             let family = await this.prisma.family.findUnique({ where: { id: familyId } });
             family ??= await this.prisma.family.create({
-                data: { id: familyId, name: 'My Family' },
-              });
+              data: { id: familyId, name: 'My Family' },
+            });
             user = await this.prisma.user.create({
               data: {
                 name: 'Family Member',
@@ -307,28 +315,26 @@ CRITICAL RULES:
             });
           }
   
-          const event = await this.eventsService.create(familyId, user.id, {
-            title: args.title,
-            description: args.description,
-            date: new Date(args.date),
-            type: args.type || 'GENERAL',
-          });
-          return { success: true, event };
-        }
-  
-        case 'updateEvent': {
-          const result = await this.eventsService.update(args.id, familyId, {
-            title: args.title,
-            description: args.description,
-            date: args.date ? new Date(args.date) : undefined,
-            type: args.type,
-          });
-          return { success: true, result };
-        }
-  
-        case 'deleteEvent': {
-          const result = await this.eventsService.delete(args.id, familyId);
-          return { success: true, result };
+          if (toolName === 'createEvent') {
+            const event = await this.eventsService.create(familyId, user.id, {
+              title: args.title,
+              description: args.description,
+              date: new Date(args.date),
+              type: args.type || 'GENERAL',
+            });
+            return { success: true, event };
+          } else if (toolName === 'updateEvent') {
+            const result = await this.eventsService.update(args.id, familyId, user.id, {
+              title: args.title,
+              description: args.description,
+              date: args.date ? new Date(args.date) : undefined,
+              type: args.type,
+            });
+            return { success: true, result };
+          } else {
+            const result = await this.eventsService.delete(args.id, familyId, user.id);
+            return { success: true, result };
+          }
         }
   
         case 'getSolarDateFromLunar': {
@@ -370,7 +376,9 @@ CRITICAL RULES:
           },
         },
       );
+      
       console.log('Gold API Status:', response.status);
+      console.log('Gold API Response Timestamp:', response.data?.timestamp);
 
       if (response.data?.success && response.data?.prices) {
         const prices = response.data.prices;
@@ -380,17 +388,32 @@ CRITICAL RULES:
         const sjc = prices.SJL1L10;
         const xau = prices.XAUUSD;
         const ring = prices.SJ9999;
+        const dojiHn = prices.DOHNL;
+        const pnjHn = prices.PQHNVM;
 
-        return {
+        const summaryParts = [];
+        if (sjc) summaryParts.push(`- Vàng SJC 9999: Mua ${formatVND(sjc.buy)} / Bán ${formatVND(sjc.sell)} VND/lượng (${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND)`);
+        if (dojiHn) summaryParts.push(`- Vàng DOJI Hà Nội: Mua ${formatVND(dojiHn.buy)} / Bán ${formatVND(dojiHn.sell)} VND/lượng`);
+        if (pnjHn) summaryParts.push(`- Vàng PNJ Hà Nội: Mua ${formatVND(pnjHn.buy)} / Bán ${formatVND(pnjHn.sell)} VND/lượng`);
+        if (ring) summaryParts.push(`- Vàng nhẫn SJC: Mua ${formatVND(ring.buy)} / Bán ${formatVND(ring.sell)} VND/lượng`);
+        if (xau) summaryParts.push(`- Vàng Thế giới (XAUUSD): ${xau.buy} USD/oz`);
+
+        const result = {
+          formatted_summary: summaryParts.join('\n'),
           sjc_buy: sjc ? `${formatVND(sjc.buy)} VND/lượng` : 'N/A',
           sjc_sell: sjc ? `${formatVND(sjc.sell)} VND/lượng` : 'N/A',
           sjc_change: sjc ? `${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND` : 'N/A',
           nhan_sjc_buy: ring ? `${formatVND(ring.buy)} VND/lượng` : 'N/A',
           nhan_sjc_sell: ring ? `${formatVND(ring.sell)} VND/lượng` : 'N/A',
           world_gold_usd: xau ? `${xau.buy} USD/oz` : 'N/A',
-          source: 'giavang.now (cập nhật mỗi 5 phút)',
-          date: new Date().toISOString(),
+          source: 'giavang.now (cập nhật mới nhất từ API)',
+          api_date: response.data.date,
+          api_time: response.data.time,
+          fetch_timestamp: new Date().toISOString(),
         };
+
+        console.log('Final Gold Tool Result:', result);
+        return result;
       }
 
       return { error: true, message: 'Không thể lấy được dữ liệu từ máy chủ giá vàng.' };
@@ -410,6 +433,7 @@ CRITICAL RULES:
     history: any[],
     familyInfo: string,
     finalUserMessage: string,
+    userId: string,
     userIds: string[],
   ) {
     const genModel = this.gemini.getGenerativeModel({
@@ -435,7 +459,7 @@ CRITICAL RULES:
 
       if (part?.functionCall) {
         loopCount++;
-        const res = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userIds);
+        const res = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, userIds);
         currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
       } else {
         assistantContent = result.response.text();
@@ -451,6 +475,7 @@ CRITICAL RULES:
     history: any[],
     familyInfo: string,
     finalUserMessage: string,
+    userId: string,
     userIds: string[],
   ) {
     const messages = [
@@ -470,7 +495,7 @@ CRITICAL RULES:
     if (toolCalls) {
       messages.push(response.choices[0].message as any);
       for (const tc of toolCalls) {
-        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userIds);
+        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userId, userIds);
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
       }
       const final = await this.openai.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages });
@@ -488,10 +513,11 @@ CRITICAL RULES:
     history: any[],
     familyInfo: string,
     finalUserMessage: string,
+    userId: string,
     userIds: string[],
-    res: any,
-    sessionId?: string,
+    streamOptions: { res: any; sessionId?: string },
   ) {
+    const { res, sessionId } = streamOptions;
     const genModel = this.gemini.getGenerativeModel({
       model: 'gemini-flash-latest',
       systemInstruction: this.getSystemPrompt(familyInfo),
@@ -517,7 +543,7 @@ CRITICAL RULES:
         if (part?.functionCall) {
           hasToolCall = true;
           loopCount++;
-          const toolRes = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userIds);
+          const toolRes = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, userIds);
           currentInput = [{ functionResponse: { name: part.functionCall.name, response: toolRes } }];
           break;
         } else {
@@ -538,10 +564,11 @@ CRITICAL RULES:
     history: any[],
     familyInfo: string,
     finalUserMessage: string,
+    userId: string,
     userIds: string[],
-    res: any,
-    sessionId?: string,
+    streamOptions: { res: any; sessionId?: string },
   ) {
+    const { res, sessionId } = streamOptions;
     const messages = [
       { role: 'system', content: this.getSystemPrompt(familyInfo) },
       ...[...history].reverse().map((m) => ({ role: m.role as any, content: m.content })),
@@ -559,7 +586,7 @@ CRITICAL RULES:
     if (toolCalls) {
       messages.push(response.choices[0].message as any);
       for (const tc of toolCalls) {
-        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userIds);
+        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userId, userIds);
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
       }
     }
@@ -591,10 +618,10 @@ CRITICAL RULES:
       const history = await this.chatService.getHistory(familyId, undefined, 10);
 
       if (modelSelection === 'gemini') {
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds);
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds);
       }
 
-      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds);
+      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds);
     } catch (e: any) {
       console.error('Chat Error:', e);
       throw new HttpException('AI Error', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -610,10 +637,10 @@ CRITICAL RULES:
       const history = await this.chatService.getHistory(familyId, sessionId, 10);
 
       if (modelSelection === 'gemini') {
-        return await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds, res, sessionId);
+        return await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
       }
 
-      return await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds, res, sessionId);
+      return await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
     } catch (e: any) {
       console.error('Stream Error:', e);
       res.write(`data: ${JSON.stringify({ content: 'Lỗi AI.' })}\n\n`);

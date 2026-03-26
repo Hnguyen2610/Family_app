@@ -24,8 +24,14 @@ export class EventsService {
     });
   }
 
-  async findAll(familyId: string, month?: number, year?: number) {
-    let where: any = { familyId };
+  async findAll(familyId: string, month?: number, year?: number, userId?: string) {
+    let where: any = { 
+      familyId,
+      OR: [
+        { scope: 'GLOBAL' },
+        ...(userId ? [{ scope: 'PRIVATE', createdBy: userId }] : []),
+      ],
+    };
 
     if (month && year) {
       const startDate = new Date(year, month - 1, 1);
@@ -138,8 +144,8 @@ export class EventsService {
     return events;
   }
 
-  async findById(id: string, familyId: string) {
-    return this.prisma.event.findFirst({
+  async findById(id: string, familyId: string, userId?: string) {
+    const event = await this.prisma.event.findFirst({
       where: { id, familyId },
       include: {
         user: {
@@ -147,16 +153,25 @@ export class EventsService {
         },
       },
     });
+
+    if (!event) return null;
+
+    // If private, only the creator can see it
+    if (event.scope === 'PRIVATE' && event.createdBy !== userId) {
+      return null;
+    }
+
+    return event;
   }
 
-  async update(id: string, familyId: string, dto: UpdateEventDto) {
+  async update(id: string, familyId: string, userId: string, dto: UpdateEventDto) {
     let lunarDate = dto.lunarDate;
     if (!lunarDate && dto.date) {
       lunarDate = calculateLunarDate(new Date(dto.date));
     }
 
     return this.prisma.event.updateMany({
-      where: { id, familyId: familyId },
+      where: { id, familyId: familyId, createdBy: userId },
       data: {
         ...dto,
         lunarDate,
@@ -164,13 +179,13 @@ export class EventsService {
     });
   }
 
-  async delete(id: string, familyId: string) {
+  async delete(id: string, familyId: string, userId: string) {
     return this.prisma.event.deleteMany({
-      where: { id, familyId },
+      where: { id, familyId, createdBy: userId },
     });
   }
 
-  async getEventsByMonth(familyId: string, month: number, year: number) {
-    return this.findAll(familyId, month, year);
+  async getEventsByMonth(familyId: string, month: number, year: number, userId?: string) {
+    return this.findAll(familyId, month, year, userId);
   }
 }

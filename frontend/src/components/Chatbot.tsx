@@ -19,6 +19,16 @@ export default function Chatbot() {
   const [selectedModel, setSelectedModel] = useState<'llama' | 'gemini'>('llama');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+  const skipFetchRef = useRef(false);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('family_user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      setCreatorId(user.id);
+    }
+  }, []);
 
   const familyId = process.env.NEXT_PUBLIC_FAMILY_ID || 'default-family';
 
@@ -59,6 +69,10 @@ export default function Chatbot() {
 
   useEffect(() => {
     fetchSessions();
+    if (skipFetchRef.current) {
+      skipFetchRef.current = false;
+      return;
+    }
     fetchHistory(currentSessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyId, currentSessionId]);
@@ -70,6 +84,7 @@ export default function Chatbot() {
   };
 
   const handleSelectSession = (id: string) => {
+    skipFetchRef.current = false; // Ensure it fetches when manually selecting
     setCurrentSessionId(id);
     setIsHistoryOpen(false);
   };
@@ -128,12 +143,8 @@ export default function Chatbot() {
 
     try {
       await chatAPI.sendMessageStream(
-        familyId, 
-        messageText, 
-        undefined, 
-        currentSessionId,
-        currentImage || undefined,
-        selectedModel,
+        familyId,
+        messageText,
         (chunk: string) => {
           setIsLoading(false); // Stop pulse animation once data flows
           currentResponse += chunk;
@@ -141,9 +152,16 @@ export default function Chatbot() {
         },
         (newId: string) => {
           if (!currentSessionId) {
+            skipFetchRef.current = true;
             setCurrentSessionId(newId);
             fetchSessions();
           }
+        },
+        {
+          userId: creatorId || undefined,
+          sessionId: currentSessionId,
+          image: currentImage || undefined,
+          model: selectedModel,
         }
       );
     } catch (error) {

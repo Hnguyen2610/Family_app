@@ -6,9 +6,26 @@ import Chatbot from '@/components/Chatbot';
 import FamilyMembers from '@/components/FamilyMembers';
 import MealPlanner from '@/components/MealPlanner';
 import NewMonthModal from '@/components/NewMonthModal';
+import AdminDashboard from '@/components/admin/AdminDashboard';
+
+import { useAuth } from '@/hooks/useAuth';
+import Login from '@/components/Login';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'calendar' | 'chat' | 'family' | 'meals'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'chat' | 'family' | 'meals' | 'admin'>('calendar');
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 relative overflow-x-hidden">
@@ -17,14 +34,27 @@ export default function Home() {
       <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/50 rounded-full blur-[120px] -z-10" />
 
       {/* Header */}
-      <header className="pt-6 md:pt-10 pb-2 md:pb-6">
-        <div className="max-w-5xl mx-auto px-6 text-center">
+      <header className="pt-6 md:pt-10 pb-2 md:pb-6 relative z-10">
+        <div className="max-w-5xl mx-auto px-6 flex flex-col items-center">
+          <div className="w-full flex justify-end mb-4">
+            <button
+              onClick={logout}
+              className="glass px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:text-red-600 hover:bg-white transition-all duration-300"
+            >
+              🚪 Đăng xuất
+            </button>
+          </div>
           <div className="inline-block animate-float">
             <span className="text-4xl md:text-6xl mb-2 md:mb-4 block">👨‍👩‍👧‍👦</span>
           </div>
           <h1 className="text-3xl md:text-6xl font-black tracking-tight leading-tight">
             Family <span className="gradient-text">Calendar</span>
           </h1>
+          {user && (
+            <p className="mt-4 text-slate-500 font-bold">
+              Chào {user.name} 👋
+            </p>
+          )}
         </div>
       </header>
 
@@ -78,6 +108,18 @@ export default function Home() {
               <span className="hidden xs:inline">Hôm nay ăn gì?</span>
               <span className="xs:hidden">Ăn gì</span>
             </button>
+            {user?.globalRole === 'SUPER_ADMIN' && (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-8 py-2 md:py-3 rounded-xl text-xs md:text-base font-black transition-all duration-500 shrink-0 ${
+                  activeTab === 'admin'
+                    ? 'bg-red-600 text-white shadow-xl shadow-red-200 scale-[1.02]'
+                    : 'text-slate-500 hover:bg-white hover:text-red-600'
+                }`}
+              >
+                <span className="text-base md:text-xl">🛡️</span> Quản trị
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -90,6 +132,7 @@ export default function Home() {
           {activeTab === 'chat' && <Chatbot />}
           {activeTab === 'family' && <FamilyMembers />}
           {activeTab === 'meals' && <MealPlanner />}
+          {activeTab === 'admin' && <AdminDashboard />}
         </div>
       </main>
 

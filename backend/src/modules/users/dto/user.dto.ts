@@ -8,11 +8,16 @@ export class CreateUserDto {
   name!: string;
 
   @IsString()
-  familyId!: string;
+  @IsOptional()
+  familyId?: string;
 
   @IsString()
   @IsOptional()
   role?: string;
+
+  @IsString()
+  @IsOptional()
+  globalRole?: string;
 
   @IsString()
   @IsOptional()
@@ -30,6 +35,13 @@ export class UpdateUserDto {
 
   @IsOptional()
   role?: string;
+
+  @IsOptional()
+  globalRole?: string;
+
+  @IsOptional()
+  @IsString()
+  familyId?: string;
 
   @IsOptional()
   birthday?: string;

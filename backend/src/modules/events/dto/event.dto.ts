@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsEnum, IsDate } from 'class-validator';
 import { Type } from 'class-transformer';
-import { EventType } from '@prisma/client';
+import { EventType, EventScope } from '@prisma/client';
 
 export class CreateEventDto {
   @IsString()
@@ -21,6 +21,10 @@ export class CreateEventDto {
   @IsEnum(EventType)
   @IsOptional()
   type?: EventType = EventType.GENERAL;
+
+  @IsEnum(EventScope)
+  @IsOptional()
+  scope?: EventScope = EventScope.GLOBAL;
 
   @IsOptional()
   isRecurring?: boolean;
@@ -51,6 +55,10 @@ export class UpdateEventDto {
   @IsOptional()
   @IsEnum(EventType)
   type?: EventType;
+
+  @IsOptional()
+  @IsEnum(EventScope)
+  scope?: EventScope;
 
   @IsOptional()
   isRecurring?: boolean;

@@ -19,9 +19,13 @@ model User {
   email     String     @unique
   name      String
   role      String?
+  globalRole String    @default("USER")
   birthday  DateTime?
-  familyId  String
-  family    Family     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  familyId  String?
+  family    Family?     @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  
+  googleId  String?    @unique
+  avatarUrl String?
   
   createdEvents Event[]
   mealPreferences MealPreference[]
@@ -57,6 +61,8 @@ model Event {
   createdBy   String
   user        User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   
+  scope       EventScope @default(GLOBAL)
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -71,6 +77,11 @@ enum EventType {
   APPOINTMENT
   TASK
   GENERAL
+}
+
+enum EventScope {
+  PRIVATE
+  GLOBAL
 }
 
 // ============================================

@@ -35,6 +35,7 @@ export default function Calendar() {
     description: '',
     type: 'GENERAL',
     time: '09:00',
+    scope: 'GLOBAL',
   });
 
   const [creatorId, setCreatorId] = useState<string>('');
@@ -78,7 +79,7 @@ export default function Calendar() {
 
     setLoading(true);
     try {
-      const response = await eventsAPI.getAll(familyId, month, year);
+      const response = await eventsAPI.getAll(familyId, month, year, creatorId);
       setEvents(response.data);
       setEventsCache((prev) => ({ ...prev, [key]: response.data }));
     } catch (error) {
@@ -120,17 +121,23 @@ export default function Calendar() {
       description: '',
       type: 'GENERAL',
       time: '09:00',
+      scope: 'GLOBAL',
     });
     setIsModalOpen(true);
   };
 
   const openEditForm = (event: any) => {
+    if (event.createdBy !== creatorId) {
+      toast.error('Bạn không có quyền chỉnh sửa sự kiện này');
+      return;
+    }
     const eventDate = new Date(event.date);
     setEditingEvent(event);
     setFormData({
       title: event.title,
       description: event.description || '',
       type: event.type || 'GENERAL',
+      scope: event.scope || 'GLOBAL',
       time: eventDate.toLocaleTimeString('vi-VN', {
         hour: '2-digit',
         minute: '2-digit',
@@ -154,13 +161,13 @@ export default function Calendar() {
       title: formData.title,
       description: formData.description,
       type: formData.type,
+      scope: formData.scope,
       date: eventDate.toISOString(),
-      familyId,
     };
 
     try {
       if (editingEvent) {
-        await eventsAPI.update(editingEvent.id, familyId, payload);
+        await eventsAPI.update(editingEvent.id, familyId, creatorId, payload);
         toast.success('Đã cập nhật sự kiện');
       } else {
         if (!creatorId) {
@@ -181,9 +188,10 @@ export default function Calendar() {
   const handleDeleteEvent = async (id: string) => {
     if (!globalThis.confirm?.('Bạn có chắc chắn muốn xóa sự kiện này?')) return;
     try {
-      await eventsAPI.delete(id, familyId);
+      await eventsAPI.delete(id, familyId, creatorId);
       toast.success('Đã xóa sự kiện');
       fetchEvents(true);
+      setIsModalOpen(false);
     } catch (error) {
       console.error('Failed to delete event:', error);
       toast.error('Không thể xóa sự kiện');
@@ -391,13 +399,15 @@ export default function Calendar() {
                       onKeyDown={(e) => e.key === 'Enter' && openEditForm(event)}
                       className="bg-white p-6 rounded-3xl shadow-md border border-slate-50 relative overflow-hidden group cursor-pointer hover:border-indigo-200 hover:shadow-xl transition-all"
                     >
-                        className={`absolute top-0 left-0 w-1.5 h-full ${
-                          event.type === 'BIRTHDAY'
-                            ? 'bg-rose-500'
-                            : event.type === 'ANNIVERSARY'
-                              ? 'bg-amber-500'
-                              : 'bg-indigo-600'
-                        }`}
+                    <div
+                      className={`absolute top-0 left-0 w-1.5 h-full ${
+                        event.type === 'BIRTHDAY'
+                          ? 'bg-rose-500'
+                          : event.type === 'ANNIVERSARY'
+                            ? 'bg-amber-500'
+                            : 'bg-indigo-600'
+                      }`}
+                    />
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div
@@ -415,7 +425,9 @@ export default function Calendar() {
                             {event.title}
                           </h4>
                         </div>
-                        <FiEdit3 className="text-slate-300 group-hover:text-indigo-600 transition-colors flex-shrink-0 mt-1" />
+                        {event.createdBy === creatorId && (
+                          <FiEdit3 className="text-slate-300 group-hover:text-indigo-600 transition-colors flex-shrink-0 mt-1" />
+                        )}
                       </div>
                       {event.description && (
                         <p className="text-slate-500 text-xs leading-relaxed mb-3 line-clamp-2">
@@ -528,6 +540,24 @@ export default function Calendar() {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="event-scope"
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 mb-2 block"
+                  >
+                    Phạm vi thông báo
+                  </label>
+                  <select
+                    id="event-scope"
+                    value={formData.scope}
+                    onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="GLOBAL">Thông báo cho global (Tất cả thành viên)</option>
+                    <option value="PRIVATE">Chỉ thông báo cho người tạo sự kiện</option>
+                  </select>
                 </div>
 
                 <div>

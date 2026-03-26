@@ -10,6 +10,8 @@ import { UsersModule } from './modules/users/users.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MailModule } from './modules/mail/mail.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { FamiliesModule } from './modules/families/families.module';
 
 @Module({
   imports: [
@@ -22,9 +24,11 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     MealsModule,
     AiAgentModule,
     UsersModule,
+    FamiliesModule,
     ScheduleModule.forRoot(),
     MailModule,
     NotificationsModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

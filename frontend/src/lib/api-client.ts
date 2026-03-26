@@ -9,25 +9,39 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+// Add a request interceptor to include the JWT token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('family_token') : null;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Events API
 export const eventsAPI = {
-  getAll: (familyId: string, month?: number, year?: number) =>
+  getAll: (familyId: string, month?: number, year?: number, userId?: string) =>
     apiClient.get('/api/events', {
-      params: { familyId, month, year },
+      params: { familyId, month, year, userId },
     }),
-  getById: (id: string, familyId: string) =>
-    apiClient.get(`/api/events/${id}`, { params: { familyId } }),
+  getById: (id: string, familyId: string, userId?: string) =>
+    apiClient.get(`/api/events/${id}`, { params: { familyId, userId } }),
   create: (familyId: string, userId: string, data: any) =>
     apiClient.post('/api/events', data, {
       params: { familyId, userId },
     }),
-  update: (id: string, familyId: string, data: any) =>
+  update: (id: string, familyId: string, userId: string, data: any) =>
     apiClient.put(`/api/events/${id}`, data, {
-      params: { familyId },
+      params: { familyId, userId },
     }),
-  delete: (id: string, familyId: string) =>
+  delete: (id: string, familyId: string, userId: string) =>
     apiClient.delete(`/api/events/${id}`, {
-      params: { familyId },
+      params: { familyId, userId },
     }),
 };
 
@@ -59,10 +73,21 @@ export const chatAPI = {
       image,
       model,
     }),
-  sendMessageStream: async (familyId: string, content: string, userId: string | undefined, sessionId: string | null, image: string | undefined, model: string | undefined, onChunk: (text: string) => void, onSessionId: (id: string) => void) => {
+  sendMessageStream: async (
+    familyId: string,
+    content: string,
+    onChunk: (text: string) => void,
+    onSessionId: (id: string) => void,
+    options: { userId?: string; sessionId?: string | null; image?: string; model?: string } = {}
+  ) => {
+    const { userId, sessionId, image, model } = options;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('family_token') : null;
     const response = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({ familyId, content, userId, sessionId, image, model }),
     });
 
@@ -107,14 +132,28 @@ export const chatAPI = {
     apiClient.delete(`/api/chat/sessions/${id}`, { params: { familyId } }),
 };
 
+// Families API
+export const familiesAPI = {
+  getAll: () => apiClient.get('/api/families'),
+  getById: (id: string) => apiClient.get(`/api/families/${id}`),
+  create: (name: string) => apiClient.post('/api/families', { name }),
+  update: (id: string, name: string) => apiClient.put(`/api/families/${id}`, { name }),
+  delete: (id: string) => apiClient.delete(`/api/families/${id}`),
+};
+
 // Users API
 export const usersAPI = {
-  getAll: (familyId: string) =>
-    apiClient.get(`/api/users/family/${familyId}`),
+  getAll: (familyId?: string) =>
+    familyId ? apiClient.get(`/api/users/family/${familyId}`) : apiClient.get('/api/users'),
   getById: (id: string) => apiClient.get(`/api/users/${id}`),
   create: (data: any) => apiClient.post('/api/users', data),
   update: (id: string, data: any) => apiClient.put(`/api/users/${id}`, data),
   delete: (id: string) => apiClient.delete(`/api/users/${id}`),
+};
+
+export const authAPI = {
+  loginWithGoogle: (token: string) =>
+    apiClient.post('/api/auth/google', { token }),
 };
 
 export default apiClient;

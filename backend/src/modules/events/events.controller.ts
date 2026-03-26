@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { CreateEventDto, UpdateEventDto } from './dto/event.dto';
@@ -28,19 +27,25 @@ export class EventsController {
   @Get()
   findAll(
     @Query('familyId') familyId: string,
+    @Query('userId') userId?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
   ) {
     return this.eventsService.findAll(
       familyId,
-      month ? parseInt(month) : undefined,
-      year ? parseInt(year) : undefined,
+      month ? Number.parseInt(month) : undefined,
+      year ? Number.parseInt(year) : undefined,
+      userId,
     );
   }
 
   @Get(':id')
-  findById(@Param('id') id: string, @Query('familyId') familyId: string) {
-    return this.eventsService.findById(id, familyId);
+  findById(
+    @Param('id') id: string,
+    @Query('familyId') familyId: string,
+    @Query('userId') userId?: string,
+  ) {
+    return this.eventsService.findById(id, familyId, userId);
   }
 
   @Put(':id')
@@ -48,13 +53,18 @@ export class EventsController {
     @Param('id') id: string,
     @Body() dto: UpdateEventDto,
     @Query('familyId') familyId: string,
+    @Query('userId') userId: string,
   ) {
-    return this.eventsService.update(id, familyId, dto);
+    return this.eventsService.update(id, familyId, userId, dto);
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string, @Query('familyId') familyId: string) {
-    return this.eventsService.delete(id, familyId);
+  delete(
+    @Param('id') id: string, 
+    @Query('familyId') familyId: string,
+    @Query('userId') userId: string,
+  ) {
+    return this.eventsService.delete(id, familyId, userId);
   }
 
   @Get('month/:month')
@@ -62,11 +72,13 @@ export class EventsController {
     @Param('month') month: string,
     @Query('year') year: string,
     @Query('familyId') familyId: string,
+    @Query('userId') userId?: string,
   ) {
     return this.eventsService.getEventsByMonth(
       familyId,
-      parseInt(month),
-      parseInt(year),
+      Number.parseInt(month),
+      Number.parseInt(year),
+      userId,
     );
   }
 }
