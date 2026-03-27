@@ -57,7 +57,7 @@ export default function Onboarding({ onComplete }: { readonly onComplete: () => 
       <div className={`absolute top-0 right-[-10%] w-96 h-96 blur-3xl rounded-full transition-all duration-1000 ${slides[currentSlide].bg} opacity-60`} />
 
       <div className="flex-1 flex w-[300%] h-full transition-transform duration-500 ease-out" style={{ transform: `translateX(-${currentSlide * 33.333}%)` }}>
-        {slides.map((slide, i) => (
+        {slides.map((slide) => (
           <div key={slide.id} className="w-[33.333%] h-full flex flex-col items-center justify-center p-8 md:p-12 relative z-10">
             <div className={`w-32 h-32 rounded-[3xl] flex items-center justify-center mb-10 shadow-xl border border-white/40 dark:border-slate-800 ${slide.bg} animate-in zoom-in spin-in-1 duration-700`}>
               {slide.icon}
@@ -74,9 +74,9 @@ export default function Onboarding({ onComplete }: { readonly onComplete: () => 
 
       <div className="p-8 md:p-12 flex flex-col md:flex-row items-center justify-between gap-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md border-t border-slate-100 dark:border-slate-800/50 z-20">
         <div className="flex gap-3">
-          {slides.map((_, i) => (
+          {slides.map((slide, i) => (
             <div 
-              key={i} 
+              key={slide.id} 
               className={`h-2.5 rounded-full transition-all duration-300 ${i === currentSlide ? 'w-8 bg-indigo-600' : 'w-2.5 bg-slate-200 dark:bg-slate-700'}`}
             />
           ))}
