@@ -42,10 +42,8 @@ export default function Calendar() {
   });
 
   const { user, currentFamilyId } = useAuth();
-  const [viewFamilyId, setViewFamilyId] = useState<string>(currentFamilyId || 'all');
   const [creatorId, setCreatorId] = useState<string>(user?.id || '');
-
-  const familyId = viewFamilyId;
+  const familyId = currentFamilyId || '';
 
   const month = currentDate.getMonth() + 1;
   const year = currentDate.getFullYear();
@@ -159,7 +157,7 @@ export default function Calendar() {
     }
 
     const eventDate = new Date(year, month - 1, selectedDate!);
-    const targetFamilyId = editingEvent ? editingEvent.familyId : (viewFamilyId === 'all' ? (formData as any).familyId : familyId);
+    const targetFamilyId = editingEvent ? editingEvent.familyId : familyId;
     
     if (!targetFamilyId) {
       toast.error(language === 'vi' ? 'Vui lòng chọn gia đình' : 'Please select a family');
@@ -222,23 +220,6 @@ export default function Calendar() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Family Filter */}
-          <select
-            value={viewFamilyId}
-            onChange={(e) => {
-              setViewFamilyId(e.target.value);
-              setEventsCache({}); // Clear cache when family changes
-            }}
-            className="flex-1 min-w-[150px] bg-white dark:bg-slate-800 border-none rounded-2xl px-4 py-2.5 text-sm font-bold shadow-sm shadow-indigo-100 hover:shadow-indigo-200 transition-all focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="all">{language === 'vi' ? 'Tất cả gia đình' : 'All Families'}</option>
-            {user?.families?.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl shadow-inner">
             <button 
               onClick={() => setCurrentDate(new Date(year, month - 2, 1))}
@@ -352,11 +333,9 @@ export default function Calendar() {
                                 {getEventIcon(event.type)}
                                 {event.title}
                               </span>
-                              {viewFamilyId === 'all' && event.familyName && (
-                                <span className="text-[7px] md:text-[8px] opacity-60 font-bold truncate">
-                                  {event.familyName}
-                                </span>
-                              )}
+                              <span className="text-[7px] md:text-[8px] opacity-60 font-bold truncate">
+                                {event.familyName}
+                              </span>
                             </span>
                           </div>
                         );
@@ -486,31 +465,6 @@ export default function Calendar() {
             </div>
 
             <div className="space-y-6">
-              {/* Family Selection (Only meaningful when adding new event in "all" view) */}
-              {viewFamilyId === 'all' && !editingEvent && (
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 ml-1">
-                    {language === 'vi' ? 'Gia đình' : 'Family'}
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {user?.families?.map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, familyId: f.id } as any)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
-                          (formData as any).familyId === f.id
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
-                            : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {f.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventTitle')}</label>
                 <input

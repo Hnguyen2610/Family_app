@@ -29,14 +29,13 @@ export default function FamilyMembers() {
   });
 
   const { user, currentFamilyId } = useAuth();
-  const [selectedFamilyId, setSelectedFamilyId] = useState<string>(currentFamilyId || '');
-  const familyId = selectedFamilyId;
+  const familyId = currentFamilyId || '';
 
   useEffect(() => {
-    if (selectedFamilyId) {
+    if (familyId) {
       fetchMembers();
     }
-  }, [selectedFamilyId]);
+  }, [familyId]);
 
   const fetchMembers = async () => {
     setLoading(true);
@@ -156,34 +155,6 @@ export default function FamilyMembers() {
           <h2 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight leading-none">
             Thành <span className="gradient-text">viên</span>
           </h2>
-          <p className="text-slate-400 font-medium text-sm md:text-base">
-            Quản lý những người thân yêu trong tổ ấm của bạn
-          </p>
-        </div>
-        {/* Family Selector */}
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden md:block">Gia đình</span>
-          <select
-            value={selectedFamilyId}
-            onChange={(e) => {
-              setSelectedFamilyId(e.target.value);
-              setEditingMemberId(null);
-              setFormData({ name: '', email: '', role: '', birthday: '' });
-            }}
-            className="bg-indigo-50 dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-800 rounded-2xl px-5 py-3 text-sm font-black text-indigo-700 dark:text-indigo-300 shadow-sm hover:shadow-indigo-200 transition-all focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[180px] cursor-pointer"
-          >
-            {user?.families && user.families.length > 0 ? (
-              user.families.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))
-            ) : (
-              <option value={currentFamilyId || ''}>
-                {(user?.family as any)?.name || 'Gia đình hiện tại'}
-              </option>
-            )}
-          </select>
         </div>
       </div>
 
