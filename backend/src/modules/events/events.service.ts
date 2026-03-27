@@ -38,9 +38,17 @@ export class EventsService {
       }
     });
 
-    // Send notification if scope is FAMILY or GLOBAL
+    // Send notification based on scope
     if (dto.scope === 'FAMILY' || dto.scope === 'GLOBAL') {
       this.notifyFamily(familyId, event);
+    } else if (dto.scope === 'PRIVATE' && event.user?.email) {
+      // Send confirmation email to the creator for private events
+      this.mailService.sendEventNotificationEmail([event.user.email], {
+        title: event.title,
+        date: new Date(event.date).toLocaleDateString('vi-VN'),
+        description: event.description || undefined,
+        creatorName: event.user?.name || 'Bạn',
+      }).catch(e => console.error('Failed to send private event email', e));
     }
 
     return event;
@@ -74,7 +82,7 @@ export class EventsService {
       
       // Filter members based on their granular notification settings
       const filteredMembers = usersToNotify.filter(m => {
-        const settings = (m.notificationSettings as any) || {};
+        const settings = (m.notificationSettings) || {};
         if (Object.keys(settings).length === 0) return true;
         return settings[eventType] !== false;
       });
@@ -107,24 +115,30 @@ export class EventsService {
 
   async findAll(familyId: string, month?: number, year?: number, userId?: string) {
     let events: any[] = [];
-    const hasFamily = familyId && familyId !== 'null' && familyId !== 'undefined' && familyId !== '';
+    const isAll = familyId === 'all';
+    const hasFamily = familyId && familyId !== 'null' && familyId !== 'undefined' && familyId !== '' && !isAll;
 
-    if (hasFamily) {
-      let where: any = { 
+    // To provide family names when viewing all
+    const familiesMap: Record<string, string> = {};
+
+    if (isAll && userId) {
+      events = await this.findAllForUserFamilies(userId, month, year);
+    } else if (hasFamily) {
+      const family = await this.prisma.family.findUnique({ where: { id: familyId } });
+      const familyName = family?.name || 'Gia đình';
+
+      const where: any = {
         OR: [
           { scope: 'GLOBAL' },
           { familyId, scope: 'FAMILY' },
           { familyId, scope: 'PRIVATE', ...(userId ? { createdBy: userId } : { id: 'none' }) },
         ],
       };
-// ... (rest of findAll stays same, cutting for brevity in task but will include in actual call)
 
       if (month && year) {
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0);
         where.date = {
-          gte: startDate,
-          lte: endDate,
+          gte: new Date(year, month - 1, 1),
+          lte: new Date(year, month, 0),
         };
       }
 
@@ -137,101 +151,21 @@ export class EventsService {
           },
         },
       });
+
+      events = events.map((e) => ({ ...e, familyName: e.scope === 'GLOBAL' ? 'Hệ thống' : familyName }));
     } else {
       // Unassigned users see all GLOBAL events + system holidays
-      let where: any = { scope: 'GLOBAL' };
-      events = await this.prisma.event.findMany({ 
-        where, 
-        include: { user: { select: { id: true, name: true, email: true } } } 
+      const where: any = { scope: 'GLOBAL' };
+      events = await this.prisma.event.findMany({
+        where,
+        include: { user: { select: { id: true, name: true, email: true } } },
       });
+      events = events.map((e) => ({ ...e, familyName: 'Hệ thống' }));
     }
 
     if (month && year) {
-      // Automatically include birthdays as virtual events if familyId exists
-      let birthdayEvents: any[] = [];
-      if (hasFamily) {
-        const usersWithBirthdays = await this.prisma.user.findMany({
-          where: {
-            familyId,
-            birthday: { not: null },
-          },
-        });
-
-        birthdayEvents = usersWithBirthdays
-          .filter((user) => {
-            if (!user.birthday) return false;
-            return user.birthday.getUTCMonth() + 1 === month;
-          })
-          .map((user) => ({
-            id: `birthday-${user.id}`,
-            title: `🎂 Sinh nhật ${user.name}`,
-            description: `Chúc mừng sinh nhật ${user.name}!`,
-            date: new Date(year, user.birthday!.getUTCMonth(), user.birthday!.getUTCDate()),
-            type: 'BIRTHDAY',
-            familyId,
-            createdBy: user.id,
-            user: { id: user.id, name: user.name, email: user.email },
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }));
-      }
-
-      // Automatically include global holidays
-      const solarHolidays = [
-        { day: 1, month: 1, title: '🎆 Tết Dương Lịch' },
-        { day: 8, month: 3, title: '💐 Quốc tế Phụ nữ' },
-        { day: 30, month: 4, title: '🇻🇳 Giải phóng Miền Nam' },
-        { day: 1, month: 5, title: '🛠️ Quốc tế Lao động' },
-        { day: 2, month: 9, title: '🇻🇳 Quốc khánh' },
-        { day: 20, month: 10, title: '👩 Phụ nữ Việt Nam' },
-        { day: 20, month: 11, title: '👨‍🏫 Nhà giáo Việt Nam' },
-        { day: 24, month: 12, title: '🎄 Giáng sinh' },
-      ];
-
-      const lunarHolidays = [
-        { day: 1, month: 1, title: '🧨 Tết Nguyên Đán' },
-        { day: 10, month: 3, title: '🏺 Giỗ Tổ Hùng Vương' },
-        { day: 15, month: 8, title: '🥮 Tết Trung Thu' },
-      ];
-
-      const holidayEvents: any[] = [];
-      
-      // Check solar holidays for current month
-      solarHolidays.forEach(h => {
-        if (h.month === month) {
-          holidayEvents.push({
-            id: `holiday-solar-${h.month}-${h.day}`,
-            title: h.title,
-            description: 'Ngày lễ toàn quốc',
-            date: new Date(year, month - 1, h.day),
-            type: 'HOLIDAY',
-            familyId: hasFamily ? familyId : 'system',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
-      });
-
-      // Check lunar holidays for every day in the month
-      const lastDay = new Date(year, month, 0).getDate();
-      for (let d = 1; d <= lastDay; d++) {
-        const solarDate = new Date(year, month - 1, d);
-        const lunar = calculateLunarDate(solarDate); // Returns "d/m"
-        lunarHolidays.forEach(lh => {
-          if (lunar === `${lh.day}/${lh.month}`) {
-            holidayEvents.push({
-              id: `holiday-lunar-${lunar}-${d}`,
-              title: lh.title,
-              description: 'Ngày lễ Âm lịch',
-              date: solarDate,
-              type: 'HOLIDAY',
-              familyId: hasFamily ? familyId : 'system',
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          }
-        });
-      }
+      const birthdayEvents = await this.getBirthdayEvents(isAll ? 'all' : familyId, month, year, userId);
+      const holidayEvents = await this.getHolidayEvents(month, year, hasFamily ? familyId : 'system');
 
       return [...events, ...birthdayEvents, ...holidayEvents].sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -321,7 +255,187 @@ export class EventsService {
     return result;
   }
 
+  private async findAllForUserFamilies(userId: string, month?: number, year?: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { families: { select: { id: true, name: true } } },
+    });
+    
+    const familiesMap: Record<string, string> = {};
+    const familyIds = user?.families.map((f) => f.id) || [];
+    user?.families.forEach((f) => (familiesMap[f.id] = f.name));
+
+    const where: any = {
+      OR: [
+        { scope: 'GLOBAL' },
+        { familyId: { in: familyIds }, scope: 'FAMILY' },
+        { createdBy: userId, scope: 'PRIVATE' },
+      ],
+    };
+
+    if (month && year) {
+      where.date = {
+        gte: new Date(year, month - 1, 1),
+        lte: new Date(year, month, 0),
+      };
+    }
+
+    const events = await this.prisma.event.findMany({
+      where,
+      orderBy: { date: 'asc' },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    return events.map((e) => ({
+      ...e,
+      familyName: familiesMap[e.familyId] || (e.scope === 'GLOBAL' ? 'Hệ thống' : 'Cá nhân'),
+    }));
+  }
+
   async getEventsByMonth(familyId: string, month: number, year: number, userId?: string) {
     return this.findAll(familyId, month, year, userId);
+  }
+
+  private async getBirthdayEvents(familyId: string, month: number, year: number, userId?: string): Promise<any[]> {
+    const isAll = familyId === 'all';
+    let familyIds: string[] = [];
+
+    if (isAll && userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { families: { select: { id: true } } },
+      });
+      familyIds = user?.families.map(f => f.id) || [];
+    } else if (familyId !== 'all' && familyId !== 'system' && familyId !== '') {
+      familyIds = [familyId];
+    } else {
+      return [];
+    }
+
+    const usersWithBirthdays = await this.prisma.user.findMany({
+      where: {
+        families: { some: { id: { in: familyIds } } },
+        birthday: { not: null },
+      },
+      include: { families: { select: { id: true, name: true } } }
+    });
+
+    return usersWithBirthdays
+      .filter((user) => {
+        if (!user.birthday) return false;
+        return user.birthday.getUTCMonth() + 1 === month;
+      })
+      .map((user) => ({
+        id: `birthday-${user.id}`,
+        title: `🎂 Sinh nhật ${user.name}`,
+        description: `Chúc mừng sinh nhật ${user.name}!`,
+        date: new Date(year, user.birthday!.getUTCMonth(), user.birthday!.getUTCDate()),
+        type: 'BIRTHDAY',
+        familyId: user.families[0]?.id,
+        familyName: user.families[0]?.name || 'Gia đình',
+        createdBy: user.id,
+        user: { id: user.id, name: user.name, email: user.email },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+  }
+
+  private async getHolidayEvents(month: number, year: number, familyId: string): Promise<any[]> {
+    const solarHolidays = [
+      { day: 1, month: 1, title: '🎆 Tết Dương Lịch' },
+      { day: 14, month: 2, title: '💘 Lễ Tình Nhân (Valentine)' },
+      { day: 8, month: 3, title: '💐 Quốc tế Phụ nữ' },
+      { day: 26, month: 3, title: '🛡️ Ngày Thành lập Đoàn' },
+      { day: 30, month: 4, title: '🇻🇳 Giải phóng Miền Nam' },
+      { day: 1, month: 5, title: '🛠️ Quốc tế Lao động' },
+      { day: 15, month: 5, title: '🪁 Ngày thành lập Đội' },
+      { day: 19, month: 5, title: '🎂 Ngày sinh Bác Hồ' },
+      { day: 1, month: 6, title: '🎈 Quốc tế Thiếu nhi' },
+      { day: 28, month: 6, title: '🏠 Ngày Gia đình Việt Nam' },
+      { day: 27, month: 7, title: '🕯️ Ngày Thương binh Liệt sĩ' },
+      { day: 19, month: 8, title: '🔥 Cách mạng Tháng Tám' },
+      { day: 2, month: 9, title: '🇻🇳 Quốc khánh' },
+      { day: 10, month: 10, title: '🏘️ Giải phóng Thủ đô' },
+      { day: 20, month: 10, title: '👩 Phụ nữ Việt Nam' },
+      { day: 20, month: 11, title: '👨‍🏫 Nhà giáo Việt Nam' },
+      { day: 22, month: 12, title: '🎖️ Ngày thành lập Quân đội' },
+      { day: 24, month: 12, title: '🎄 Giáng sinh' },
+      { day: 31, month: 12, title: '🎇 Giao thừa Dương lịch' },
+    ];
+
+    const lunarHolidays = [
+      { day: 1, month: 1, title: '🧨 Mùng 1 Tết Nguyên Đán' },
+      { day: 2, month: 1, title: '🧨 Mùng 2 Tết' },
+      { day: 3, month: 1, title: '🧨 Mùng 3 Tết' },
+      { day: 15, month: 1, title: '🏮 Rằm tháng Giêng' },
+      { day: 3, month: 3, title: '🥟 Tết Hàn Thực' },
+      { day: 10, month: 3, title: '🏺 Giỗ Tổ Hùng Vương' },
+      { day: 15, month: 4, title: '☸️ Lễ Phật Đản' },
+      { day: 5, month: 5, title: '🌾 Tết Đoan Ngọ' },
+      { day: 15, month: 7, title: '👻 Lễ Vu Lan / Xá tội vong nhân' },
+      { day: 15, month: 8, title: '🥮 Tết Trung Thu' },
+      { day: 23, month: 12, title: '🐠 Tết Ông Công Ông Táo' },
+    ];
+
+    const holidayEvents: any[] = [];
+    
+    // Solar holidays
+    solarHolidays.forEach(h => {
+      if (h.month === month) {
+        holidayEvents.push({
+          id: `holiday-solar-${h.month}-${h.day}`,
+          title: h.title,
+          description: 'Ngày lễ Dương lịch',
+          date: new Date(year, month - 1, h.day),
+          type: 'HOLIDAY',
+          familyId,
+          familyName: 'Hệ thống',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    });
+
+    // Lunar holidays
+    const lastDay = new Date(year, month, 0).getDate();
+    for (let d = 1; d <= lastDay; d++) {
+      const solarDate = new Date(year, month - 1, d);
+      const lunar = calculateLunarDate(solarDate);
+      lunarHolidays.forEach(lh => {
+        if (lunar === `${lh.day}/${lh.month}`) {
+          holidayEvents.push({
+            id: `holiday-lunar-${lunar}-${d}`,
+            title: lh.title,
+            description: 'Ngày lễ Âm lịch',
+            date: solarDate,
+            type: 'HOLIDAY',
+            familyId,
+            familyName: 'Hệ thống',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+      });
+
+      // Giao Thừa
+      const nextDay = new Date(solarDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const nextLunar = calculateLunarDate(nextDay);
+      if (nextLunar === '1/1') {
+        holidayEvents.push({
+          id: `holiday-lunar-nye-${d}`,
+          title: '🎆 Giao thừa Âm lịch',
+          description: 'Thời khắc chuyển giao năm mới',
+          date: solarDate,
+          type: 'HOLIDAY',
+          familyId,
+          familyName: 'Hệ thống',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    }
+
+    return holidayEvents;
   }
 }

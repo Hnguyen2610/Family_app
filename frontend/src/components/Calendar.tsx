@@ -42,9 +42,10 @@ export default function Calendar() {
   });
 
   const { user, currentFamilyId } = useAuth();
+  const [viewFamilyId, setViewFamilyId] = useState<string>(currentFamilyId || 'all');
   const [creatorId, setCreatorId] = useState<string>(user?.id || '');
 
-  const familyId = currentFamilyId || '';
+  const familyId = viewFamilyId;
 
   const month = currentDate.getMonth() + 1;
   const year = currentDate.getFullYear();
@@ -158,19 +159,26 @@ export default function Calendar() {
     }
 
     const eventDate = new Date(year, month - 1, selectedDate!);
+    const targetFamilyId = editingEvent ? editingEvent.familyId : (viewFamilyId === 'all' ? (formData as any).familyId : familyId);
+    
+    if (!targetFamilyId) {
+      toast.error(language === 'vi' ? 'Vui lòng chọn gia đình' : 'Please select a family');
+      return;
+    }
+
     const payload = {
       ...formData,
       date: eventDate.toISOString(),
-      familyId,
+      familyId: targetFamilyId,
       creatorId,
     };
 
     try {
       if (editingEvent) {
-        await eventsAPI.update(editingEvent.id, familyId, creatorId, payload);
+        await eventsAPI.update(editingEvent.id, targetFamilyId, creatorId, payload);
         toast.success(t('common.success'));
       } else {
-        await eventsAPI.create(familyId, creatorId, payload);
+        await eventsAPI.create(targetFamilyId, creatorId, payload);
         toast.success(t('common.success'));
       }
       setIsModalOpen(false);
@@ -213,7 +221,24 @@ export default function Calendar() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Family Filter */}
+          <select
+            value={viewFamilyId}
+            onChange={(e) => {
+              setViewFamilyId(e.target.value);
+              setEventsCache({}); // Clear cache when family changes
+            }}
+            className="flex-1 min-w-[150px] bg-white dark:bg-slate-800 border-none rounded-2xl px-4 py-2.5 text-sm font-bold shadow-sm shadow-indigo-100 hover:shadow-indigo-200 transition-all focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="all">{language === 'vi' ? 'Tất cả gia đình' : 'All Families'}</option>
+            {user?.families?.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl shadow-inner">
             <button 
               onClick={() => setCurrentDate(new Date(year, month - 2, 1))}
@@ -316,25 +341,22 @@ export default function Calendar() {
                           if (event.type === 'IMPORTANT') return 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30';
                           return 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30';
                         };
-
                         return (
                           <div
                             key={event.id}
                             onClick={(e) => { e.stopPropagation(); openEditModal(event); }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                openEditModal(event);
-                              }
-                            }}
-                            role="button"
-                            tabIndex={0}
                             className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded-lg text-[9px] md:text-[10px] font-black truncate border transition-all hover:scale-105 active:scale-95 ${getEventStyles()}`}
                           >
-                            <span className="flex items-center gap-1">
-                              {getEventIcon(event.type)}
-                              {event.title}
+                            <span className="flex flex-col">
+                              <span className="flex items-center gap-1">
+                                {getEventIcon(event.type)}
+                                {event.title}
+                              </span>
+                              {viewFamilyId === 'all' && event.familyName && (
+                                <span className="text-[7px] md:text-[8px] opacity-60 font-bold truncate">
+                                  {event.familyName}
+                                </span>
+                              )}
                             </span>
                           </div>
                         );
@@ -410,7 +432,12 @@ export default function Calendar() {
                           {getEventIcon(event.type)}
                         </div>
                         <div>
-                          <h4 className="font-black text-sm md:text-lg">{event.title}</h4>
+                          <div className="flex items-center gap-2">
+                             <h4 className="font-black text-sm md:text-lg">{event.title}</h4>
+                             <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/20 text-white/90 border border-white/10 uppercase tracking-tighter">
+                               {event.familyName || t('calendar.scope.family')}
+                             </span>
+                          </div>
                           <p className="text-indigo-100 dark:text-indigo-300 text-[10px] md:text-xs font-bold opacity-70 flex items-center gap-1 uppercase tracking-wide">
                             <FiClock /> {event.time || '09:00'} • {event.type}
                             {event.user?.name && (
@@ -459,6 +486,31 @@ export default function Calendar() {
             </div>
 
             <div className="space-y-6">
+              {/* Family Selection (Only meaningful when adding new event in "all" view) */}
+              {viewFamilyId === 'all' && !editingEvent && (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 ml-1">
+                    {language === 'vi' ? 'Gia đình' : 'Family'}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {user?.families?.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, familyId: f.id } as any)}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
+                          (formData as any).familyId === f.id
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventTitle')}</label>
                 <input

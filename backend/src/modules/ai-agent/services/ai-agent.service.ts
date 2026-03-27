@@ -305,7 +305,7 @@ CRITICAL RULES:
             let eventDate = new Date(args.date);
             if (args.time) {
               const [hours, minutes] = args.time.split(':').map(Number);
-              if (!isNaN(hours) && !isNaN(minutes)) {
+              if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
                 eventDate.setHours(hours, minutes, 0, 0);
               }
             }
@@ -324,7 +324,7 @@ CRITICAL RULES:
             let eventDate = args.date ? new Date(args.date) : undefined;
             if (eventDate && args.time) {
               const [hours, minutes] = args.time.split(':').map(Number);
-              if (!isNaN(hours) && !isNaN(minutes)) {
+              if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
                 eventDate.setHours(hours, minutes, 0, 0);
               }
             }

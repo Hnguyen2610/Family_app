@@ -26,6 +26,17 @@ export default function UserManager() {
     globalRole: 'USER'
   });
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  const getButtonText = () => {
+    if (editingUserId) return isUpdating ? 'Lưu...' : 'Lưu thay đổi';
+    return isCreating ? 'Thêm...' : 'Thêm mới';
+  };
+
+  const getRoleBadgeClass = (role: string) => {
+    if (role === 'SUPER_ADMIN') return 'bg-red-100 text-red-600';
+    if (role === 'ADMIN') return 'bg-amber-100 text-amber-600';
+    return 'bg-indigo-100 text-indigo-600';
+  };
 
   useEffect(() => {
     fetchData();
@@ -40,6 +51,7 @@ export default function UserManager() {
       setUsers(usersRes.data);
       setFamilies(familiesRes.data);
     } catch (error) {
+      console.error('Error fetching data:', error);
       toast.error('Không thể tải dữ liệu');
     } finally {
       setIsLoading(false);
@@ -61,6 +73,7 @@ export default function UserManager() {
       setNewUser({ ...newUser, name: '', email: '', familyIds: [] });
       fetchData();
     } catch (error) {
+      console.error('Error creating user:', error);
       toast.error('Không thể thêm người dùng');
     } finally {
       setIsCreating(false);
@@ -79,6 +92,7 @@ export default function UserManager() {
       setEditingUserId(null);
       fetchData();
     } catch (error) {
+      console.error('Error updating user:', error);
       toast.error('Không thể cập nhật người dùng');
     } finally {
       setIsUpdating(false);
@@ -90,7 +104,7 @@ export default function UserManager() {
     setEditingData({
       name: user.name,
       email: user.email,
-      familyIds: user.families?.map((f: any) => f.familyId) || [],
+      familyIds: user.families?.map((f: any) => f.id) || [],
       role: user.role,
       globalRole: user.globalRole
     });
@@ -103,6 +117,7 @@ export default function UserManager() {
       toast.success('Đã xóa người dùng');
       fetchData();
     } catch (error) {
+      console.error('Error deleting user:', error);
       toast.error('Không thể xóa người dùng');
     }
   };
@@ -190,7 +205,7 @@ export default function UserManager() {
               disabled={isCreating || isUpdating}
               className="flex-1 bg-red-600 text-white px-4 py-2 rounded-2xl font-black hover:bg-red-700 disabled:opacity-50 transition-all shadow-lg shadow-red-100 active:scale-95"
             >
-              {editingUserId ? (isUpdating ? 'Lưu...' : 'Lưu thay đổi') : (isCreating ? 'Thêm...' : 'Thêm mới')}
+              {getButtonText()}
             </button>
             {editingUserId && (
               <button
@@ -246,8 +261,8 @@ export default function UserManager() {
                     <div className="flex flex-wrap gap-1 max-w-[200px]">
                       {u.families && u.families.length > 0 ? (
                         u.families.map((f: any) => (
-                          <span key={f.familyId} className="text-[10px] font-black px-3 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">
-                            {f.family.name}
+                          <span key={f.id} className="text-[10px] font-black px-3 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">
+                            {f.name}
                           </span>
                         ))
                       ) : (
@@ -258,7 +273,7 @@ export default function UserManager() {
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg ${u.globalRole === 'SUPER_ADMIN' ? 'bg-red-100 text-red-600' : u.globalRole === 'ADMIN' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                    <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg ${getRoleBadgeClass(u.globalRole)}`}>
                       {u.globalRole || 'USER'}
                     </span>
                   </td>
