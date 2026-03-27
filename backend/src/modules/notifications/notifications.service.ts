@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { EventsService } from '../events/events.service';
+import { WebPushService } from './web-push.service';
 
 @Injectable()
 export class NotificationsService {
@@ -11,6 +12,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
+    private readonly webPushService: WebPushService,
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
   ) {}
@@ -19,7 +21,7 @@ export class NotificationsService {
 
   async createNotification(userId: string, data: { type: string; title: string; message: string; metadata?: any }) {
     try {
-      return await this.prisma.notification.create({
+      const dbNotification = await this.prisma.notification.create({
         data: {
           userId,
           type: data.type,
@@ -28,6 +30,15 @@ export class NotificationsService {
           metadata: data.metadata || {},
         },
       });
+
+      // Send Web Push
+      await this.webPushService.sendToUser(userId, {
+        title: data.title,
+        body: data.message,
+        url: data.metadata?.path || '/'
+      });
+
+      return dbNotification;
     } catch (e) {
       this.logger.error(`Failed to create notification for user ${userId}`, e);
     }
@@ -93,6 +104,17 @@ export class NotificationsService {
           `[Family Calendar] Tổng hợp sự kiện tháng ${currentMonth}`,
           html,
         );
+
+        // Send Push to everyone
+        for (const user of family.users) {
+          if (user.id) {
+            await this.webPushService.sendToUser(user.id, {
+              title: `📅 Tổng hợp sự kiện tháng ${currentMonth}`,
+              body: `Gia đình ${family.name} có ${events.length} sự kiện sắp diễn ra trong tháng này.`,
+              url: '/calendar'
+            });
+          }
+        }
       }
     }
   }
@@ -134,6 +156,15 @@ export class NotificationsService {
           `[Family Calendar] Nhắc nhở sự kiện hôm nay - ${currentDay}/${currentMonth}`,
           html,
         );
+
+        // Push to family members
+        for (const user of family.users) {
+          await this.webPushService.sendToUser(user.id, {
+            title: `🔔 Nhắc nhở sự kiện hôm nay`,
+            body: `Gia đình bạn có ${todayFamilyEvents.length} sự kiện diễn ra vào hôm nay.`,
+            url: '/calendar'
+          });
+        }
       }
 
       // 2. Send PRIVATE events only to their creators
@@ -162,6 +193,14 @@ export class NotificationsService {
         `[Family Calendar] Nhắc nhở sự kiện cá nhân hôm nay - ${currentDay}/${currentMonth}`,
         html,
       );
+
+      // Send Push notification
+      await this.webPushService.sendToUser(userId, {
+        title: `🔔 Nhắc nhở cá nhân hôm nay`,
+        body: `Bạn có ${events.length} sự kiện cá nhân diễn ra vào hôm nay.`,
+        url: '/calendar'
+      });
+
       this.logger.log(`Sent private event reminder to user ${userId}`);
     }
   }

@@ -36,6 +36,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   notifications Notification[]
+  pushSubscriptions PushSubscription[]
 }
 
 model Family {
@@ -190,3 +191,20 @@ model Notification {
   @@index([userId])
   @@index([createdAt])
 }
+
+// ============================================
+// Web Push Notifications
+// ============================================
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+

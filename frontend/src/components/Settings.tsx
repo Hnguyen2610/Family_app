@@ -5,11 +5,12 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTranslation } from '@/lib/i18n';
 import { 
   FiUser, FiBell, FiMoon, FiGlobe, FiLogOut, FiShield, 
-  FiChevronRight, FiSun, FiMonitor, FiClock, FiCheck, FiX, FiEdit2 
+  FiChevronRight, FiSun, FiMonitor, FiClock, FiCheck, FiX, FiEdit2, FiSmartphone 
 } from 'react-icons/fi';
 import { useState, useEffect } from 'react';
 import { usersAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
+import { useWebPush } from '@/hooks/useWebPush';
 
 interface SettingItemProps {
   readonly icon: React.ReactNode;
@@ -122,6 +123,7 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
   const { user, refreshUser, logout } = useAuth();
   const { t, language } = useTranslation();
   const { theme, setTheme, setLanguage } = useSettingsStore();
+  const { isSupported, isSubscribed, isProcessing, subscribe, unsubscribe } = useWebPush();
 
   const getNotificationValue = () => {
     const hasSettings = user?.notificationSettings && Object.keys(user.notificationSettings as object).length > 0;
@@ -171,6 +173,25 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
             value={getNotificationValue()}
             onClick={() => onNavigate('notifications')}
           />
+          {isSupported && (
+            <SettingItem 
+              icon={<FiSmartphone />} 
+              label={language === 'vi' ? 'Thông báo thiết bị' : 'Device Push'} 
+              value={isProcessing ? (language === 'vi' ? 'Đang xử lý...' : 'Processing...') : (isSubscribed ? (language === 'vi' ? 'Đã bật' : 'Enabled') : (language === 'vi' ? 'Bấm để bật (Khuyên dùng)' : 'Tap to enable'))}
+              onClick={async () => {
+                if (isProcessing) return;
+                let success = false;
+                if (isSubscribed) {
+                  success = await unsubscribe();
+                  if (success) toast.success(language === 'vi' ? 'Đã tắt thông báo' : 'Notifications disabled');
+                } else {
+                  success = await subscribe();
+                  if (success) toast.success(language === 'vi' ? 'Đã bật thông báo' : 'Notifications enabled');
+                  else toast.error(language === 'vi' ? 'Vui lòng cấp quyền thông báo' : 'Please grant permission');
+                }
+              }}
+            />
+          )}
         </div>
       </div>
 

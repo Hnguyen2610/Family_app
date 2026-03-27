@@ -12,27 +12,30 @@ import Settings from '@/components/Settings';
 import NotificationSettings from '@/components/NotificationSettings';
 import ThemeManager from '@/components/ThemeManager';
 import NotificationDropdown from '@/components/NotificationDropdown';
+import Onboarding from '@/components/Onboarding';
+import Dashboard from '@/components/Dashboard';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
 
-type TabType = 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' | 'notifications';
+type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' | 'notifications';
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { user, isAuthenticated, isLoading, currentFamilyId, setCurrentFamilyId } = useAuth();
   const { t } = useTranslation();
 
   const slugTab = params.slug?.[0] as TabType;
-  const activeTab: TabType = slugTab || 'calendar';
+  const activeTab: TabType = slugTab || 'dashboard';
 
   const families = user?.families || [];
   const currentFamily = families.find(f => f.id === currentFamilyId) || user?.family;
 
   const setActiveTab = (tab: TabType) => {
-    router.push('/' + (tab === 'calendar' ? '' : tab));
+    router.push('/' + (tab === 'dashboard' ? '' : tab));
   };
 
   useEffect(() => {
@@ -49,6 +52,13 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (user?.id) {
+      const hasSeen = localStorage.getItem(`has_seen_onboarding_${user.id}`);
+      if (!hasSeen) setShowOnboarding(true);
+    }
+  }, [user?.id]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -64,6 +74,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden transition-colors duration-500">
       <ThemeManager />
+      {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
       
       {/* Background Decorative Elements */}
       <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-100/30 dark:bg-indigo-900/10 rounded-full blur-[120px] -z-10" />
@@ -111,6 +122,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
         <nav className="mt-4 mb-8 z-40 relative px-4">
           <div className="max-w-fit mx-auto">
             <div className="glass p-1 md:p-1.5 rounded-2xl flex gap-1 shadow-indigo-100/10 dark:shadow-none overflow-x-auto no-scrollbar max-w-[92vw]">
+              <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon="🏠" label="Nhà" fullLabel="Trang chủ" />
               <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon="📅" label={t('nav.calendar')} fullLabel={t('nav.calendarFull')} />
               <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon="🤖" label={t('nav.chat')} fullLabel={t('nav.chatFull')} />
               <TabButton active={activeTab === 'family'} onClick={() => setActiveTab('family')} icon="👪" label={t('nav.family')} fullLabel={t('nav.familyFull')} />
@@ -133,7 +145,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               className="flex items-center gap-2 md:gap-3 group cursor-pointer transition-transform active:scale-95 shrink-0" 
               onClick={() => {
                 globalThis.window.scrollTo({ top: 0, behavior: 'smooth' });
-                setActiveTab('calendar');
+                setActiveTab('dashboard');
               }}
             >
               <div className="flex flex-col">
@@ -153,6 +165,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             {/* Navigation Tabs (Centered) */}
             <nav className="flex-1 flex justify-center overflow-x-auto no-scrollbar px-1">
               <div className="bg-muted/50 p-0.5 rounded-xl flex gap-0.5 shadow-inner min-w-max">
+                <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon="🏠" label="Nhà" fullLabel="Trang chủ" isCompact />
                 <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon="📅" label={t('nav.calendar')} fullLabel={t('nav.calendarFull')} isCompact />
                 <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon="🤖" label={t('nav.chat')} fullLabel={t('nav.chatFull')} isCompact />
                 <TabButton active={activeTab === 'family'} onClick={() => setActiveTab('family')} icon="👪" label={t('nav.family')} fullLabel={t('nav.familyFull')} isCompact />
@@ -188,6 +201,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       <main className="max-w-6xl mx-auto px-3 md:px-8 pb-20 md:pb-32 min-h-[60vh] animate-in fade-in slide-in-from-bottom-6 duration-1000">
         <NewMonthModal />
         <div className="glass rounded-[2.5rem] p-4 md:p-12 min-h-[500px] border-white/40 dark:border-slate-800/40 shadow-2xl">
+          {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} />}
           {activeTab === 'calendar' && <Calendar />}
           {activeTab === 'chat' && <Chatbot />}
           {activeTab === 'family' && <FamilyMembers />}

@@ -42,6 +42,15 @@ export default function Chatbot() {
     }
   }, [messages]);
 
+  // Read message from Dashboard Quick Chat
+  useEffect(() => {
+    const pendingMsg = localStorage.getItem('pending_chat_prompt');
+    if (pendingMsg) {
+      setInput(pendingMsg);
+      localStorage.removeItem('pending_chat_prompt');
+    }
+  }, []);
+
   useEffect(() => {
     if (familyId) fetchSessions();
   }, [familyId]);
