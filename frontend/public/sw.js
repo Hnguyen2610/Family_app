@@ -35,3 +35,9 @@ self.addEventListener('notificationclick', function(event) {
     })
   );
 });
+
+// PWA Requirement: A fetch handler is needed for the "Add to Home Screen" prompt to appear.
+// This dummy handler simply passes the request through to the network.
+self.addEventListener('fetch', function (event) {
+  event.respondWith(fetch(event.request));
+});

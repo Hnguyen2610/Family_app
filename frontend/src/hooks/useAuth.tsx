@@ -106,6 +106,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   useEffect(() => {
     const savedUser = localStorage.getItem('family_user');
     const savedFamilyId = localStorage.getItem('family_id');
+    const token = localStorage.getItem('family_token');
     
     if (savedUser) {
       try {
@@ -123,8 +124,13 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
         localStorage.removeItem('family_user');
       }
     }
+    
     setIsLoading(false);
-  }, [setCurrentFamilyId]);
+    
+    if (token) {
+      refreshUser();
+    }
+  }, [setCurrentFamilyId, refreshUser]);
 
   const contextValue = React.useMemo(() => ({
     user,
