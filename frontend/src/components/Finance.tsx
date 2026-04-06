@@ -20,6 +20,20 @@ interface FinanceStatus {
   isOverspent: boolean;
 }
 
+interface MonthlyReport {
+  month: number;
+  year: number;
+  totalIncome: number;
+  totalExpense: number;
+  netSavings: number;
+  categories: {
+    category: string;
+    amount: number;
+    percentage: number;
+  }[];
+  transactionCount: number;
+}
+
 export default function Finance() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<FinanceStatus | null>(null);
@@ -27,15 +41,21 @@ export default function Finance() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [newMonthlyIncome, setNewMonthlyIncome] = useState('');
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [isEditingTransaction, setIsEditingTransaction] = useState(false);
+  const [monthlyReport, setMonthlyReport] = useState<MonthlyReport | null>(null);
+  const [isViewingReport, setIsViewingReport] = useState(false);
 
   const fetchData = async () => {
     try {
-      const [statusRes, txRes] = await Promise.all([
-        api.get('/finance/status'),
-        api.get('/finance/transactions?limit=10')
+      const [statusRes, txRes, reportRes] = await Promise.all([
+        api.get('/api/finance/status'),
+        api.get('/api/finance/transactions?limit=10'),
+        api.get('/api/finance/report')
       ]);
       setStatus(statusRes.data);
       setTransactions(txRes.data);
+      setMonthlyReport(reportRes.data);
     } catch (error) {
       console.error('Failed to fetch finance data:', error);
     } finally {
@@ -49,11 +69,32 @@ export default function Finance() {
 
   const handleUpdateBudget = async () => {
     try {
-      await api.put('/finance/budget', { monthlyIncome: Number(newMonthlyIncome) });
+      await api.put('/api/finance/budget', { monthlyIncome: Number(newMonthlyIncome) });
       setIsEditingBudget(false);
       fetchData();
     } catch (error) {
       alert('Lỗi khi cập nhật ngân sách');
+    }
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa giao dịch này?')) return;
+    try {
+      await api.delete(`/api/finance/transaction/${id}`);
+      fetchData();
+    } catch (error) {
+      alert('Lỗi khi xóa giao dịch');
+    }
+  };
+
+  const handleUpdateTransaction = async () => {
+    if (!editingTransaction) return;
+    try {
+      await api.put(`/api/finance/transaction/${editingTransaction.id}`, editingTransaction);
+      setIsEditingTransaction(false);
+      fetchData();
+    } catch (error) {
+      alert('Lỗi khi cập nhật giao dịch');
     }
   };
 
@@ -168,6 +209,31 @@ export default function Finance() {
         </div>
       </div>
 
+      {/* Monthly Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="glass rounded-3xl p-6 border-emerald-500/10">
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Thu nhập tháng</p>
+          <p className="text-xl font-black text-emerald-500">+{formatCurrency(monthlyReport?.totalIncome || 0)}</p>
+        </div>
+        <div className="glass rounded-3xl p-6 border-red-500/10">
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Chi tiêu tháng</p>
+          <p className="text-xl font-black text-red-400">-{formatCurrency(monthlyReport?.totalExpense || 0)}</p>
+        </div>
+        <div className="glass rounded-3xl p-6 border-indigo-500/10">
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Dư nợ hiện tại</p>
+          <p className={`text-xl font-black ${(monthlyReport?.netSavings || 0) >= 0 ? 'text-indigo-500' : 'text-red-500'}`}>
+            {formatCurrency(monthlyReport?.netSavings || 0)}
+          </p>
+        </div>
+        <button 
+          onClick={() => setIsViewingReport(true)}
+          className="glass rounded-3xl p-6 flex items-center justify-center gap-2 hover:bg-white/10 transition-all font-black text-xs uppercase tracking-widest group"
+        >
+          <span>Xem chi tiết tháng</span>
+          <span className="group-hover:translate-x-1 transition-transform">➡️</span>
+        </button>
+      </div>
+
       {/* Recent Transactions */}
       <div className="glass rounded-[2rem] overflow-hidden border border-white/40 dark:border-slate-800/40">
         <div className="px-8 py-6 border-b border-white/10 flex justify-between items-center">
@@ -177,7 +243,7 @@ export default function Finance() {
         <div className="divide-y divide-white/5">
           {transactions.length > 0 ? (
             transactions.map((tx) => (
-              <div key={tx.id} className="px-8 py-5 flex items-center justify-between hover:bg-white/5 transition-colors group">
+              <div key={tx.id} className="px-8 py-5 flex items-center justify-between hover:bg-white/5 transition-colors group relative">
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-sm border border-white/10 ${tx.type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-400'}`}>
                     {getCategoryIcon(tx.category)}
@@ -194,8 +260,29 @@ export default function Finance() {
                     </div>
                   </div>
                 </div>
-                <div className={`text-right font-black md:text-lg ${tx.type === 'INCOME' ? 'text-emerald-500' : 'text-red-400'}`}>
-                  {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount)}
+                <div className="flex items-center gap-6">
+                  <div className={`text-right font-black md:text-lg ${tx.type === 'INCOME' ? 'text-emerald-500' : 'text-red-400'}`}>
+                    {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </div>
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => {
+                        setEditingTransaction(tx);
+                        setIsEditingTransaction(true);
+                      }}
+                      className="p-2 hover:bg-white/10 rounded-xl text-muted-foreground hover:text-indigo-500 transition-colors"
+                      title="Sửa"
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteTransaction(tx.id)}
+                      className="p-2 hover:bg-white/10 rounded-xl text-muted-foreground hover:text-red-500 transition-colors"
+                      title="Xóa"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -241,6 +328,167 @@ export default function Finance() {
                 >
                   {t('common.save')}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Transaction Modal */}
+      {isEditingTransaction && editingTransaction && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={() => setIsEditingTransaction(false)} />
+          <div className="relative glass rounded-[2.5rem] p-8 md:p-10 w-full max-w-xl shadow-2xl animate-in zoom-in-95 duration-300 border-2 border-indigo-500/20">
+            <h3 className="text-3xl font-black mb-6">Chỉnh sửa giao dịch</h3>
+            
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-muted-foreground ml-1">Số tiền (VNĐ)</label>
+                  <input 
+                    type="number"
+                    className="w-full bg-card/60 border-2 border-border/40 focus:border-indigo-500 rounded-xl px-4 py-3 font-bold outline-none"
+                    value={editingTransaction.amount}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, amount: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-muted-foreground ml-1">Loại</label>
+                  <select 
+                    className="w-full bg-card/60 border-2 border-border/40 focus:border-indigo-500 rounded-xl px-4 py-3 font-bold outline-none"
+                    value={editingTransaction.type}
+                    onChange={(e) => setEditingTransaction({ ...editingTransaction, type: e.target.value as any })}
+                  >
+                    <option value="EXPENSE">Chi tiêu (Expense)</option>
+                    <option value="INCOME">Thu nhập (Income)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground ml-1">Danh mục</label>
+                <select 
+                  className="w-full bg-card/60 border-2 border-border/40 focus:border-indigo-500 rounded-xl px-4 py-3 font-bold outline-none"
+                  value={editingTransaction.category}
+                  onChange={(e) => setEditingTransaction({ ...editingTransaction, category: e.target.value })}
+                >
+                  <option value="FOOD">Ăn uống 🍔</option>
+                  <option value="TRANSPORT">Di chuyển 🚗</option>
+                  <option value="SHOPPING">Mua sắm 🛍️</option>
+                  <option value="UTILITIES">Tiện ích 💡</option>
+                  <option value="RENT">Tiền nhà 🏠</option>
+                  <option value="ENTERTAINMENT">Giải trí 🎬</option>
+                  <option value="HEALTH">Sức khỏe 🏥</option>
+                  <option value="EDUCATION">Giáo dục 📚</option>
+                  <option value="SALARY">Lương 💵</option>
+                  <option value="BONUS">Thưởng 🧧</option>
+                  <option value="INVESTMENT">Đầu tư 📈</option>
+                  <option value="OTHER">Khác 📦</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground ml-1">Mô tả</label>
+                <input 
+                  type="text"
+                  placeholder="Ví dụ: Ăn trưa phở Bát Đàn"
+                  className="w-full bg-card/60 border-2 border-border/40 focus:border-indigo-500 rounded-xl px-4 py-3 font-bold outline-none"
+                  value={editingTransaction.description}
+                  onChange={(e) => setEditingTransaction({ ...editingTransaction, description: e.target.value })}
+                />
+              </div>
+
+              <div className="flex gap-4 pt-6">
+                <button 
+                  onClick={() => setIsEditingTransaction(false)}
+                  className="flex-1 px-6 py-4 bg-muted hover:bg-muted/80 rounded-2xl font-black transition-all active:scale-95"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={handleUpdateTransaction}
+                  className="flex-1 px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black transition-all active:scale-95"
+                >
+                  Lưu thay đổi
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Detailed Report Modal */}
+      {isViewingReport && monthlyReport && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={() => setIsViewingReport(false)} />
+          <div className="relative glass rounded-[2.5rem] p-8 md:p-12 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-300 border-2 border-indigo-500/20">
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h3 className="text-3xl font-black">Chi tiết tháng {monthlyReport.month}/{monthlyReport.year}</h3>
+                <p className="text-muted-foreground font-medium">Báo cáo tóm tắt phân bổ chi tiêu từ đầu tháng đến hiện tại.</p>
+              </div>
+              <button onClick={() => setIsViewingReport(false)} className="text-2xl hover:scale-110 transition-transform">✕</button>
+            </div>
+
+            <div className="space-y-8 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-6">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground pb-2 border-b border-white/10">Phân bổ chi tiêu</h4>
+                  <div className="space-y-4">
+                    {monthlyReport.categories.map((cat) => (
+                      <div key={cat.category} className="space-y-2">
+                        <div className="flex justify-between text-sm font-bold">
+                          <span className="flex items-center gap-2">
+                            <span>{getCategoryIcon(cat.category)}</span>
+                            <span>{cat.category}</span>
+                          </span>
+                          <span>{Math.round(cat.percentage)}%</span>
+                        </div>
+                        <div className="h-2 bg-muted/40 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-indigo-500 rounded-full"
+                            style={{ width: `${cat.percentage}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-right font-bold opacity-60">{formatCurrency(cat.amount)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground pb-2 border-b border-white/10">Thông tin tổng hợp</h4>
+                  <div className="glass p-6 rounded-2xl space-y-4">
+                    <div className="flex justify-between">
+                      <span className="text-xs text-muted-foreground font-bold">Số lượng giao dịch:</span>
+                      <span className="text-xs font-black">{monthlyReport.transactionCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs text-muted-foreground font-bold">Thu nhập:</span>
+                      <span className="text-xs font-black text-emerald-500">+{formatCurrency(monthlyReport.totalIncome)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs text-muted-foreground font-bold">Chi tiêu:</span>
+                      <span className="text-xs font-black text-red-400">-{formatCurrency(monthlyReport.totalExpense)}</span>
+                    </div>
+                    <div className="h-px bg-white/10 my-2" />
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm font-black">Dư nợ:</span>
+                      <span className={`text-xl font-black ${monthlyReport.netSavings >= 0 ? 'text-indigo-500' : 'text-red-500'}`}>
+                        {formatCurrency(monthlyReport.netSavings)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-indigo-600/10 border border-indigo-500/20 p-6 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-2">💡 Gợi ý của AI</p>
+                    <p className="text-[11px] leading-relaxed font-bold italic">
+                      {monthlyReport.netSavings >= 0 
+                        ? "Với tốc độ chi tiêu này, bạn có thể đạt được mục tiêu tiết kiệm đề ra. Hãy duy trì thói quen ghi chép nhé!"
+                        : "Cảnh báo: Chi tiêu đang vượt mức thu nhập. Hãy xem xét lại các danh mục chiếm tỷ trọng lớn để tối ưu hóa."}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

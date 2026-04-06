@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Query, Headers, UnauthorizedException, Logger, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, Param, Headers, UnauthorizedException, Logger, UseGuards, Request } from '@nestjs/common';
 import { FinanceService } from './services/finance.service';
 import { CreateTransactionDto, UpdateBudgetDto } from './dto/finance.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -12,25 +12,48 @@ export class FinanceController {
   @UseGuards(JwtAuthGuard)
   @Get('status')
   async getDailyStatus(@Request() req: any) {
-    return this.financeService.getDailyStats(req.user.userId);
+    return this.financeService.getDailyStats(req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('transactions')
   async getTransactions(@Request() req: any, @Query('limit') limit?: number) {
-    return this.financeService.getRecentTransactions(req.user.userId, limit);
+    return this.financeService.getRecentTransactions(req.user.id, limit);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('report')
+  async getMonthlyReport(@Request() req: any, @Query('month') month?: number, @Query('year') year?: number) {
+    const now = new Date();
+    return this.financeService.getMonthlyReportData(
+      req.user.id, 
+      month || (now.getMonth() + 1), 
+      year || now.getFullYear()
+    );
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('budget')
   async updateBudget(@Request() req: any, @Body() dto: UpdateBudgetDto) {
-    return this.financeService.updateBudget(req.user.userId, dto);
+    return this.financeService.updateBudget(req.user.id, dto);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('transaction')
   async manualTransaction(@Request() req: any, @Body() dto: CreateTransactionDto) {
-    return this.financeService.addTransaction(req.user.userId, dto);
+    return this.financeService.addTransaction(req.user.id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('transaction/:id')
+  async updateTransaction(@Request() req: any, @Param('id') id: string, @Body() dto: CreateTransactionDto) {
+    return this.financeService.updateTransaction(req.user.id, id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('transaction/:id')
+  async deleteTransaction(@Request() req: any, @Param('id') id: string) {
+    return this.financeService.deleteTransaction(req.user.id, id);
   }
 
   /**

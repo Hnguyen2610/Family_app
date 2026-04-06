@@ -5,6 +5,7 @@ import { MailService } from '../mail/mail.service';
 import { EventsService } from '../events/events.service';
 import { WebPushService } from './web-push.service';
 import { AiAgentService } from '../ai-agent/services/ai-agent.service';
+import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
 
 @Injectable()
@@ -18,6 +19,8 @@ export class NotificationsService {
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
     private readonly aiAgentService: AiAgentService,
+    @Inject(forwardRef(() => FinanceService))
+    private readonly financeService: FinanceService,
   ) {}
 
   // --- In-App Notifications ---
@@ -161,6 +164,54 @@ export class NotificationsService {
       }
     }
     this.logger.log(`Monthly summary cron job finished. Processed ${families.length} families.`);
+  }
+
+  // 1.5. Cron Job: 9:00 PM every day - Check for Last Day of Month Finance Report
+  @Cron('0 21 * * *', {
+    name: 'monthly-finance-report',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
+  async sendMonthlyFinanceReport() {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+
+    // If tomorrow is the 1st, then today is the last day of the month
+    if (tomorrow.getDate() !== 1) {
+      this.logger.log('Not the last day of the month. Skipping finance report.');
+      return;
+    }
+
+    this.logger.log('Starting last-day-of-month finance report cron job...');
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    const users = await this.prisma.user.findMany();
+
+    for (const user of users) {
+      try {
+        if (!user.email) continue;
+
+        // Generate Report Data
+        const reportData = await this.financeService.getMonthlyReportData(user.id, month, year);
+
+        if (reportData.transactionCount === 0) continue;
+
+        // Send Email
+        await this.mailService.sendFinanceReportEmail(user.email, user.name, month, year, reportData);
+
+        // Send Push Notification
+        await this.webPushService.sendToUser(user.id, {
+          title: `📊 Báo cáo chi tiêu tháng ${month}`,
+          body: `Tổng kết tháng này: Bạn đã chi ${reportData.totalExpense.toLocaleString('vi-VN')}đ. Xem chi tiết trong email nhé!`,
+          url: '/finance'
+        });
+
+        this.logger.log(`Sent monthly finance report to ${user.name} (${user.email})`);
+      } catch (error) {
+        this.logger.error(`Failed to send finance report to user ${user.id}`, error);
+      }
+    }
   }
 
   // 2. Cron Job: 8:00 AM every day

@@ -35,6 +35,18 @@ export class NotificationsController {
     return { success: true, message: 'Monthly summary triggered' };
   }
 
+  @Get('finance-report')
+  async triggerMonthlyFinanceReport(
+    @Headers('x-vercel-cron-auth') customAuth: string,
+    @Headers('authorization') authHeader: string,
+  ) {
+    this.verifyAuth(customAuth, authHeader);
+    
+    this.logger.log('Manually triggering monthly finance report via Vercel Cron endpoint');
+    await this.notificationsService.sendMonthlyFinanceReport();
+    return { success: true, message: 'Monthly finance report triggered' };
+  }
+
   @Get()
   async getForUser(@Query('userId') userId: string) {
     return this.notificationsService.getForUser(userId);

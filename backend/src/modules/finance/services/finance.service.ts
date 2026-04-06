@@ -48,27 +48,20 @@ export class FinanceService {
   /**
    * Update monthly income and recalculate daily budget
    */
-  async updateBudget(userId: string, dto: UpdateBudgetDto) {
+  async updateBudget(userId: string, dto: UpdateBudgetDto, isIncrement: boolean = false) {
     const now = new Date();
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    const dailyBudget = dto.monthlyIncome / daysInMonth;
+    const budget = await this.getOrCreateBudget(userId);
+    const newMonthlyIncome = isIncrement ? budget.monthlyIncome + dto.monthlyIncome : dto.monthlyIncome;
+    const dailyBudget = newMonthlyIncome / daysInMonth;
 
-    return this.prisma.budget.upsert({
-      where: {
-        userId_month_year: { userId, month, year },
-      },
-      update: {
-        monthlyIncome: dto.monthlyIncome,
-        dailyBudget,
-      },
-      create: {
-        userId,
-        month,
-        year,
-        monthlyIncome: dto.monthlyIncome,
+    return this.prisma.budget.update({
+      where: { id: budget.id },
+      data: {
+        monthlyIncome: newMonthlyIncome,
         dailyBudget,
       },
     });
@@ -111,9 +104,9 @@ export class FinanceService {
       },
     });
 
-    // 3. Handle Salary 自動
+    // 3. Handle Salary 自動 (Incremental)
     if (category === TransactionCategory.SALARY || category === TransactionCategory.BONUS) {
-      await this.updateBudget(userId, { monthlyIncome: dto.amount });
+      await this.updateBudget(userId, { monthlyIncome: dto.amount }, true);
     }
 
     // 4. Check for overspending if it's an expense
@@ -165,6 +158,127 @@ export class FinanceService {
       orderBy: { date: 'desc' },
       take: limit,
     });
+  }
+
+  /**
+   * Update an existing transaction and sync budget if needed
+   */
+  async updateTransaction(userId: string, id: string, dto: CreateTransactionDto) {
+    const oldTx = await this.prisma.transaction.findFirst({
+      where: { id, userId },
+    });
+
+    if (!oldTx) throw new Error('Transaction not found');
+
+    // 1. Calculate budget impact if it's income related
+    const isOldIncome = oldTx.category === TransactionCategory.SALARY || oldTx.category === TransactionCategory.BONUS;
+    const isNewIncome = dto.category === TransactionCategory.SALARY || dto.category === TransactionCategory.BONUS;
+
+    if (isOldIncome || isNewIncome) {
+      const budget = await this.getOrCreateBudget(userId);
+      let incomeDiff = 0;
+
+      if (isOldIncome) incomeDiff -= oldTx.amount;
+      if (isNewIncome) incomeDiff += dto.amount;
+
+      if (incomeDiff !== 0) {
+        await this.updateBudget(userId, { monthlyIncome: incomeDiff }, true);
+      }
+    }
+
+    // 2. Update transaction
+    const transaction = await this.prisma.transaction.update({
+      where: { id },
+      data: {
+        amount: dto.amount,
+        type: dto.type,
+        category: dto.category,
+        description: dto.description,
+        date: dto.date ? new Date(dto.date) : oldTx.date,
+      },
+    });
+
+    // 3. Re-check overspending if it's an expense
+    if (transaction.type === TransactionType.EXPENSE) {
+      await this.checkOverspending(userId);
+    }
+
+    return transaction;
+  }
+
+  /**
+   * Delete a transaction and sync budget if needed
+   */
+  async deleteTransaction(userId: string, id: string) {
+    const oldTx = await this.prisma.transaction.findFirst({
+      where: { id, userId },
+    });
+
+    if (!oldTx) throw new Error('Transaction not found');
+
+    // 1. Revert budget if it was income
+    if (oldTx.category === TransactionCategory.SALARY || oldTx.category === TransactionCategory.BONUS) {
+      await this.updateBudget(userId, { monthlyIncome: -oldTx.amount }, true);
+    }
+
+    // 2. Delete
+    return this.prisma.transaction.delete({
+      where: { id },
+    });
+  }
+
+  /**
+   * Generate monthly report data for a user
+   */
+  async getMonthlyReportData(userId: string, month: number, year: number) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
+    const incomeTxs = transactions.filter(t => t.type === TransactionType.INCOME);
+    const expenseTxs = transactions.filter(t => t.type === TransactionType.EXPENSE);
+
+    const totalIncome = incomeTxs.reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = expenseTxs.reduce((sum, t) => sum + t.amount, 0);
+
+    // Group by category
+    const categoryTotals: Record<string, number> = {};
+    expenseTxs.forEach(t => {
+      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+    });
+
+    const categories = Object.entries(categoryTotals)
+      .map(([category, amount]) => ({
+        category,
+        amount,
+        percentage: totalExpense > 0 ? (amount / totalExpense) * 100 : 0
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // Top transactions
+    const topExpenses = [...expenseTxs]
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+
+    return {
+      month,
+      year,
+      totalIncome,
+      totalExpense,
+      netSavings: totalIncome - totalExpense,
+      categories,
+      topExpenses,
+      transactionCount: transactions.length
+    };
   }
 
   /**
