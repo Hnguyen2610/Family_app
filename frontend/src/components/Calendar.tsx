@@ -39,6 +39,9 @@ export default function Calendar() {
     type: 'GENERAL',
     time: '09:00',
     scope: 'GLOBAL',
+    isRecurring: false,
+    recurring: 'NONE',
+    useLunar: false,
   });
 
   const { user, currentFamilyId } = useAuth();
@@ -134,6 +137,9 @@ export default function Calendar() {
       type: 'GENERAL',
       time: '09:00',
       scope: 'GLOBAL',
+      isRecurring: false,
+      recurring: 'NONE',
+      useLunar: false,
     });
     setIsModalOpen(true);
   };
@@ -146,6 +152,9 @@ export default function Calendar() {
       type: event.type,
       time: event.time || '09:00',
       scope: event.scope,
+      isRecurring: event.isRecurring || false,
+      recurring: event.recurring?.replace('LUNAR_', '') || 'NONE',
+      useLunar: event.recurring?.startsWith('LUNAR_') || false,
     });
     setIsModalOpen(true);
   };
@@ -164,11 +173,15 @@ export default function Calendar() {
       return;
     }
 
+    const finalRecurring = formData.useLunar && (formData.recurring === 'MONTHLY' || formData.recurring === 'YEARLY')
+      ? `LUNAR_${formData.recurring}`
+      : formData.recurring;
+
     const payload = {
       ...formData,
       date: eventDate.toISOString(),
-      familyId: targetFamilyId,
-      creatorId,
+      isRecurring: formData.recurring !== 'NONE',
+      recurring: finalRecurring,
     };
 
     try {
@@ -482,25 +495,55 @@ export default function Calendar() {
                   <select
                     value={formData.type}
                     onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                    className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent outline-none text-slate-700 dark:text-slate-200 font-bold"
+                    className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-600 dark:focus:ring-indigo-500 outline-none transition-all text-slate-700 dark:text-slate-200 font-bold"
                   >
                     <option value="GENERAL">{t('calendar.type.general')}</option>
                     <option value="HOLIDAY">{t('calendar.type.holiday')}</option>
                     <option value="BIRTHDAY">{t('calendar.type.birthday')}</option>
                     <option value="ANNIVERSARY">{t('calendar.type.anniversary')}</option>
-                    <option value="TASK">{t('calendar.type.task')}</option>
                     <option value="APPOINTMENT">{t('calendar.type.appointment')}</option>
+                    <option value="TASK">{t('calendar.type.task')}</option>
                   </select>
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventTime')}</label>
-                  <input
-                    type="time"
-                    value={formData.time}
-                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                    className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent outline-none text-slate-700 dark:text-slate-200 font-bold"
-                  />
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.recurring')}</label>
+                  <select
+                    value={formData.recurring}
+                    onChange={(e) => setFormData({ ...formData, recurring: e.target.value })}
+                    className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-600 dark:focus:ring-indigo-500 outline-none transition-all text-slate-700 dark:text-slate-200 font-bold"
+                  >
+                    <option value="NONE">{t('calendar.recurring.none')}</option>
+                    <option value="WEEKLY">{t('calendar.recurring.weekly')}</option>
+                    <option value="MONTHLY">{t('calendar.recurring.monthly')}</option>
+                    <option value="YEARLY">{t('calendar.recurring.yearly')}</option>
+                  </select>
                 </div>
+              </div>
+
+              {(formData.recurring === 'MONTHLY' || formData.recurring === 'YEARLY') && (
+                <div className="flex items-center space-x-3 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/30">
+                  <input
+                    type="checkbox"
+                    id="useLunar"
+                    checked={formData.useLunar}
+                    onChange={(e) => setFormData({ ...formData, useLunar: e.target.checked })}
+                    className="w-5 h-5 rounded-lg border-indigo-300 text-indigo-600 focus:ring-indigo-500 transition-all cursor-pointer"
+                  />
+                  <label htmlFor="useLunar" className="text-sm font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer select-none">
+                    {t('calendar.useLunar')}
+                  </label>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{t('calendar.eventTime')}</label>
+                <input
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-600 dark:focus:ring-indigo-500 outline-none transition-all text-slate-700 dark:text-slate-200 font-bold"
+                />
               </div>
 
               <div className="space-y-2">

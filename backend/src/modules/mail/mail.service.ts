@@ -97,6 +97,7 @@ export class MailService {
         </div>
         <p>Hãy truy cập lịch để xem chi tiết và chuẩn bị nhé!</p>
         <div style="text-align: center; margin-top: 30px;">
+        <div style="text-align: center; margin-top: 30px;">
           <a href="${frontendUrl}" style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 12px; font-weight: bold;">Xem trên Lịch</a>
         </div>
         <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
@@ -104,5 +105,31 @@ export class MailService {
       </div>
     `;
     return this.sendMail(emails, subject, html);
+  }
+
+  async sendHoroscopeEmail(email: string, name: string, horoscope: string) {
+    const subject = `🔮 Tử vi ngày mới cho ${name}`;
+    const html = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #1e1b4b; color: #f8fafc; border-radius: 20px; overflow: hidden; border: 2px solid #f59e0b;">
+        <div style="padding: 40px 20px; text-align: center; background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);">
+          <div style="font-size: 50px; margin-bottom: 10px;">🔮</div>
+          <h1 style="margin: 0; color: #f59e0b; letter-spacing: 2px; text-transform: uppercase; font-size: 24px;">Tử Vi Ngày Mới</h1>
+          <p style="color: #94a3b8; margin-top: 10px;">Dành riêng cho Super Admin <b>${name}</b></p>
+        </div>
+        
+        <div style="padding: 30px; line-height: 1.6; font-size: 16px; background-color: rgba(255, 255, 255, 0.03);">
+          <div style="color: #cbd5e1;">
+            ${horoscope}
+          </div>
+        </div>
+
+        <div style="padding: 20px; text-align: center; background-color: #1e1b4b; border-top: 1px solid rgba(245, 158, 11, 0.2);">
+          <p style="margin: 0; font-size: 14px; color: #94a3b8;">"Vận mệnh nằm trong tay bạn, các vì sao chỉ dẫn lối."</p>
+          <hr style="margin: 20px 0; border: 0; border-top: 1px solid rgba(245, 158, 11, 0.1);" />
+          <p style="font-size: 11px; color: #64748b;">© 2026 Family Calendar AI Assistant • Thông tin mang tính chất tham khảo chiêm nghiệm.</p>
+        </div>
+      </div>
+    `;
+    return this.sendMail(email, subject, html);
   }
 }

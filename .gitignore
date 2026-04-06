@@ -11,3 +11,7 @@ out/
 *.log
 coverage/
 .nyc_output
+.gitnexus
+.claude
+CLAUDE.md
+AGENTS.md

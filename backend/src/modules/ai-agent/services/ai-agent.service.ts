@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { OpenAI } from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatService } from './chat.service';
@@ -14,7 +14,9 @@ export class AiAgentService {
 
   constructor(
     private readonly chatService: ChatService,
+    @Inject(forwardRef(() => MealsService))
     private readonly mealsService: MealsService,
+    @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
     private readonly prisma: PrismaService,
   ) {
@@ -110,6 +112,19 @@ export class AiAgentService {
                 enum: ['PRIVATE', 'FAMILY', 'GLOBAL'],
                 description: 'Scope/Privacy of the event. Use PRIVATE for personal tasks, FAMILY for family events.',
               },
+              isRecurring: {
+                type: 'boolean',
+                description: 'Whether the event is recurring',
+              },
+              recurring: {
+                type: 'string',
+                enum: ['NONE', 'WEEKLY', 'MONTHLY', 'YEARLY'],
+                description: 'Recurrence frequency. Use MONTHLY/YEARLY with useLunar for traditional events.',
+              },
+              useLunar: {
+                type: 'boolean',
+                description: 'Whether to use Vietnamese Lunar calendar for recurrence (MONTHLY/YEARLY only).',
+              },
             },
             required: ['title', 'date'],
           },
@@ -133,6 +148,9 @@ export class AiAgentService {
                 enum: ['BIRTHDAY', 'ANNIVERSARY', 'HOLIDAY', 'APPOINTMENT', 'TASK', 'GENERAL'],
                 description: 'New type',
               },
+              isRecurring: { type: 'boolean' },
+              recurring: { type: 'string', enum: ['NONE', 'WEEKLY', 'MONTHLY', 'YEARLY'] },
+              useLunar: { type: 'boolean' },
             },
             required: ['id', 'familyId'],
           },
@@ -227,6 +245,10 @@ CRITICAL RULES:
 - When user asks "giá vàng" or "gold price", call getGoldPrice immediately.
 - When user asks to create an event, call createEvent immediately.
 - When the user mentions a birthday, use type BIRTHDAY.
+- For Vietnamese traditions:
+    * "Rằm" = 15th Lunar day. Use recurring: 'MONTHLY', useLunar: true.
+    * "Mùng 1" = 1st Lunar day. Use recurring: 'MONTHLY', useLunar: true.
+    * "Giỗ" = Yearly Lunar anniversary. Use recurring: 'YEARLY', useLunar: true.
 - If the user gives a date like "21/3", convert it to ${today.substring(0, 4)}-MM-DD format.
 - Always respond in the same language as the user.
 - After calling a tool, present the results clearly and naturally.`;
@@ -317,6 +339,11 @@ CRITICAL RULES:
               time: args.time || '09:00',
               type: args.type || 'GENERAL',
               scope: args.scope || 'FAMILY',
+              isRecurring: !!args.isRecurring || args.recurring !== 'NONE',
+              recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY') 
+                ? `LUNAR_${args.recurring}` 
+                : args.recurring,
+              useLunar: args.useLunar,
             });
             return { success: true, event };
           } else if (toolName === 'updateEvent') {
@@ -336,6 +363,11 @@ CRITICAL RULES:
               time: args.time,
               type: args.type,
               scope: args.scope,
+              isRecurring: args.isRecurring,
+              recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY') 
+                ? `LUNAR_${args.recurring}` 
+                : args.recurring,
+              useLunar: args.useLunar,
             });
             return { success: true, result };
           } else {
@@ -655,6 +687,38 @@ CRITICAL RULES:
       res.write(`data: ${JSON.stringify({ content: 'Lỗi AI.' })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
+    }
+  }
+
+  async generateHoroscope(userName: string, birthday?: Date): Promise<string> {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const model = this.gemini.getGenerativeModel({ 
+        model: 'gemini-flash-latest',
+        systemInstruction: 'Bạn là chuyên gia Tử Vi và Chiêm Tinh học hàng đầu. Nhiệm vụ của bạn là đưa ra dự đoán chi tiết ngày mới cho người dùng dựa trên thông tin cá nhân của họ.'
+      });
+
+      const birthdayInfo = birthday ? `sinh ngày ${birthday.toISOString().split('T')[0]}` : 'chưa rõ ngày sinh (hãy đưa ra dự đoán chung dựa trên năng lượng ngày hôm nay)';
+      
+      const prompt = `Hôm nay là ngày ${today}. Hãy viết một bản tin tử vi chi tiết cho người dùng tên là ${userName}, ${birthdayInfo}. 
+      Yêu cầu bản tin phải thật chi tiết, hành văn chuyên nghiệp, huyền bí nhưng gần gũi.
+      Bản tin phải bao gồm các mục sau:
+      1. 🌟 Tổng quan ngày mới: Năng lượng chủ đạo.
+      2. 💼 Sự nghiệp & Công việc: Những cơ hội hoặc thách thức cần lưu ý.
+      3. 💰 Tài lộc: Tình hình tài chính, có nên đầu tư hay không.
+      4. ❤️ Tình duyên & Mối quan hệ: Cách giao tiếp với người thân, bạn đời.
+      5. 🍏 Sức khỏe: Lời khuyên về vận động, ăn uống.
+      6. 🎐 Lời khuyên may mắn: Con số, màu sắc hoặc hành động đem lại may mắn.
+
+      Hãy trình bày dưới dạng HTML nhẹ (sử dụng các thẻ <b>, <p>, <br>).`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      return text || 'Không thể tạo bản tin tử vi lúc này.';
+    } catch (e) {
+      console.error('Horoscope Generation Error:', e);
+      return 'Xin lỗi, các vì sao hôm nay đang bị che khuất, tôi chưa thể đưa ra dự đoán.';
     }
   }
 }

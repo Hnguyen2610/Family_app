@@ -4,6 +4,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { EventsService } from '../events/events.service';
 import { WebPushService } from './web-push.service';
+import { AiAgentService } from '../ai-agent/services/ai-agent.service';
+import { getLunarDateObject } from '../../utils/lunar-calendar.util';
 
 @Injectable()
 export class NotificationsService {
@@ -15,6 +17,7 @@ export class NotificationsService {
     private readonly webPushService: WebPushService,
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
+    private readonly aiAgentService: AiAgentService,
   ) {}
 
   // --- In-App Notifications ---
@@ -72,6 +75,43 @@ export class NotificationsService {
     });
   }
 
+  // 0. Cron Job: 7:00 AM every day - Super Admin Horoscope
+  @Cron('0 7 * * *', {
+    name: 'super-admin-horoscope',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
+  async sendSuperAdminDailyHoroscope() {
+    this.logger.log('Starting Super Admin daily horoscope cron job...');
+    try {
+      const superAdmins = await this.prisma.user.findMany({
+        where: { globalRole: 'SUPER_ADMIN' },
+      });
+
+      this.logger.log(`Found ${superAdmins.length} Super Admins to process.`);
+
+      for (const admin of superAdmins) {
+        // Generate Horoscope using AI (Gemini)
+        const horoscope = await this.aiAgentService.generateHoroscope(admin.name, admin.birthday || undefined);
+        
+        // Send Email
+        await this.mailService.sendHoroscopeEmail(admin.email, admin.name, horoscope);
+
+        // Send Push Notification
+        await this.createNotification(admin.id, {
+          type: 'HOROSCOPE',
+          title: '🔮 Tử vi ngày mới',
+          message: 'Bản tin tử vi ngày mới của bạn đã sẵn sàng! Chúc bạn một ngày tốt lành.',
+          metadata: { path: '/profile' }
+        });
+
+        this.logger.log(`Successfully sent daily horoscope to ${admin.name} (${admin.email})`);
+      }
+    } catch (error) {
+      this.logger.error('Error in Super Admin daily horoscope cron job', error);
+    }
+    this.logger.log('Super Admin daily horoscope cron job finished.');
+  }
+
   // --- Cron Jobs & Email Notifications ---
   @Cron('0 8 1 * *', {
     name: 'monthly-summary',
@@ -86,6 +126,8 @@ export class NotificationsService {
     const families = await this.prisma.family.findMany({
       include: { users: true },
     });
+
+    this.logger.log(`Found ${families.length} families to process for monthly summary.`);
 
     for (const family of families) {
       const emails = family.users
@@ -104,6 +146,7 @@ export class NotificationsService {
           `[Family Calendar] Tổng hợp sự kiện tháng ${currentMonth}`,
           html,
         );
+        this.logger.log(`Sent monthly summary to ${emails.length} users in family "${family.name}"`);
 
         // Send Push to everyone
         for (const user of family.users) {
@@ -117,6 +160,7 @@ export class NotificationsService {
         }
       }
     }
+    this.logger.log(`Monthly summary cron job finished. Processed ${families.length} families.`);
   }
 
   // 2. Cron Job: 8:00 AM every day
@@ -135,6 +179,11 @@ export class NotificationsService {
       include: { users: true },
     });
 
+    const lunarNow = getLunarDateObject(now);
+    const isMungMot = lunarNow.day === 1;
+    const isRam = lunarNow.day === 15;
+    const lunarSpecialMsg = isMungMot ? "Hôm nay là Mùng 1 Âm lịch. Chúc gia đình tháng mới an lành!" : isRam ? "Hôm nay là ngày Rằm Âm lịch (15/12). Chúc gia đình vạn sự hanh thông!" : "";
+
     // Track users who already received private event emails to avoid duplicates
     const privateEmailsSent = new Map<string, any[]>();
 
@@ -149,19 +198,24 @@ export class NotificationsService {
         (e) => new Date(e.date).getDate() === currentDay && e.scope !== 'PRIVATE',
       );
 
-      if (todayFamilyEvents.length > 0 && familyEmails.length > 0) {
-        const html = this.buildDailyEmailHtml(family.name, todayFamilyEvents);
+      if ((todayFamilyEvents.length > 0 || isMungMot || isRam) && familyEmails.length > 0) {
+        const html = this.buildDailyEmailHtml(family.name, todayFamilyEvents, lunarSpecialMsg);
         await this.mailService.sendMail(
           familyEmails,
+          isMungMot ? `[Family Calendar] Chúc mừng Mùng 1 tháng mới - ${currentDay}/${currentMonth}` : 
+          isRam ? `[Family Calendar] Nhắc nhở ngày Rằm - ${currentDay}/${currentMonth}` :
           `[Family Calendar] Nhắc nhở sự kiện hôm nay - ${currentDay}/${currentMonth}`,
           html,
         );
 
         // Push to family members
         for (const user of family.users) {
+          const pushTitle = isMungMot ? `🌙 Mùng 1 Âm lịch` : isRam ? `🌕 Nhắc nhở ngày Rằm` : `🔔 Nhắc nhở sự kiện hôm nay`;
+          const pushBody = lunarSpecialMsg || `Gia đình bạn có ${todayFamilyEvents.length} sự kiện diễn ra vào hôm nay.`;
+          
           await this.webPushService.sendToUser(user.id, {
-            title: `🔔 Nhắc nhở sự kiện hôm nay`,
-            body: `Gia đình bạn có ${todayFamilyEvents.length} sự kiện diễn ra vào hôm nay.`,
+            title: pushTitle,
+            body: pushBody,
             url: '/calendar'
           });
         }
@@ -266,7 +320,13 @@ export class NotificationsService {
     `;
   }
 
-  private buildDailyEmailHtml(familyName: string, events: any[]): string {
+  private buildDailyEmailHtml(familyName: string, events: any[], specialMsg?: string): string {
+    const specialHeader = specialMsg ? `
+      <div style="margin-bottom: 25px; padding: 15px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; color: #92400e; text-align: center;">
+        <span style="font-size: 1.2em;">🌟</span> <strong style="font-size: 1.1em;">${specialMsg}</strong>
+      </div>
+    ` : '';
+
     // Group events by category
     const categories: Record<string, any[]> = {};
     events.forEach(e => {
@@ -300,7 +360,8 @@ export class NotificationsService {
     return `
       <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #10b981; text-align: center;">Chào ngày mới, gia đình ${familyName}!</h2>
-        <p style="text-align: center;">Đừng quên hôm nay chúng ta có các sự kiện quan trọng sau:</p>
+        ${specialHeader}
+        ${events.length > 0 ? `<p style="text-align: center;">Đừng quên hôm nay chúng ta có các sự kiện quan trọng sau:</p>` : ''}
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
         ${sections}
         <br/>

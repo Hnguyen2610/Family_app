@@ -12,9 +12,11 @@ export class NotificationsController {
   ) {}
 
   @Get('daily')
-  async triggerDailyReminder(@Headers('x-vercel-cron-auth') authHeader: string) {
-    // Basic security using a custom header or environment variable
-    this.verifyAuth(authHeader);
+  async triggerDailyReminder(
+    @Headers('x-vercel-cron-auth') customAuth: string,
+    @Headers('authorization') authHeader: string,
+  ) {
+    this.verifyAuth(customAuth, authHeader);
     
     this.logger.log('Manually triggering daily reminder via Vercel Cron endpoint');
     await this.notificationsService.sendDailyReminder();
@@ -22,8 +24,11 @@ export class NotificationsController {
   }
 
   @Get('monthly')
-  async triggerMonthlySummary(@Headers('x-vercel-cron-auth') authHeader: string) {
-    this.verifyAuth(authHeader);
+  async triggerMonthlySummary(
+    @Headers('x-vercel-cron-auth') customAuth: string,
+    @Headers('authorization') authHeader: string,
+  ) {
+    this.verifyAuth(customAuth, authHeader);
     
     this.logger.log('Manually triggering monthly summary via Vercel Cron endpoint');
     await this.notificationsService.sendMonthlySummary();
@@ -93,11 +98,22 @@ export class NotificationsController {
     return { success: true };
   }
 
-  private verifyAuth(authHeader: string) {
+  private verifyAuth(customAuth: string, authHeader: string) {
     const cronSecret = process.env.CRON_SECRET || 'family-cron-secret-2026';
-    if (authHeader !== cronSecret) {
-      this.logger.warn('Unauthorized attempt to trigger cron endpoint');
-      throw new UnauthorizedException('Invalid cron secret');
+    
+    // Check custom header
+    if (customAuth === cronSecret) return;
+    
+    // Check standard Authorization header (Bearer token)
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      if (token === cronSecret) return;
     }
+    
+    // Check if Authorization header is just the secret itself
+    if (authHeader === cronSecret) return;
+
+    this.logger.warn('Unauthorized attempt to trigger cron endpoint (missing or invalid credentials)');
+    throw new UnauthorizedException('Invalid cron secret');
   }
 }

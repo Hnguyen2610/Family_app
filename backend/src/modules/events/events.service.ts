@@ -1,7 +1,7 @@
 import { Injectable, Inject, forwardRef, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEventDto, UpdateEventDto } from './dto/event.dto';
-import { calculateLunarDate } from '../../utils/lunar-calendar.util';
+import { calculateLunarDate, getLunarDateObject, getSolarDateFromLunar } from '../../utils/lunar-calendar.util';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -22,7 +22,7 @@ export class EventsService {
     }
 
     // Extract extra fields that shouldn't be spread directly into Prisma data
-    const { creatorId, ...eventData } = dto as any;
+    const { creatorId: _c, familyId: _f, ...eventData } = dto as any;
 
     const event = await this.prisma.event.create({
       data: {
@@ -118,31 +118,34 @@ export class EventsService {
     const isAll = familyId === 'all';
     const hasFamily = familyId && familyId !== 'null' && familyId !== 'undefined' && familyId !== '' && !isAll;
 
-    // To provide family names when viewing all
-    const familiesMap: Record<string, string> = {};
-
     if (isAll && userId) {
       events = await this.findAllForUserFamilies(userId, month, year);
     } else if (hasFamily) {
       const family = await this.prisma.family.findUnique({ where: { id: familyId } });
       const familyName = family?.name || 'Gia đình';
 
+      const startOfMonth = month && year ? new Date(year, month - 1, 1) : null;
+      const endOfMonth = month && year ? new Date(year, month, 0, 23, 59, 59) : null;
+
       const where: any = {
-        OR: [
-          { scope: 'GLOBAL' },
-          { familyId, scope: 'FAMILY' },
-          { familyId, scope: 'PRIVATE', ...(userId ? { createdBy: userId } : { id: 'none' }) },
-        ],
+        AND: [
+          {
+            OR: [
+              { scope: 'GLOBAL' },
+              { familyId, scope: 'FAMILY' },
+              { familyId, scope: 'PRIVATE' },
+            ],
+          }
+        ]
       };
 
-      if (month && year) {
-        where.date = {
-          gte: new Date(year, month - 1, 1),
-          lte: new Date(year, month, 0),
-        };
+      // Add conditional filters to where.AND[0].OR
+      // If private, ensure user owns it
+      if (userId) {
+        // userId is provided, we can filter correctly
       }
 
-      events = await this.prisma.event.findMany({
+      const eventsResult = await this.prisma.event.findMany({
         where,
         orderBy: { date: 'asc' },
         include: {
@@ -152,15 +155,30 @@ export class EventsService {
         },
       });
 
-      events = events.map((e) => ({ ...e, familyName: e.scope === 'GLOBAL' ? 'Hệ thống' : familyName }));
+      // Map and filter by scope/user access manually to simplify query
+      events = eventsResult
+        .filter(e => {
+          if (e.scope === 'PRIVATE' && e.createdBy !== userId) return false;
+          if (e.familyId !== familyId && e.scope !== 'GLOBAL') return false;
+          return true;
+        })
+        .map((e) => ({ ...e, familyName: e.scope === 'GLOBAL' ? 'Hệ thống' : familyName }));
+
+      // Expand recurring and filter by date
+      if (month && year) {
+        events = this.expandRecurringEvents(events, month, year);
+      }
     } else {
-      // Unassigned users see all GLOBAL events + system holidays
       const where: any = { scope: 'GLOBAL' };
       events = await this.prisma.event.findMany({
         where,
         include: { user: { select: { id: true, name: true, email: true } } },
       });
       events = events.map((e) => ({ ...e, familyName: 'Hệ thống' }));
+
+      if (month && year) {
+        events = this.expandRecurringEvents(events, month, year);
+      }
     }
 
     if (month && year) {
@@ -175,9 +193,119 @@ export class EventsService {
     return events;
   }
 
+  private expandRecurringEvents(events: any[], month: number, year: number): any[] {
+    const expanded: any[] = [];
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59);
+
+    for (const event of events) {
+      if (!event.isRecurring) {
+        // Keep non-recurring events if they are in the month
+        const d = new Date(event.date);
+        if (d >= startOfMonth && d <= endOfMonth) {
+          expanded.push(event);
+        }
+        continue;
+      }
+
+      // Handle Recurring Events
+      const startDate = new Date(event.date);
+      if (startDate > endOfMonth) continue; // Not started yet
+
+      const type = event.recurring?.toUpperCase() || 'NONE';
+
+      if (type === 'WEEKLY') {
+        const current = new Date(startDate);
+        while (current < startOfMonth) {
+          current.setDate(current.getDate() + 7);
+        }
+        while (current <= endOfMonth) {
+          expanded.push({
+            ...event,
+            id: `${event.id}_${current.getTime()}`,
+            date: new Date(current),
+            isInstance: true,
+            originalId: event.id
+          });
+          current.setDate(current.getDate() + 7);
+        }
+      } else if (type === 'MONTHLY') {
+        const dayOfMonth = startDate.getDate();
+        const instanceDate = new Date(year, month - 1, dayOfMonth);
+        if (instanceDate.getDate() === dayOfMonth && instanceDate >= startDate && instanceDate <= endOfMonth) {
+           expanded.push({
+            ...event,
+            id: `${event.id}_${instanceDate.getTime()}`,
+            date: instanceDate,
+            isInstance: true,
+            originalId: event.id
+          });
+        }
+      } else if (type === 'LUNAR_MONTHLY') {
+        // Find solar date in target month where lunar day matches the original lunar day
+        const originalLunarDay = event.lunarDate?.split('/')[0];
+        if (originalLunarDay) {
+          const lDay = parseInt(originalLunarDay, 10);
+          for (let d = new Date(startOfMonth); d <= endOfMonth; d.setDate(d.getDate() + 1)) {
+            const lDate = getLunarDateObject(d);
+            if (lDate.day === lDay && d >= startDate) {
+              expanded.push({
+                ...event,
+                id: `${event.id}_${d.getTime()}`,
+                date: new Date(d),
+                isInstance: true,
+                originalId: event.id,
+                lunarDate: `${lDate.day}/${lDate.month}`
+              });
+            }
+          }
+        }
+      } else if (type === 'YEARLY') {
+        if (startDate.getMonth() === month - 1) {
+          const instanceDate = new Date(year, month - 1, startDate.getDate());
+          if (instanceDate >= startDate && instanceDate <= endOfMonth) {
+            expanded.push({
+              ...event,
+              id: `${event.id}_${instanceDate.getTime()}`,
+              date: instanceDate,
+              isInstance: true,
+              originalId: event.id
+            });
+          }
+        }
+      } else if (type === 'LUNAR_YEARLY') {
+        // Find solar date in target year where lunar day/month matches the original lunar date
+        const parts = event.lunarDate?.split('/');
+        if (parts && parts.length >= 2) {
+          const lDay = parseInt(parts[0], 10);
+          const lMonth = parseInt(parts[1], 10);
+          const solarDate = getSolarDateFromLunar(lDay, lMonth, year);
+          if (solarDate && solarDate >= startDate && solarDate >= startOfMonth && solarDate <= endOfMonth) {
+            expanded.push({
+              ...event,
+              id: `${event.id}_${solarDate.getTime()}`,
+              date: solarDate,
+              isInstance: true,
+              originalId: event.id,
+              lunarDate: `${lDay}/${lMonth}`
+            });
+          }
+        }
+      } else {
+        if (startDate >= startOfMonth && startDate <= endOfMonth) {
+          expanded.push(event);
+        }
+      }
+    }
+
+    return expanded;
+  }
+
   async findById(id: string, familyId: string, userId?: string) {
+    // If it's a virtual ID from a recurring instance, get the base ID
+    const baseId = id.split('_')[0];
     const event = await this.prisma.event.findFirst({
-      where: { id, familyId },
+      where: { id: baseId, familyId },
       include: {
         user: {
           select: { id: true, name: true, email: true },
@@ -196,14 +324,31 @@ export class EventsService {
   }
 
   async update(id: string, familyId: string, userId: string, dto: UpdateEventDto) {
+    const baseId = id.split('_')[0];
     let lunarDate = dto.lunarDate;
     if (!lunarDate && dto.date) {
       lunarDate = calculateLunarDate(new Date(dto.date));
     }
 
-    const { creatorId: _c, familyId: _f, ...updateData } = dto as any;
+    const { creatorId: _c, familyId: _f, useLunar: _u, ...updateData } = dto as any;
+
+    // Check if user has permission (is creator or is admin)
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const isAdmin = 
+      user.globalRole === 'ADMIN' || 
+      user.globalRole === 'SUPER_ADMIN' || 
+      user.role?.toLowerCase() === 'admin' ||
+      user.role?.toLowerCase() === 'super_admin';
+
+    const where: any = { id: baseId, familyId };
+    if (!isAdmin) {
+      where.createdBy = userId;
+    }
+
     const result = await this.prisma.event.updateMany({
-      where: { id, familyId: familyId, createdBy: userId },
+      where,
       data: {
         ...updateData,
         lunarDate,
@@ -212,7 +357,7 @@ export class EventsService {
 
     if (result.count > 0 && dto.scope === 'FAMILY') {
       const updatedEvent = await this.prisma.event.findUnique({
-        where: { id },
+        where: { id: baseId },
         include: {
           user: {
             select: { name: true, email: true }
@@ -228,6 +373,7 @@ export class EventsService {
   }
 
   async delete(id: string, familyId: string, userId: string) {
+    const baseId = id.split('_')[0];
     // Check if user has permission (is creator or is admin)
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -239,7 +385,7 @@ export class EventsService {
       user.role?.toLowerCase() === 'super_admin';
     
     // If not admin, the record must have been created by the user
-    const where: any = { id, familyId };
+    const where: any = { id: baseId, familyId };
     if (!isAdmin) {
       where.createdBy = userId;
     }
@@ -273,23 +419,22 @@ export class EventsService {
       ],
     };
 
-    if (month && year) {
-      where.date = {
-        gte: new Date(year, month - 1, 1),
-        lte: new Date(year, month, 0),
-      };
-    }
-
     const events = await this.prisma.event.findMany({
       where,
       orderBy: { date: 'asc' },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
 
-    return events.map((e) => ({
+    let mappedEvents = events.map((e) => ({
       ...e,
       familyName: familiesMap[e.familyId] || (e.scope === 'GLOBAL' ? 'Hệ thống' : 'Cá nhân'),
     }));
+
+    if (month && year) {
+      mappedEvents = this.expandRecurringEvents(mappedEvents, month, year);
+    }
+
+    return mappedEvents;
   }
 
   async getEventsByMonth(familyId: string, month: number, year: number, userId?: string) {

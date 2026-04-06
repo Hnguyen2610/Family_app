@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AiAgentController } from './ai-agent.controller';
 import { AiAgentService } from './services/ai-agent.service';
 import { ChatService } from './services/chat.service';
@@ -7,7 +7,7 @@ import { MealsModule } from '../meals/meals.module';
 import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [PrismaModule, MealsModule, EventsModule],
+  imports: [PrismaModule, forwardRef(() => MealsModule), forwardRef(() => EventsModule)],
   controllers: [AiAgentController],
   providers: [AiAgentService, ChatService],
   exports: [AiAgentService, ChatService],
