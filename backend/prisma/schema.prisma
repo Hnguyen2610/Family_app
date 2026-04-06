@@ -37,6 +37,8 @@ model User {
 
   notifications Notification[]
   pushSubscriptions PushSubscription[]
+  transactions Transaction[]
+  budgets      Budget[]
 }
 
 model Family {
@@ -208,3 +210,64 @@ model PushSubscription {
   @@index([userId])
 }
 
+// ============================================
+// Finance & Budgeting
+// ============================================
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount      Float
+  type        TransactionType @default(EXPENSE)
+  category    TransactionCategory @default(OTHER)
+  description String?
+  date        DateTime @default(now())
+  
+  // PayOS specific metadata
+  reference   String?  @unique // Bank reference number
+  paymentId   String?  @unique // PayOS payment ID
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
+}
+
+model Budget {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  monthlyIncome Float    @default(0)
+  dailyBudget   Float    @default(0)
+  month         Int
+  year          Int
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, month, year])
+  @@index([userId])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionCategory {
+  FOOD            // Ăn uống
+  TRANSPORT       // Di chuyển
+  SHOPPING        // Mua sắm
+  UTILITIES       // Tiền điện/nước/mạng
+  RENT            // Tiền nhà
+  ENTERTAINMENT   // Giải trí
+  HEALTH          // Sức khỏe
+  EDUCATION       // Giáo dục
+  SALARY          // Lương (Income)
+  BONUS           // Thưởng (Income)
+  INVESTMENT      // Đầu tư
+  OTHER           // Khác
+}

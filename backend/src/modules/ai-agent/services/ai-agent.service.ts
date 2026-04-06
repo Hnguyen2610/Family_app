@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Inject, forwardRef, Logger } from '@nestjs/common';
 import { OpenAI } from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatService } from './chat.service';
@@ -9,6 +9,7 @@ import { getSolarDateFromLunar } from '../../../utils/lunar-calendar.util';
 
 @Injectable()
 export class AiAgentService {
+  private readonly logger = new Logger(AiAgentService.name);
   private readonly openai: OpenAI;
   private readonly gemini: GoogleGenerativeAI;
 
@@ -719,6 +720,45 @@ CRITICAL RULES:
     } catch (e) {
       console.error('Horoscope Generation Error:', e);
       return 'Xin lỗi, các vì sao hôm nay đang bị che khuất, tôi chưa thể đưa ra dự đoán.';
+    }
+  }
+
+  /**
+   * Categorize a transaction description using AI
+   */
+  async categorizeTransaction(description: string): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
+    const prompt = `Phân loại giao dịch ngân hàng Việt Nam. 
+Danh mục: FOOD, TRANSPORT, SHOPPING, UTILITIES, RENT, ENTERTAINMENT, HEALTH, EDUCATION, SALARY, BONUS, INVESTMENT, OTHER.
+
+Nội dung giao dịch: "${description}"
+
+QUY TẮC PHÂN LOẠI:
+- Nếu có "LUONG", "SALARY", "THU NHAP", "BANK_TRANSFER_IN", "CHUYEN KHOAN DEN", "THANH TOAN LUONG" -> SALARY và INCOME.
+- Nếu có "THUONG", "BONUS" -> BONUS và INCOME.
+- Nếu có "AN", "UONG", "CAFE", "PHO", "COM", "TIEM", "NHÀ HÀNG" -> FOOD và EXPENSE.
+- Nếu có "GRAB", "BE", "TAXI", "XANG", "PETROL", "XE" -> TRANSPORT và EXPENSE.
+- Nếu có "SHOPPE", "LAZADA", "TIKI", "MUA", "SHOP" -> SHOPPING và EXPENSE.
+- Nếu có "TIEN DIEN", "TIEN NUOC", "WIFI", "INTERNET", "DIEN THOAI" -> UTILITIES và EXPENSE.
+
+Trả về JSON duy nhất: {"category": "CATEGORY_NAME", "type": "INCOME" | "EXPENSE"}`;
+
+    try {
+      const model = this.gemini.getGenerativeModel({ model: 'gemini-flash-latest' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response.text();
+      this.logger.debug(`Gemini Categorization Raw Response for "${description}": ${response}`);
+      
+      const jsonMatch = response.match(/\{.*\}/s);
+      const jsonStr = jsonMatch ? jsonMatch[0] : response;
+      const parsed = JSON.parse(jsonStr);
+      
+      return {
+        category: (parsed.category || 'OTHER').toUpperCase(),
+        type: (parsed.type || 'EXPENSE').toUpperCase() as any
+      };
+    } catch (error) {
+      console.error('AI Categorization Error:', error);
+      return { category: 'OTHER', type: 'EXPENSE' };
     }
   }
 }

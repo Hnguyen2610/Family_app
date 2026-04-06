@@ -14,12 +14,13 @@ import ThemeManager from '@/components/ThemeManager';
 import NotificationDropdown from '@/components/NotificationDropdown';
 import Onboarding from '@/components/Onboarding';
 import Dashboard from '@/components/Dashboard';
+import Finance from '@/components/Finance';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
 
-type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' | 'notifications';
+type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'admin' | 'settings' | 'notifications';
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
   const [showOnboarding, setShowOnboarding] = useState(false);
   const { user, isAuthenticated, isLoading, currentFamilyId, setCurrentFamilyId } = useAuth();
   const { t } = useTranslation();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const slugTab = params.slug?.[0] as TabType;
   const activeTab: TabType = slugTab || 'dashboard';
@@ -82,6 +84,15 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
 
       {/* Main static header area */}
       <div className={`transition-opacity duration-300 min-h-[280px] md:min-h-[350px] ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <div className="absolute top-4 left-4 md:top-8 md:left-8 z-50">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="w-12 h-12 md:w-16 md:h-16 glass rounded-2xl flex items-center justify-center text-xl md:text-3xl hover:bg-white/10 active:scale-90 transition-all shadow-xl shadow-indigo-500/10 border-white/20"
+          >
+            ☰
+          </button>
+        </div>
+
         <header className="pt-8 md:pt-16 pb-4 md:pb-8 relative z-10 text-center">
           <div className="absolute top-4 right-4 md:top-8 md:right-8 flex items-center gap-4">
              {/* Family Selection (Optional if multiple) */}
@@ -117,65 +128,39 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             </div>
           )}
         </header>
-
-        {/* Regular nav bar */}
-        <nav className="mt-4 mb-8 z-40 relative px-4">
-          <div className="max-w-fit mx-auto">
-            <div className="glass p-1 md:p-1.5 rounded-2xl flex gap-1 shadow-indigo-100/10 dark:shadow-none overflow-x-auto no-scrollbar max-w-[92vw]">
-              <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon="🏠" label="Nhà" fullLabel="Trang chủ" />
-              <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon="📅" label={t('nav.calendar')} fullLabel={t('nav.calendarFull')} />
-              <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon="🤖" label={t('nav.chat')} fullLabel={t('nav.chatFull')} />
-              <TabButton active={activeTab === 'family'} onClick={() => setActiveTab('family')} icon="👪" label={t('nav.family')} fullLabel={t('nav.familyFull')} />
-              <TabButton active={activeTab === 'meals'} onClick={() => setActiveTab('meals')} icon="🍽️" label={t('nav.meals')} fullLabel={t('nav.mealsFull')} color="orange" />
-              {user?.globalRole === 'SUPER_ADMIN' && (
-                <TabButton active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} icon="🛡️" label={t('nav.admin')} fullLabel={t('nav.admin')} color="red" />
-              )}
-              <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon="⚙️" label={t('nav.settings')} fullLabel={t('nav.settings')} />
-            </div>
-          </div>
-        </nav>
       </div>
 
       {/* Sticky Bar */}
       <div className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 border-b border-border/60 ${isScrolled ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'}`}>
         <header className="bg-background/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-2 md:px-8 py-2 md:py-2.5 flex justify-between items-center gap-2 md:gap-4">
-            {/* Logo Left */}
+            {/* Menu Left (Sticky) */}
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="w-10 h-10 bg-card/60 backdrop-blur-md rounded-xl flex items-center justify-center text-xl hover:bg-card/90 active:scale-95 transition-all border border-border/40 shrink-0"
+            >
+              ☰
+            </button>
+
+            {/* Logo Center */}
             <div 
-              className="flex items-center gap-2 md:gap-3 group cursor-pointer transition-transform active:scale-95 shrink-0" 
+              className="flex-1 flex justify-center items-center gap-2 group cursor-pointer transition-transform active:scale-95 shrink-0" 
               onClick={() => {
                 globalThis.window.scrollTo({ top: 0, behavior: 'smooth' });
                 setActiveTab('dashboard');
               }}
             >
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-card rounded-xl flex items-center justify-center shadow-sm border border-border/40">
-                    <span className="text-lg">👨‍👩‍👧‍👦</span>
-                  </div>
-                  <div className="hidden sm:block">
-                    <h1 className="text-sm font-black tracking-tighter leading-tight">
-                      Family <span className="gradient-text">Calendar</span>
-                    </h1>
-                  </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-card rounded-xl flex items-center justify-center shadow-sm border border-border/40">
+                  <span className="text-lg">👨‍👩‍👧‍👦</span>
+                </div>
+                <div className="hidden sm:block text-left">
+                  <h1 className="text-sm font-black tracking-tighter leading-tight">
+                    Family <span className="gradient-text">Calendar</span>
+                  </h1>
                 </div>
               </div>
             </div>
-
-            {/* Navigation Tabs (Centered) */}
-            <nav className="flex-1 flex justify-center overflow-x-auto no-scrollbar px-1">
-              <div className="bg-muted/50 p-0.5 rounded-xl flex gap-0.5 shadow-inner min-w-max">
-                <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon="🏠" label="Nhà" fullLabel="Trang chủ" isCompact />
-                <TabButton active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon="📅" label={t('nav.calendar')} fullLabel={t('nav.calendarFull')} isCompact />
-                <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon="🤖" label={t('nav.chat')} fullLabel={t('nav.chatFull')} isCompact />
-                <TabButton active={activeTab === 'family'} onClick={() => setActiveTab('family')} icon="👪" label={t('nav.family')} fullLabel={t('nav.familyFull')} isCompact />
-                <TabButton active={activeTab === 'meals'} onClick={() => setActiveTab('meals')} icon="🍽️" label={t('nav.meals')} fullLabel={t('nav.mealsFull')} color="orange" isCompact />
-                {user?.globalRole === 'SUPER_ADMIN' && (
-                  <TabButton active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} icon="🛡️" label={t('nav.admin')} fullLabel={t('nav.admin')} color="red" isCompact />
-                )}
-                <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon="⚙️" label={t('nav.settings')} fullLabel={t('nav.settings')} isCompact />
-              </div>
-            </nav>
 
             {/* Shortcut */}
             <div className="shrink-0 items-center flex gap-2 md:gap-4">
@@ -196,7 +181,6 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
         </header>
       </div>
 
-
       {/* Content Area */}
       <main className="max-w-6xl mx-auto px-3 md:px-8 pb-20 md:pb-32 min-h-[60vh] animate-in fade-in slide-in-from-bottom-6 duration-1000">
         <NewMonthModal />
@@ -206,6 +190,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           {activeTab === 'chat' && <Chatbot />}
           {activeTab === 'family' && <FamilyMembers />}
           {activeTab === 'meals' && <MealPlanner />}
+          {activeTab === 'finance' && <Finance />}
           {activeTab === 'admin' && <AdminDashboard />}
           {activeTab === 'settings' && <Settings onNavigate={setActiveTab} />}
           {activeTab === 'notifications' && <NotificationSettings onBack={() => setActiveTab('settings')} />}
@@ -220,43 +205,138 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           </p>
         </div>
       </footer>
+
+      {/* Premium Sidebar Overlay */}
+      <div className={`fixed inset-0 z-[200] transition-all duration-500 ${isSidebarOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+        {/* Backdrop */}
+        <div 
+          className={`absolute inset-0 bg-background/40 backdrop-blur-md transition-opacity duration-500 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => setIsSidebarOpen(false)}
+        />
+        
+        {/* Sidebar Panel */}
+        <aside 
+          className={`absolute top-0 left-0 h-full w-72 md:w-80 bg-background/80 backdrop-blur-2xl border-r border-white/20 dark:border-slate-800/20 shadow-[20px_0_50px_rgba(0,0,0,0.1)] transition-transform duration-500 ease-out flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        >
+          {/* Sidebar Header */}
+          <div className="p-8 pb-4 flex justify-between items-center">
+            <h3 className="text-2xl font-black gradient-text">Menu Family</h3>
+            <button 
+              onClick={() => setIsSidebarOpen(false)}
+              className="w-10 h-10 rounded-xl bg-card hover:bg-card/80 flex items-center justify-center text-xl active:scale-90 transition-all border border-border/40"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* User Profile Summary */}
+          <div className="px-8 py-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center text-2xl shadow-lg">👤</div>
+              <div className="flex flex-col">
+                <span className="font-black text-sm">{user?.name}</span>
+                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{currentFamily?.name}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation List */}
+          <nav className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
+            <SidebarItem 
+              active={activeTab === 'dashboard'} 
+              onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} 
+              icon="🏠" 
+              label="Trang chủ" 
+            />
+            <SidebarItem 
+              active={activeTab === 'calendar'} 
+              onClick={() => { setActiveTab('calendar'); setIsSidebarOpen(false); }} 
+              icon="📅" 
+              label={t('nav.calendarFull')} 
+            />
+            <SidebarItem 
+              active={activeTab === 'chat'} 
+              onClick={() => { setActiveTab('chat'); setIsSidebarOpen(false); }} 
+              icon="🤖" 
+              label={t('nav.chatFull')} 
+            />
+            <SidebarItem 
+              active={activeTab === 'family'} 
+              onClick={() => { setActiveTab('family'); setIsSidebarOpen(false); }} 
+              icon="👪" 
+              label={t('nav.familyFull')} 
+            />
+            <SidebarItem 
+              active={activeTab === 'meals'} 
+              onClick={() => { setActiveTab('meals'); setIsSidebarOpen(false); }} 
+              icon="🍽️" 
+              label={t('nav.mealsFull')} 
+              color="orange"
+            />
+            <SidebarItem 
+              active={activeTab === 'finance'} 
+              onClick={() => { setActiveTab('finance'); setIsSidebarOpen(false); }} 
+              icon="💰" 
+              label={t('nav.financeFull')} 
+              color="green"
+            />
+            {user?.globalRole === 'SUPER_ADMIN' && (
+              <SidebarItem 
+                active={activeTab === 'admin'} 
+                onClick={() => { setActiveTab('admin'); setIsSidebarOpen(false); }} 
+                icon="🛡️" 
+                label="Quản trị" 
+                color="red"
+              />
+            )}
+            <div className="pt-4 mt-4 border-t border-border/40">
+              <SidebarItem 
+                active={activeTab === 'settings'} 
+                onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }} 
+                icon="⚙️" 
+                label={t('nav.settings')} 
+              />
+            </div>
+          </nav>
+
+          {/* Sidebar Footer */}
+          <div className="p-8 text-center opacity-40">
+             <p className="text-[10px] font-black uppercase tracking-[0.2em]">Family v2.0</p>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
 
-function TabButton({ 
+function SidebarItem({ 
   active, 
   onClick, 
   icon, 
   label, 
-  fullLabel, 
-  color = 'indigo',
-  isCompact = false
-}: {
-  readonly active: boolean;
-  readonly onClick: () => void;
-  readonly icon: string;
-  readonly label: string;
-  readonly fullLabel: string;
-  readonly color?: 'indigo' | 'orange' | 'red';
-  readonly isCompact?: boolean;
+  color = 'indigo' 
+}: { 
+  active: boolean; 
+  onClick: () => void; 
+  icon: string; 
+  label: string;
+  color?: 'indigo' | 'orange' | 'green' | 'red';
 }) {
   const colorClasses = {
-    indigo: active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none' : 'text-slate-500 hover:bg-card hover:text-indigo-600',
-    orange: active ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-none' : 'text-slate-500 hover:bg-card hover:text-orange-500',
-    red: active ? 'bg-red-600 text-white shadow-lg shadow-red-200 dark:shadow-none' : 'text-slate-500 hover:bg-card hover:text-red-600',
+    indigo: active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none translate-x-2' : 'hover:bg-card hover:translate-x-2',
+    orange: active ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-none translate-x-2' : 'hover:bg-card hover:translate-x-2',
+    green: active ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-none translate-x-2' : 'hover:bg-card hover:translate-x-2',
+    red: active ? 'bg-red-600 text-white shadow-lg shadow-red-200 dark:shadow-none translate-x-2' : 'hover:bg-card hover:translate-x-2',
   };
 
   return (
     <button
       onClick={onClick}
-      className={`flex items-center justify-center gap-1 md:gap-2 rounded-xl font-black transition-all duration-300 shrink-0 ${
-        isCompact ? 'px-2 md:px-5 py-1.5 md:py-2 text-[10px] md:text-xs' : 'px-3 md:px-8 py-1.5 md:py-3 text-xs md:text-sm'
-      } ${colorClasses[color]}`}
+      className={`w-full flex items-center gap-4 px-6 py-4 rounded-[1.25rem] font-black transition-all duration-300 group ${colorClasses[color]}`}
     >
-      <span className="text-base md:text-lg">{icon}</span>
-      <span className="hidden sm:inline-block">{fullLabel}</span>
-      <span className="sm:hidden inline-block">{label}</span>
+      <span className="text-2xl group-active:scale-125 transition-transform">{icon}</span>
+      <span className="text-sm tracking-tight">{label}</span>
     </button>
   );
 }
+

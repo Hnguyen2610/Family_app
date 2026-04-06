@@ -12,6 +12,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FamiliesModule } from './modules/families/families.module';
+import { FinanceModule } from './modules/finance/finance.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FamiliesModule } from './modules/families/families.module';
     AiAgentModule,
     UsersModule,
     FamiliesModule,
+    FinanceModule,
     ScheduleModule.forRoot(),
     MailModule,
     NotificationsModule,
