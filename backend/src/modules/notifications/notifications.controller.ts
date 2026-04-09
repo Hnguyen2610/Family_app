@@ -18,9 +18,15 @@ export class NotificationsController {
   ) {
     this.verifyAuth(customAuth, authHeader);
     
-    this.logger.log('Manually triggering daily reminder via Vercel Cron endpoint');
+    this.logger.log('Manually triggering daily reminder & horoscope via Vercel Cron endpoint');
+    
+    // Trigger Super Admin Horoscope
+    await this.notificationsService.sendSuperAdminDailyHoroscope();
+    
+    // Trigger Family Daily Reminders
     await this.notificationsService.sendDailyReminder();
-    return { success: true, message: 'Daily reminder triggered' };
+    
+    return { success: true, message: 'Daily reminder and horoscope triggered' };
   }
 
   @Get('monthly')
