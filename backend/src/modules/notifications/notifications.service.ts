@@ -78,8 +78,8 @@ export class NotificationsService {
     });
   }
 
-  // 0. Cron Job: 7:00 AM every day - Super Admin Horoscope
-  @Cron('0 7 * * *', {
+  // 0. Cron Job: 6:00 AM every day - Super Admin Horoscope
+  @Cron('0 6 * * *', {
     name: 'super-admin-horoscope',
     timeZone: 'Asia/Ho_Chi_Minh',
   })
@@ -214,8 +214,8 @@ export class NotificationsService {
     }
   }
 
-  // 2. Cron Job: 8:00 AM every day
-  @Cron('0 8 * * *', {
+  // 2. Cron Job: 6:00 AM every day
+  @Cron('0 6 * * *', {
     name: 'daily-reminder',
     timeZone: 'Asia/Ho_Chi_Minh',
   })
