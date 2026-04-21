@@ -122,7 +122,8 @@ export class NotificationsService {
   })
   async sendMonthlySummary() {
     this.logger.log('Starting monthly summary cron job...');
-    const now = new Date();
+    // Use proper ICT local date 
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const currentMonth = now.getMonth() + 1; // 1-12
     const currentYear = now.getFullYear();
 
@@ -172,7 +173,8 @@ export class NotificationsService {
     timeZone: 'Asia/Ho_Chi_Minh',
   })
   async sendMonthlyFinanceReport() {
-    const now = new Date();
+    // Use proper ICT local date
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
 
@@ -221,7 +223,8 @@ export class NotificationsService {
   })
   async sendDailyReminder() {
     this.logger.log('Starting daily reminder cron job...');
-    const now = new Date();
+    // Use proper ICT local date
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
     const currentDay = now.getDate();

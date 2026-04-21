@@ -19,7 +19,7 @@ export class AiAgentService {
     private readonly mealsService: MealsService,
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
-    private readonly prisma: PrismaService,
+    private readonly prisma: PrismaService
   ) {
     this.openai = new OpenAI({
       apiKey: process.env.GROQ_API_KEY,
@@ -35,7 +35,8 @@ export class AiAgentService {
         type: 'function' as const,
         function: {
           name: 'generateFamilyMenu',
-          description: 'Generates a random, balanced family menu (Main Course, Vegetable, Soup) based on family preferences and recent history.',
+          description:
+            'Generates a random, balanced family menu (Main Course, Vegetable, Soup) based on family preferences and recent history.',
           parameters: {
             type: 'object' as const,
             properties: {},
@@ -47,7 +48,8 @@ export class AiAgentService {
         type: 'function' as const,
         function: {
           name: 'getGoldPrice',
-          description: 'Fetch real-time gold prices in Vietnam (SJC, XAUUSD) in VND and USD. MUST be called when user asks about gold price, giá vàng, or precious metal prices.',
+          description:
+            'Fetch real-time gold prices in Vietnam (SJC, XAUUSD) in VND and USD. MUST be called when user asks about gold price, giá vàng, or precious metal prices.',
           parameters: {
             type: 'object' as const,
             properties: {},
@@ -88,7 +90,8 @@ export class AiAgentService {
         type: 'function' as const,
         function: {
           name: 'createEvent',
-          description: 'Create a new event in the family calendar. Use ONLY when the user explicitly asks to "tạo", "thêm", or "lên lịch" an event. NEVER use this tool automatically if the user just asks for information or a reading.',
+          description:
+            'Create a new event in the family calendar. Use ONLY when the user explicitly asks to "tạo", "thêm", or "lên lịch" an event. NEVER use this tool automatically if the user just asks for information or a reading.',
           parameters: {
             type: 'object' as const,
             properties: {
@@ -111,7 +114,8 @@ export class AiAgentService {
               scope: {
                 type: 'string',
                 enum: ['PRIVATE', 'FAMILY', 'GLOBAL'],
-                description: 'Scope/Privacy of the event. Use PRIVATE for personal tasks, FAMILY for family events.',
+                description:
+                  'Scope/Privacy of the event. Use PRIVATE for personal tasks, FAMILY for family events.',
               },
               isRecurring: {
                 type: 'boolean',
@@ -120,11 +124,13 @@ export class AiAgentService {
               recurring: {
                 type: 'string',
                 enum: ['NONE', 'WEEKLY', 'MONTHLY', 'YEARLY'],
-                description: 'Recurrence frequency. Use MONTHLY/YEARLY with useLunar for traditional events.',
+                description:
+                  'Recurrence frequency. Use MONTHLY/YEARLY with useLunar for traditional events.',
               },
               useLunar: {
                 type: 'boolean',
-                description: 'Whether to use Vietnamese Lunar calendar for recurrence (MONTHLY/YEARLY only).',
+                description:
+                  'Whether to use Vietnamese Lunar calendar for recurrence (MONTHLY/YEARLY only).',
               },
             },
             required: ['title', 'date'],
@@ -135,7 +141,8 @@ export class AiAgentService {
         type: 'function' as const,
         function: {
           name: 'updateEvent',
-          description: 'Update an existing event. Use this to change title, date, or description of an event.',
+          description:
+            'Update an existing event. Use this to change title, date, or description of an event.',
           parameters: {
             type: 'object' as const,
             properties: {
@@ -176,7 +183,8 @@ export class AiAgentService {
         type: 'function' as const,
         function: {
           name: 'getSolarDateFromLunar',
-          description: 'Convert a lunar date (day/month) to a solar date for a specific year. Use this when the user asks for a lunar date, like "9 tháng 3 âm".',
+          description:
+            'Convert a lunar date (day/month) to a solar date for a specific year. Use this when the user asks for a lunar date, like "9 tháng 3 âm".',
           parameters: {
             type: 'object' as const,
             properties: {
@@ -193,20 +201,24 @@ export class AiAgentService {
 
   private getGeminiTools() {
     const tools = this.getTools();
-    return [{
-      functionDeclarations: tools.map((t) => ({
-        name: t.function.name,
-        description: t.function.description,
-        parameters: t.function.parameters as any,
-      })),
-    }];
+    return [
+      {
+        functionDeclarations: tools.map((t) => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters as any,
+        })),
+      },
+    ];
   }
 
   private getSystemPrompt(familyInfo: string = ''): string {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    // Shift by 7 hours to use UTC methods safely for ICT
+    const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const today = ictDate.toISOString().split('T')[0];
     const days = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-    const dayName = days[now.getDay()];
+    const dayName = days[ictDate.getUTCDay()];
 
     return `You are a helpful family assistant AI. Today's date is ${today} (${dayName}).
 You have access to tools that you MUST use to help the user. Never say you cannot do something if a tool exists for it.
@@ -276,17 +288,17 @@ CRITICAL RULES:
       if (match) {
         const mimeType = match[1];
         const data = match[2];
-        const model = this.gemini.getGenerativeModel({ model: "gemini-flash-latest" });
+        const model = this.gemini.getGenerativeModel({ model: 'gemini-flash-latest' });
         const result = await model.generateContent([
           'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
-          { inlineData: { data, mimeType } }
+          { inlineData: { data, mimeType } },
         ]);
         const desc = result.response.text();
         if (desc) {
           finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
         }
       } else {
-         finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
+        finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
       }
     } catch (visionError: any) {
       console.error('Vision processing error:', visionError);
@@ -301,25 +313,25 @@ CRITICAL RULES:
     args: any,
     familyId: string,
     userId: string,
-    userIds: string[] = [],
+    userIds: string[] = []
   ): Promise<any> {
     try {
       console.log(`Executing tool: ${toolName}`, args);
       switch (toolName) {
         case 'generateFamilyMenu':
           return await this.mealsService.generateFamilyMenu(familyId);
-  
+
         case 'getGoldPrice':
           return await this.getGoldPrice();
-  
+
         case 'getEventsByMonth':
           return await this.eventsService.getEventsByMonth(
             args.familyId || familyId,
             args.month,
             args.year,
-            args.userId || userId,
+            args.userId || userId
           );
-  
+
         case 'createEvent':
         case 'updateEvent':
         case 'deleteEvent': {
@@ -341,9 +353,10 @@ CRITICAL RULES:
               type: args.type || 'GENERAL',
               scope: args.scope || 'FAMILY',
               isRecurring: !!args.isRecurring || args.recurring !== 'NONE',
-              recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY') 
-                ? `LUNAR_${args.recurring}` 
-                : args.recurring,
+              recurring:
+                args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
+                  ? `LUNAR_${args.recurring}`
+                  : args.recurring,
               useLunar: args.useLunar,
             });
             return { success: true, event };
@@ -365,9 +378,10 @@ CRITICAL RULES:
               type: args.type,
               scope: args.scope,
               isRecurring: args.isRecurring,
-              recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY') 
-                ? `LUNAR_${args.recurring}` 
-                : args.recurring,
+              recurring:
+                args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
+                  ? `LUNAR_${args.recurring}`
+                  : args.recurring,
               useLunar: args.useLunar,
             });
             return { success: true, result };
@@ -376,22 +390,22 @@ CRITICAL RULES:
             return { success: true, result };
           }
         }
-  
+
         case 'getSolarDateFromLunar': {
           const date = getSolarDateFromLunar(args.day, args.month, args.year);
           if (!date) return { error: 'Không tìm thấy' };
-          
+
           const yyyy = date.getFullYear();
           const mm = String(date.getMonth() + 1).padStart(2, '0');
           const dd = String(date.getDate()).padStart(2, '0');
           const solarDate = `${yyyy}-${mm}-${dd}`;
-          
-          return { 
+
+          return {
             solarDate,
             formatted: date.toLocaleDateString('vi-VN'),
           };
         }
-  
+
         default:
           return { error: 'Unknown tool' };
       }
@@ -406,24 +420,21 @@ CRITICAL RULES:
       const axios = await import('axios');
       const https = await import('node:https');
 
-      const response = await axios.default.get(
-        'https://giavang.now/api/prices',
-        {
-          timeout: 10000,
-          httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
+      const response = await axios.default.get('https://giavang.now/api/prices', {
+        timeout: 10000,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         },
-      );
-      
+      });
+
       console.log('Gold API Status:', response.status);
       console.log('Gold API Response Timestamp:', response.data?.timestamp);
 
       if (response.data?.success && response.data?.prices) {
         const prices = response.data.prices;
-        const formatVND = (v: number) =>
-          new Intl.NumberFormat('vi-VN').format(v);
+        const formatVND = (v: number) => new Intl.NumberFormat('vi-VN').format(v);
 
         const sjc = prices.SJL1L10;
         const xau = prices.XAUUSD;
@@ -432,17 +443,31 @@ CRITICAL RULES:
         const pnjHn = prices.PQHNVM;
 
         const summaryParts = [];
-        if (sjc) summaryParts.push(`- Vàng SJC 9999: Mua ${formatVND(sjc.buy)} / Bán ${formatVND(sjc.sell)} VND/lượng (${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND)`);
-        if (dojiHn) summaryParts.push(`- Vàng DOJI Hà Nội: Mua ${formatVND(dojiHn.buy)} / Bán ${formatVND(dojiHn.sell)} VND/lượng`);
-        if (pnjHn) summaryParts.push(`- Vàng PNJ Hà Nội: Mua ${formatVND(pnjHn.buy)} / Bán ${formatVND(pnjHn.sell)} VND/lượng`);
-        if (ring) summaryParts.push(`- Vàng nhẫn SJC: Mua ${formatVND(ring.buy)} / Bán ${formatVND(ring.sell)} VND/lượng`);
+        if (sjc)
+          summaryParts.push(
+            `- Vàng SJC 9999: Mua ${formatVND(sjc.buy)} / Bán ${formatVND(sjc.sell)} VND/lượng (${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND)`
+          );
+        if (dojiHn)
+          summaryParts.push(
+            `- Vàng DOJI Hà Nội: Mua ${formatVND(dojiHn.buy)} / Bán ${formatVND(dojiHn.sell)} VND/lượng`
+          );
+        if (pnjHn)
+          summaryParts.push(
+            `- Vàng PNJ Hà Nội: Mua ${formatVND(pnjHn.buy)} / Bán ${formatVND(pnjHn.sell)} VND/lượng`
+          );
+        if (ring)
+          summaryParts.push(
+            `- Vàng nhẫn SJC: Mua ${formatVND(ring.buy)} / Bán ${formatVND(ring.sell)} VND/lượng`
+          );
         if (xau) summaryParts.push(`- Vàng Thế giới (XAUUSD): ${xau.buy} USD/oz`);
 
         const result = {
           formatted_summary: summaryParts.join('\n'),
           sjc_buy: sjc ? `${formatVND(sjc.buy)} VND/lượng` : 'N/A',
           sjc_sell: sjc ? `${formatVND(sjc.sell)} VND/lượng` : 'N/A',
-          sjc_change: sjc ? `${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND` : 'N/A',
+          sjc_change: sjc
+            ? `${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND`
+            : 'N/A',
           nhan_sjc_buy: ring ? `${formatVND(ring.buy)} VND/lượng` : 'N/A',
           nhan_sjc_sell: ring ? `${formatVND(ring.sell)} VND/lượng` : 'N/A',
           world_gold_usd: xau ? `${xau.buy} USD/oz` : 'N/A',
@@ -461,7 +486,8 @@ CRITICAL RULES:
       console.error('Gold Price Fetch Error:', error.message);
       return {
         error: true,
-        message: 'Không thể kết nối với máy chủ giá vàng. Vui lòng kiểm tra tại sjc.com.vn hoặc giavang.doji.vn',
+        message:
+          'Không thể kết nối với máy chủ giá vàng. Vui lòng kiểm tra tại sjc.com.vn hoặc giavang.doji.vn',
       };
     }
   }
@@ -475,7 +501,7 @@ CRITICAL RULES:
     finalUserMessage: string,
     userId: string,
     userIds: string[],
-    sessionId?: string,
+    sessionId?: string
   ) {
     const genModel = this.gemini.getGenerativeModel({
       model: 'gemini-flash-latest',
@@ -500,7 +526,13 @@ CRITICAL RULES:
 
       if (part?.functionCall) {
         loopCount++;
-        const res = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, userIds);
+        const res = await this.executeTool(
+          part.functionCall.name,
+          part.functionCall.args,
+          familyId,
+          userId,
+          userIds
+        );
         currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
       } else {
         assistantContent = result.response.text();
@@ -518,7 +550,7 @@ CRITICAL RULES:
     finalUserMessage: string,
     userId: string,
     userIds: string[],
-    sessionId?: string,
+    sessionId?: string
   ) {
     const messages = [
       { role: 'system', content: this.getSystemPrompt(familyInfo) },
@@ -537,10 +569,19 @@ CRITICAL RULES:
     if (toolCalls) {
       messages.push(response.choices[0].message as any);
       for (const tc of toolCalls) {
-        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userId, userIds);
+        const res = await this.executeTool(
+          tc.function.name,
+          JSON.parse(tc.function.arguments),
+          familyId,
+          userId,
+          userIds
+        );
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
       }
-      const final = await this.openai.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages });
+      const final = await this.openai.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages,
+      });
       assistantContent = final.choices[0].message.content || '';
     } else {
       assistantContent = response.choices[0].message.content || '';
@@ -557,7 +598,7 @@ CRITICAL RULES:
     finalUserMessage: string,
     userId: string,
     userIds: string[],
-    streamOptions: { res: any; sessionId?: string },
+    streamOptions: { res: any; sessionId?: string }
   ) {
     const { res, sessionId } = streamOptions;
     const genModel = this.gemini.getGenerativeModel({
@@ -585,8 +626,16 @@ CRITICAL RULES:
         if (part?.functionCall) {
           hasToolCall = true;
           loopCount++;
-          const toolRes = await this.executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, userIds);
-          currentInput = [{ functionResponse: { name: part.functionCall.name, response: toolRes } }];
+          const toolRes = await this.executeTool(
+            part.functionCall.name,
+            part.functionCall.args,
+            familyId,
+            userId,
+            userIds
+          );
+          currentInput = [
+            { functionResponse: { name: part.functionCall.name, response: toolRes } },
+          ];
           break;
         } else {
           const text = chunk.text();
@@ -598,7 +647,8 @@ CRITICAL RULES:
     }
     res.write(`data: [DONE]\n\n`);
     res.end();
-    if (assistantContent) await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
+    if (assistantContent)
+      await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
   }
 
   private async handleGroqStream(
@@ -608,7 +658,7 @@ CRITICAL RULES:
     finalUserMessage: string,
     userId: string,
     userIds: string[],
-    streamOptions: { res: any; sessionId?: string },
+    streamOptions: { res: any; sessionId?: string }
   ) {
     const { res, sessionId } = streamOptions;
     const messages = [
@@ -628,7 +678,13 @@ CRITICAL RULES:
     if (toolCalls) {
       messages.push(response.choices[0].message as any);
       for (const tc of toolCalls) {
-        const res = await this.executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userId, userIds);
+        const res = await this.executeTool(
+          tc.function.name,
+          JSON.parse(tc.function.arguments),
+          familyId,
+          userId,
+          userIds
+        );
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
       }
     }
@@ -651,7 +707,14 @@ CRITICAL RULES:
     await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
   }
 
-  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string, sessionId?: string) {
+  async chat(
+    familyId: string,
+    userMessage: string,
+    userIds: string[] = [],
+    image?: string,
+    modelSelection?: string,
+    sessionId?: string
+  ) {
     try {
       const finalUserMessage = await this.processVisionImage(userMessage, image);
       await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
@@ -660,17 +723,41 @@ CRITICAL RULES:
       const history = await this.chatService.getHistory(familyId, sessionId, 10);
 
       if (modelSelection === 'gemini') {
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+        return await this.handleGeminiChat(
+          familyId,
+          history,
+          familyInfo,
+          finalUserMessage,
+          userIds[0],
+          userIds,
+          sessionId
+        );
       }
 
-      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+      return await this.handleGroqChat(
+        familyId,
+        history,
+        familyInfo,
+        finalUserMessage,
+        userIds[0],
+        userIds,
+        sessionId
+      );
     } catch (e: any) {
       console.error('Chat Error:', e);
       throw new HttpException('AI Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
+  async chatStream(
+    familyId: string,
+    userMessage: string,
+    userIds: string[],
+    res: any,
+    sessionId?: string,
+    image?: string,
+    modelSelection?: string
+  ) {
     try {
       const finalUserMessage = await this.processVisionImage(userMessage, image);
       await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
@@ -679,10 +766,26 @@ CRITICAL RULES:
       const history = await this.chatService.getHistory(familyId, sessionId, 10);
 
       if (modelSelection === 'gemini') {
-        return await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
+        return await this.handleGeminiStream(
+          familyId,
+          history,
+          familyInfo,
+          finalUserMessage,
+          userIds[0],
+          userIds,
+          { res, sessionId }
+        );
       }
 
-      return await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
+      return await this.handleGroqStream(
+        familyId,
+        history,
+        familyInfo,
+        finalUserMessage,
+        userIds[0],
+        userIds,
+        { res, sessionId }
+      );
     } catch (e: any) {
       console.error('Stream Error:', e);
       res.write(`data: ${JSON.stringify({ content: 'Lỗi AI.' })}\n\n`);
@@ -694,25 +797,72 @@ CRITICAL RULES:
   async generateHoroscope(userName: string, birthday?: Date): Promise<string> {
     try {
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const model = this.gemini.getGenerativeModel({ 
+      // Shift by 7 hours to get ICT time accurately when generating horoscope
+      const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const today = ictDate.toISOString().split('T')[0];
+      const model = this.gemini.getGenerativeModel({
         model: 'gemini-flash-latest',
-        systemInstruction: 'Bạn là chuyên gia Tử Vi và Chiêm Tinh học hàng đầu. Nhiệm vụ của bạn là đưa ra dự đoán chi tiết ngày mới cho người dùng dựa trên thông tin cá nhân của họ.'
+        systemInstruction: `
+Bạn là trợ lý viết bản tin tử vi/chiêm tinh theo hướng thực tế, rõ ràng và trung lập.
+
+Mục tiêu của bạn không phải là khẳng định chắc chắn tương lai, mà là:
+- đưa ra nhận định mang tính tham khảo cho ngày mới,
+- phân tích xu hướng năng lượng trong ngày,
+- gợi ý hành vi thực tế để người dùng dễ áp dụng.
+
+Nguyên tắc bắt buộc:
+- Không khẳng định tương lai như một sự thật chắc chắn.
+- Không bịa thêm dữ liệu cá nhân như giờ sinh, nơi sinh, cung mọc, bản đồ sao hoặc lá số nếu người dùng không cung cấp.
+- Nếu thiếu ngày sinh hoặc dữ liệu chưa đủ, phải ngầm hiểu đây là bản nhận định chung theo ngày hiện tại.
+- Văn phong phải tự nhiên, có chiều sâu, không sáo rỗng, không quá tâng bốc, không cố tích cực hóa mọi thứ.
+- Có thể chỉ ra rủi ro, điểm yếu, áp lực hoặc khả năng phát sinh vấn đề nếu hợp lý.
+- Nội dung phải cụ thể, dễ hiểu, có giá trị ứng dụng trong đời sống hằng ngày.
+
+Yêu cầu định dạng:
+- Trình bày bằng HTML nhẹ, chỉ dùng các thẻ: <b>, <p>, <br>
+- Không dùng markdown
+- Không dùng danh sách ul/ol/li
+- Mỗi mục là một đoạn <p>
+- Các tiêu đề mục đặt trong thẻ <b>
+- Giữ nội dung sạch, dễ render trên giao diện web/app
+`,
       });
 
-      const birthdayInfo = birthday ? `sinh ngày ${birthday.toISOString().split('T')[0]}` : 'chưa rõ ngày sinh (hãy đưa ra dự đoán chung dựa trên năng lượng ngày hôm nay)';
-      
-      const prompt = `Hôm nay là ngày ${today}. Hãy viết một bản tin tử vi chi tiết cho người dùng tên là ${userName}, ${birthdayInfo}. 
-      Yêu cầu bản tin phải thật chi tiết, hành văn chuyên nghiệp, huyền bí nhưng gần gũi.
-      Bản tin phải bao gồm các mục sau:
-      1. 🌟 Tổng quan ngày mới: Năng lượng chủ đạo.
-      2. 💼 Sự nghiệp & Công việc: Những cơ hội hoặc thách thức cần lưu ý.
-      3. 💰 Tài lộc: Tình hình tài chính, có nên đầu tư hay không.
-      4. ❤️ Tình duyên & Mối quan hệ: Cách giao tiếp với người thân, bạn đời.
-      5. 🍏 Sức khỏe: Lời khuyên về vận động, ăn uống.
-      6. 🎐 Lời khuyên may mắn: Con số, màu sắc hoặc hành động đem lại may mắn.
+      const birthdayInfo = birthday
+        ? `Người dùng sinh ngày ${birthday.toISOString().split('T')[0]}.`
+        : `Người dùng chưa cung cấp ngày sinh. Hãy viết theo hướng nhận định tổng quan dựa trên năng lượng của ngày hiện tại, không tự bịa thêm dữ liệu cá nhân.`;
 
-      Hãy trình bày dưới dạng HTML nhẹ (sử dụng các thẻ <b>, <p>, <br>).`;
+      const prompt = `
+Hôm nay là ngày ${today}.
+Hãy viết một bản tin tử vi/chiêm tinh trong ngày cho người dùng tên là ${userName}.
+
+Thông tin người dùng:
+${birthdayInfo}
+
+Yêu cầu nội dung:
+- Giọng văn chuyên nghiệp, huyền bí vừa đủ nhưng vẫn gần gũi và thực tế.
+- Không viết theo kiểu "an ủi cho vui"; hãy ưu tiên nhận định thẳng, rõ và có chiều sâu.
+- Không khẳng định chắc chắn tương lai sẽ xảy ra.
+- Nếu có điểm cần cẩn trọng, hãy nói rõ nhưng không cực đoan.
+- Tránh viết quá chung chung như “có thể có cơ hội mới” nếu không giải thích cụ thể.
+- Mỗi mục nên dài khoảng 2 đến 4 câu.
+- Tổng thể phải mạch lạc, không lặp ý giữa các mục.
+
+Bản tin phải có đúng 6 mục sau:
+1. 🌟 Tổng quan ngày mới: Nêu năng lượng chủ đạo và xu hướng nổi bật trong ngày.
+2. 💼 Sự nghiệp & Công việc: Chỉ ra cơ hội, áp lực, rủi ro hoặc cách hành động phù hợp.
+3. 💰 Tài lộc: Đánh giá mức độ ổn định tài chính, có nên chi mạnh hoặc đầu tư không.
+4. ❤️ Tình duyên & Mối quan hệ: Nêu cách giao tiếp phù hợp, điều nên tránh với người thân, bạn đời hoặc người đang quan tâm.
+5. 🍏 Sức khỏe: Nêu điểm cần chú ý về thể lực, tinh thần, nghỉ ngơi, ăn uống hoặc vận động.
+6. 🎐 Gợi ý trong ngày: Đưa ra con số, màu sắc hoặc một hành động cụ thể có thể giúp người dùng cảm thấy chủ động hơn trong ngày.
+
+Yêu cầu đầu ra:
+- Chỉ trả về HTML nhẹ
+- Dùng <p> cho từng đoạn
+- Dùng <b> cho tiêu đề từng mục
+- Có thể dùng <br> để xuống dòng trong từng đoạn nếu cần
+- Không thêm giải thích ngoài nội dung bản tin
+`;
 
       const result = await model.generateContent(prompt);
       const text = result.response.text();
@@ -726,7 +876,9 @@ CRITICAL RULES:
   /**
    * Categorize a transaction description using AI
    */
-  async categorizeTransaction(description: string): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
+  async categorizeTransaction(
+    description: string
+  ): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
     const prompt = `Phân loại giao dịch ngân hàng Việt Nam. 
 Danh mục: FOOD, TRANSPORT, SHOPPING, UTILITIES, RENT, ENTERTAINMENT, HEALTH, EDUCATION, SALARY, BONUS, INVESTMENT, OTHER.
 
@@ -747,14 +899,14 @@ Trả về JSON duy nhất: {"category": "CATEGORY_NAME", "type": "INCOME" | "EX
       const result = await model.generateContent(prompt);
       const response = await result.response.text();
       this.logger.debug(`Gemini Categorization Raw Response for "${description}": ${response}`);
-      
+
       const jsonMatch = response.match(/\{.*\}/s);
       const jsonStr = jsonMatch ? jsonMatch[0] : response;
       const parsed = JSON.parse(jsonStr);
-      
+
       return {
         category: (parsed.category || 'OTHER').toUpperCase(),
-        type: (parsed.type || 'EXPENSE').toUpperCase() as any
+        type: (parsed.type || 'EXPENSE').toUpperCase() as any,
       };
     } catch (error) {
       console.error('AI Categorization Error:', error);
