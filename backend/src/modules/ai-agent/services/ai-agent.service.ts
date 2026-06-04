@@ -806,8 +806,8 @@ CRITICAL RULES:
 Bạn là trợ lý viết bản tin tử vi/chiêm tinh theo hướng thực tế, rõ ràng và trung lập.
 
 Mục tiêu của bạn không phải là khẳng định chắc chắn tương lai, mà là:
-- đưa ra nhận định mang tính tham khảo cho ngày mới,
-- phân tích xu hướng năng lượng trong ngày,
+- đưa ra nhận định mang tính tham khảo cho tuần mới,
+- phân tích xu hướng năng lượng trong tuần,
 - gợi ý hành vi thực tế để người dùng dễ áp dụng.
 
 Nguyên tắc bắt buộc:
@@ -834,7 +834,7 @@ Yêu cầu định dạng:
 
       const prompt = `
 Hôm nay là ngày ${today}.
-Hãy viết một bản tin tử vi/chiêm tinh trong ngày cho người dùng tên là ${userName}.
+Hãy viết một bản tin tử vi/chiêm tinh cho tuần mới (7 ngày tới) cho người dùng tên là ${userName}.
 
 Thông tin người dùng:
 ${birthdayInfo}
@@ -849,12 +849,12 @@ Yêu cầu nội dung:
 - Tổng thể phải mạch lạc, không lặp ý giữa các mục.
 
 Bản tin phải có đúng 6 mục sau:
-1. 🌟 Tổng quan ngày mới: Nêu năng lượng chủ đạo và xu hướng nổi bật trong ngày.
-2. 💼 Sự nghiệp & Công việc: Chỉ ra cơ hội, áp lực, rủi ro hoặc cách hành động phù hợp.
-3. 💰 Tài lộc: Đánh giá mức độ ổn định tài chính, có nên chi mạnh hoặc đầu tư không.
+1. 🌟 Tổng quan tuần mới: Nêu năng lượng chủ đạo và xu hướng nổi bật trong tuần.
+2. 💼 Sự nghiệp & Công việc: Chỉ ra cơ hội, áp lực, rủi ro hoặc cách hành động phù hợp trong tuần này.
+3. 💰 Tài lộc: Đánh giá mức độ ổn định tài chính, có nên chi mạnh hoặc đầu tư trong tuần không.
 4. ❤️ Tình duyên & Mối quan hệ: Nêu cách giao tiếp phù hợp, điều nên tránh với người thân, bạn đời hoặc người đang quan tâm.
-5. 🍏 Sức khỏe: Nêu điểm cần chú ý về thể lực, tinh thần, nghỉ ngơi, ăn uống hoặc vận động.
-6. 🎐 Gợi ý trong ngày: Đưa ra con số, màu sắc hoặc một hành động cụ thể có thể giúp người dùng cảm thấy chủ động hơn trong ngày.
+5. 🍏 Sức khỏe: Nêu điểm cần chú ý về thể lực, tinh thần, nghỉ ngơi, ăn uống hoặc vận động trong tuần.
+6. 🎐 Gợi ý trong tuần: Đưa ra con số, màu sắc hoặc một hành động cụ thể mang lại năng lượng tích cực cho cả tuần.
 
 Yêu cầu đầu ra:
 - Chỉ trả về HTML nhẹ

@@ -78,13 +78,13 @@ export class NotificationsService {
     });
   }
 
-  // 0. Cron Job: 6:00 AM every day - Super Admin Horoscope
-  @Cron('0 6 * * *', {
-    name: 'super-admin-horoscope',
+  // 0. Cron Job: 6:00 AM every Monday - Super Admin Horoscope
+  @Cron('0 6 * * 1', {
+    name: 'super-admin-weekly-horoscope',
     timeZone: 'Asia/Ho_Chi_Minh',
   })
-  async sendSuperAdminDailyHoroscope() {
-    this.logger.log('Starting Super Admin daily horoscope cron job...');
+  async sendSuperAdminWeeklyHoroscope() {
+    this.logger.log('Starting Super Admin weekly horoscope cron job...');
     try {
       const superAdmins = await this.prisma.user.findMany({
         where: { globalRole: 'SUPER_ADMIN' },
@@ -102,17 +102,17 @@ export class NotificationsService {
         // Send Push Notification
         await this.createNotification(admin.id, {
           type: 'HOROSCOPE',
-          title: '🔮 Tử vi ngày mới',
-          message: 'Bản tin tử vi ngày mới của bạn đã sẵn sàng! Chúc bạn một ngày tốt lành.',
+          title: '🔮 Tử vi tuần mới',
+          message: 'Bản tin tử vi tuần mới của bạn đã sẵn sàng! Chúc bạn một tuần làm việc hiệu quả.',
           metadata: { path: '/profile' }
         });
 
-        this.logger.log(`Successfully sent daily horoscope to ${admin.name} (${admin.email})`);
+        this.logger.log(`Successfully sent weekly horoscope to ${admin.name} (${admin.email})`);
       }
     } catch (error) {
-      this.logger.error('Error in Super Admin daily horoscope cron job', error);
+      this.logger.error('Error in Super Admin weekly horoscope cron job', error);
     }
-    this.logger.log('Super Admin daily horoscope cron job finished.');
+    this.logger.log('Super Admin weekly horoscope cron job finished.');
   }
 
   // --- Cron Jobs & Email Notifications ---

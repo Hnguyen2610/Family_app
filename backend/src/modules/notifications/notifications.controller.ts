@@ -18,27 +18,38 @@ export class NotificationsController {
   ) {
     this.verifyAuth(customAuth, authHeader);
     
-    this.logger.log('Manually triggering daily reminder & horoscope via Vercel Cron endpoint');
-    
-    // Trigger Super Admin Horoscope
-    await this.notificationsService.sendSuperAdminDailyHoroscope();
-    
-    // Trigger Family Daily Reminders
+    // Use ICT local date to check day of week/month
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const dayOfWeek = now.getDay(); // 0 (Sun) to 6 (Sat)
+    const dateOfMonth = now.getDate();
+
+    this.logger.log(`Vercel Cron Trigger [${now.toISOString()}]: ICT Day=${dayOfWeek}, Date=${dateOfMonth}`);
+
+    // 1. Always trigger Family Daily Reminders
+    this.logger.log('Triggering daily reminders...');
     await this.notificationsService.sendDailyReminder();
     
-    return { success: true, message: 'Daily reminder and horoscope triggered' };
-  }
+    // 2. If Monday (1), trigger Super Admin Weekly Horoscope
+    if (dayOfWeek === 1) {
+      this.logger.log('It is Monday! Triggering weekly horoscope...');
+      await this.notificationsService.sendSuperAdminWeeklyHoroscope();
+    }
 
-  @Get('monthly')
-  async triggerMonthlySummary(
-    @Headers('x-vercel-cron-auth') customAuth: string,
-    @Headers('authorization') authHeader: string,
-  ) {
-    this.verifyAuth(customAuth, authHeader);
+    // 3. If 1st of month, trigger Monthly Summary
+    if (dateOfMonth === 1) {
+      this.logger.log('It is the 1st of the month! Triggering monthly summary...');
+      await this.notificationsService.sendMonthlySummary();
+    }
     
-    this.logger.log('Manually triggering monthly summary via Vercel Cron endpoint');
-    await this.notificationsService.sendMonthlySummary();
-    return { success: true, message: 'Monthly summary triggered' };
+    return { 
+      success: true, 
+      message: 'Morning notifications processed',
+      tasks: {
+        dailyReminder: true,
+        weeklyHoroscope: dayOfWeek === 1,
+        monthlySummary: dateOfMonth === 1
+      }
+    };
   }
 
   @Get('finance-report')

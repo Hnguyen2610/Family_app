@@ -16,10 +16,6 @@
     {
       "path": "/api/notifications/daily",
       "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/notifications/monthly",
-      "schedule": "0 0 1 * *"
     }
   ]
 }
