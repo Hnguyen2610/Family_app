@@ -78,6 +78,12 @@ export class NotificationsService {
     });
   }
 
+  async deleteAll(userId: string) {
+    return this.prisma.notification.deleteMany({
+      where: { userId },
+    });
+  }
+
   // 0. Cron Job: 6:00 AM every Monday - Super Admin Horoscope
   @Cron('0 6 * * 1', {
     name: 'super-admin-weekly-horoscope',

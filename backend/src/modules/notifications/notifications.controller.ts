@@ -79,6 +79,11 @@ export class NotificationsController {
     return this.notificationsService.markAllAsRead(userId);
   }
 
+  @Delete('all')
+  async deleteAll(@Query('userId') userId: string) {
+    return this.notificationsService.deleteAll(userId);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string, @Query('userId') userId: string) {
     return this.notificationsService.delete(id, userId);

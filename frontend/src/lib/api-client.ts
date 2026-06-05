@@ -162,6 +162,7 @@ export const notificationsAPI = {
   markAsRead: (id: string, userId: string) => apiClient.patch(`/api/notifications/${id}/read`, null, { params: { userId } }),
   markAllAsRead: (userId: string) => apiClient.post('/api/notifications/read-all', null, { params: { userId } }),
   delete: (id: string, userId: string) => apiClient.delete(`/api/notifications/${id}`, { params: { userId } }),
+  deleteAll: (userId: string) => apiClient.delete('/api/notifications/all', { params: { userId } }),
   subscribePush: (userId: string, subscription: any) => 
     apiClient.post('/api/notifications/push/subscribe', subscription, { params: { userId } }),
   unsubscribePush: (userId: string, endpoint: string) => 

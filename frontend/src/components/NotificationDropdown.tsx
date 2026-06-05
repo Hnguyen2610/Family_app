@@ -124,7 +124,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
 
 export default function NotificationDropdown() {
   const { t, language } = useTranslation();
-  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<any>(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -189,6 +189,13 @@ export default function NotificationDropdown() {
                   title={language === 'vi' ? 'Đánh dấu tất cả đã đọc' : 'Mark all as read'}
                 >
                   <FiCheckCircle size={18} />
+                </button>
+                <button 
+                  onClick={() => { if (confirm(language === 'vi' ? 'Xóa tất cả thông báo?' : 'Delete all notifications?')) deleteAllNotifications(); }}
+                  className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all active:scale-90"
+                  title={language === 'vi' ? 'Xóa tất cả thông báo' : 'Delete all notifications'}
+                >
+                  <FiTrash2 size={18} />
                 </button>
                 <Link href="/settings">
                     <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all active:scale-90">

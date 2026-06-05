@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { notificationsAPI } from '../lib/api-client';
 import { useAuth } from './useAuth';
+import toast from 'react-hot-toast';
 
 export function useWebPush() {
   const [isSupported, setIsSupported] = useState(false);
@@ -65,8 +66,16 @@ export function useWebPush() {
       await notificationsAPI.subscribePush(user.id, subscription);
       setIsSubscribed(true);
       return true;
-    } catch (error) {
-      console.error('Failed to subscribe to push notifications:', error);
+    } catch (error: any) {
+      console.error('Push Subscription Error:', error);
+      // Specific error handling for VAPID key or SW issues
+      if (error.message?.includes('VAPID')) {
+        toast.error('Lỗi mã bảo mật thông báo (VAPID). Vui lòng kiểm tra cấu hình hệ thống.');
+      } else if (error.name === 'NotAllowedError') {
+        toast.error('Bạn đã chặn thông báo trong trình duyệt.');
+      } else {
+        toast.error('Lỗi khi đăng ký thông báo: ' + (error.message || 'Lỗi không xác định'));
+      }
       return false;
     } finally {
       setIsProcessing(false);

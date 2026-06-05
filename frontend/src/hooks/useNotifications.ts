@@ -67,6 +67,17 @@ export function useNotifications() {
     }
   };
 
+  const deleteAllNotifications = async () => {
+    if (!user?.id) return;
+    try {
+      await notificationsAPI.deleteAll(user.id);
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Failed to delete all notifications', error);
+    }
+  };
+
   return { 
     notifications, 
     unreadCount, 
@@ -74,6 +85,7 @@ export function useNotifications() {
     markAsRead, 
     markAllAsRead, 
     deleteNotification,
+    deleteAllNotifications,
     refresh: fetchNotifications 
   };
 }

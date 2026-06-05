@@ -3,8 +3,8 @@ self.addEventListener('push', function (event) {
     const data = event.data.json();
     const options = {
       body: data.body,
-      icon: data.icon || '/icon-192x192.png',
-      badge: '/icon-192x192.png',
+      icon: data.icon || '/icon-192.png',
+      badge: '/icon-192.png',
       data: {
         url: data.url || '/'
       }
@@ -16,11 +16,11 @@ self.addEventListener('push', function (event) {
   }
 });
 
-self.addEventListener('notificationclick', function(event) {
+self.addEventListener('notificationclick', function (event) {
   event.notification.close();
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
       const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
 
       for (let i = 0; i < clientList.length; i++) {

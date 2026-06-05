@@ -186,8 +186,9 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
                   if (success) toast.success(language === 'vi' ? 'Đã tắt thông báo' : 'Notifications disabled');
                 } else {
                   success = await subscribe();
-                  if (success) toast.success(language === 'vi' ? 'Đã bật thông báo' : 'Notifications enabled');
-                  else toast.error(language === 'vi' ? 'Vui lòng cấp quyền thông báo' : 'Please grant permission');
+                  if (success) {
+                    toast.success(language === 'vi' ? 'Đã bật thông báo thành công!' : 'Notifications enabled successfully!');
+                  }
                 }
               }}
             />
