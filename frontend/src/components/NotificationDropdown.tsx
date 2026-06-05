@@ -86,29 +86,34 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                     </span>
                 </div>
                 <p className={messageClasses}>{n.message}</p>
-                <div className="flex gap-2 mt-3">
+                <div className="flex flex-wrap gap-2 mt-3">
                     {!n.isRead && (
                         <button 
+                            type="button"
                             onClick={handleMarkRead}
-                            className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors p-1"
+                            className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 px-2 py-1 rounded-lg transition-all"
                         >
-                            <FiCheck /> {language === 'vi' ? 'Đã đọc' : 'Mark read'}
+                            <FiCheck size={14} /> {language === 'vi' ? 'Đã đọc' : 'Mark read'}
                         </button>
                     )}
                     <button 
+                        type="button"
                         onClick={handleDelete}
-                        className="text-[9px] font-black text-rose-500/60 hover:text-rose-600 uppercase tracking-widest flex items-center gap-1 transition-colors p-1"
+                        className="text-xs font-black text-rose-500 hover:text-rose-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/30 px-2 py-1 rounded-lg transition-all"
                         title={language === 'vi' ? 'Xóa' : 'Delete'}
                     >
-                        <FiTrash2 /> {language === 'vi' ? 'Xóa' : 'Delete'}
+                        <FiTrash2 size={14} /> {language === 'vi' ? 'Xóa' : 'Delete'}
                     </button>
                     {n.metadata?.path && (
                         <Link 
                             href={n.metadata.path} 
-                            onClick={(e) => { e.stopPropagation(); if(!n.isRead) markAsRead(n.id); }}
-                            className="text-[9px] font-black text-slate-400 dark:hover:text-indigo-400 uppercase tracking-widest flex items-center gap-1 p-1"
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if(!n.isRead) markAsRead(n.id); 
+                            }}
+                            className="text-xs font-black text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all"
                         >
-                            {language === 'vi' ? 'Xem chi tiết' : 'View Details'} <FiChevronRight />
+                            {language === 'vi' ? 'Xem chi tiết' : 'View Details'} <FiChevronRight size={14} />
                         </Link>
                     )}
                 </div>

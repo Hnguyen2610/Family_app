@@ -20,7 +20,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
 
-type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'admin' | 'settings' | 'notifications';
+type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'admin' | 'settings' | 'notifications' | 'profile';
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
   const router = useRouter();
@@ -192,7 +192,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           {activeTab === 'meals' && <MealPlanner />}
           {activeTab === 'finance' && <Finance />}
           {activeTab === 'admin' && <AdminDashboard />}
-          {activeTab === 'settings' && <Settings onNavigate={setActiveTab} />}
+          {(activeTab === 'settings' || activeTab === 'profile') && <Settings onNavigate={setActiveTab} />}
           {activeTab === 'notifications' && <NotificationSettings onBack={() => setActiveTab('settings')} />}
         </div>
       </main>

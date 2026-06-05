@@ -22,6 +22,10 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'FamCal',
   },
+  icons: {
+    icon: '/icon.png',
+    apple: '/icon.png',
+  },
 };
 
 export default function RootLayout({

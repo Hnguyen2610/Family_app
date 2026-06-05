@@ -104,7 +104,7 @@ export class NotificationsService {
           type: 'HOROSCOPE',
           title: '🔮 Tử vi tuần mới',
           message: 'Bản tin tử vi tuần mới của bạn đã sẵn sàng! Chúc bạn một tuần làm việc hiệu quả.',
-          metadata: { path: '/profile' }
+          metadata: { path: '/settings' }
         });
 
         this.logger.log(`Successfully sent weekly horoscope to ${admin.name} (${admin.email})`);
