@@ -8,7 +8,8 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
 }
 
 // ============================================
@@ -35,10 +36,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notifications Notification[]
+  notifications     Notification[]
   pushSubscriptions PushSubscription[]
-  transactions Transaction[]
-  budgets      Budget[]
+  transactions      Transaction[]
+  budgets           Budget[]
 }
 
 model Family {
@@ -198,12 +199,12 @@ model Notification {
 // Web Push Notifications
 // ============================================
 model PushSubscription {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint String @unique
+  p256dh   String
+  auth     String
 
   createdAt DateTime @default(now())
 
@@ -214,39 +215,39 @@ model PushSubscription {
 // Finance & Budgeting
 // ============================================
 model Transaction {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   amount      Float
-  type        TransactionType @default(EXPENSE)
+  type        TransactionType     @default(EXPENSE)
   category    TransactionCategory @default(OTHER)
   description String?
-  date        DateTime @default(now())
-  
+  date        DateTime            @default(now())
+
   // PayOS specific metadata
-  reference   String?  @unique // Bank reference number
-  paymentId   String?  @unique // PayOS payment ID
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  reference String? @unique // Bank reference number
+  paymentId String? @unique // PayOS payment ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([date])
 }
 
 model Budget {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  monthlyIncome Float    @default(0)
-  dailyBudget   Float    @default(0)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  monthlyIncome Float @default(0)
+  dailyBudget   Float @default(0)
   month         Int
   year          Int
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, month, year])
   @@index([userId])
@@ -258,16 +259,16 @@ enum TransactionType {
 }
 
 enum TransactionCategory {
-  FOOD            // Ăn uống
-  TRANSPORT       // Di chuyển
-  SHOPPING        // Mua sắm
-  UTILITIES       // Tiền điện/nước/mạng
-  RENT            // Tiền nhà
-  ENTERTAINMENT   // Giải trí
-  HEALTH          // Sức khỏe
-  EDUCATION       // Giáo dục
-  SALARY          // Lương (Income)
-  BONUS           // Thưởng (Income)
-  INVESTMENT      // Đầu tư
-  OTHER           // Khác
+  FOOD // Ăn uống
+  TRANSPORT // Di chuyển
+  SHOPPING // Mua sắm
+  UTILITIES // Tiền điện/nước/mạng
+  RENT // Tiền nhà
+  ENTERTAINMENT // Giải trí
+  HEALTH // Sức khỏe
+  EDUCATION // Giáo dục
+  SALARY // Lương (Income)
+  BONUS // Thưởng (Income)
+  INVESTMENT // Đầu tư
+  OTHER // Khác
 }
