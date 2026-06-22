@@ -84,41 +84,79 @@ export class NotificationsService {
     });
   }
 
-  // 0. Cron Job: 6:00 AM every Monday - Super Admin Horoscope
+  // 0. Cron Job: 6:00 AM every Monday - Weekly Horoscope for all users
   @Cron('0 6 * * 1', {
-    name: 'super-admin-weekly-horoscope',
+    name: 'weekly-horoscope',
     timeZone: 'Asia/Ho_Chi_Minh',
   })
-  async sendSuperAdminWeeklyHoroscope() {
-    this.logger.log('Starting Super Admin weekly horoscope cron job...');
+  async sendWeeklyHoroscope() {
+    this.logger.log('Starting weekly horoscope cron job...');
     try {
-      const superAdmins = await this.prisma.user.findMany({
-        where: { globalRole: 'SUPER_ADMIN' },
+      const users = await this.prisma.user.findMany({
+        where: { 
+          globalRole: 'SUPER_ADMIN'
+        },
       });
 
-      this.logger.log(`Found ${superAdmins.length} Super Admins to process.`);
+      this.logger.log(`Found ${users.length} users with email to process.`);
 
-      for (const admin of superAdmins) {
-        // Generate Horoscope using AI (Gemini)
-        const horoscope = await this.aiAgentService.generateHoroscope(admin.name, admin.birthday || undefined);
-        
-        // Send Email
-        await this.mailService.sendHoroscopeEmail(admin.email, admin.name, horoscope);
+      const now = new Date();
+      // Shift by 7 hours to get ICT time accurately
+      const ictNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const nextWeek = new Date(ictNow.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-        // Send Push Notification
-        await this.createNotification(admin.id, {
-          type: 'HOROSCOPE',
-          title: '🔮 Tử vi tuần mới',
-          message: 'Bản tin tử vi tuần mới của bạn đã sẵn sàng! Chúc bạn một tuần làm việc hiệu quả.',
-          metadata: { path: '/settings' }
-        });
+      for (const user of users) {
+        try {
+          // 1. Get events for the next 7 days
+          // We get events for current month and next month to be safe
+          const currentMonth = ictNow.getUTCMonth() + 1;
+          const currentYear = ictNow.getUTCFullYear();
+          const nextMonth = nextWeek.getUTCMonth() + 1;
+          const nextYear = nextWeek.getUTCFullYear();
 
-        this.logger.log(`Successfully sent weekly horoscope to ${admin.name} (${admin.email})`);
+          const eventsCurrent = await this.eventsService.findAll('all', currentMonth, currentYear, user.id);
+          let allUpcomingEvents = [...eventsCurrent];
+
+          if (currentMonth !== nextMonth) {
+            const eventsNext = await this.eventsService.findAll('all', nextMonth, nextYear, user.id);
+            allUpcomingEvents = [...allUpcomingEvents, ...eventsNext];
+          }
+
+          // Filter for the next 7 days
+          const weekEvents = allUpcomingEvents.filter(e => {
+            const eventDate = new Date(e.date);
+            return eventDate >= ictNow && eventDate <= nextWeek;
+          });
+
+          const eventContext = weekEvents.length > 0
+            ? weekEvents.map(e => `- Ngày ${new Date(e.date).toLocaleDateString('vi-VN')}: ${e.title}${e.description ? ' (' + e.description + ')' : ''}`).join('\n')
+            : 'Không có sự kiện đặc biệt nào được ghi nhận trong lịch trình tuần này.';
+
+          const context = `Lịch trình/Sự kiện của người dùng trong 7 ngày tới:\n${eventContext}\n\nVai trò trong gia đình: ${user.role || 'Thành viên'}.`;
+
+          // 2. Generate Horoscope using AI (Gemini)
+          const horoscope = await this.aiAgentService.generateHoroscope(user.name, user.birthday || undefined, context);
+          
+          // 3. Send Email
+          await this.mailService.sendHoroscopeEmail(user.email, user.name, horoscope);
+
+          // 4. Send Push Notification
+          await this.createNotification(user.id, {
+            type: 'HOROSCOPE',
+            title: '🔮 Tử vi tuần mới',
+            message: 'Bản tin tử vi tuần mới đã được cá nhân hóa dựa trên lịch trình của bạn. Chúc bạn một tuần mới tốt lành!',
+            metadata: { path: '/settings' }
+          });
+
+          this.logger.log(`Successfully sent personalized weekly horoscope to ${user.name} (${user.email})`);
+        } catch (userError) {
+          this.logger.error(`Failed to process horoscope for user ${user.id} (${user.name})`, userError);
+        }
       }
     } catch (error) {
-      this.logger.error('Error in Super Admin weekly horoscope cron job', error);
+      this.logger.error('Error in weekly horoscope cron job', error);
     }
-    this.logger.log('Super Admin weekly horoscope cron job finished.');
+    this.logger.log('Weekly horoscope cron job finished.');
   }
 
   // --- Cron Jobs & Email Notifications ---

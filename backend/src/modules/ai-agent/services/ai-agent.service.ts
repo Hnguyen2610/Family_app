@@ -2,6 +2,7 @@ import { Injectable, HttpException, HttpStatus, Inject, forwardRef, Logger } fro
 import { OpenAI } from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatService } from './chat.service';
+import { HoroscopeService } from './horoscope.service';
 import { MealsService } from '../../meals/meals.service';
 import { EventsService } from '../../events/events.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -19,7 +20,8 @@ export class AiAgentService {
     private readonly mealsService: MealsService,
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly horoscopeService: HoroscopeService,
   ) {
     this.openai = new OpenAI({
       apiKey: process.env.GROQ_API_KEY,
@@ -245,7 +247,8 @@ AVAILABLE SUB-AGENTS (PERSONAS):
 When acting as the Horoscope Expert:
 - Address the user warmly but mysteriously.
 - Provide detailed astrological readings based on your vast knowledge of Eastern (Tử Vi Đẩu Số, Bát Tự) and Western (Zodiac) astrology.
-- Make sure to use the exact birthdates of the family members provided below.
+- Check "FAMILY MEMBERS INFORMATION": If the birthdate is missing, or if you want to provide a much more accurate reading (using Birth Time or Birth Place), politely ask the user to provide those details.
+- If data is incomplete, you can provide a general reading but explain that adding birth time/place will make it far more personalized.
 - Include sections like: Tổng quan (Overview), Sự nghiệp (Career), Tình duyên (Romance), Sức khỏe (Health).
 - Always end with a positive, encouraging piece of advice or feng-shui tip.
 - IMPORTANT: DO NOT call the createEvent tool for horoscope readings unless the user explicitly asks to "Save this reading to my calendar".
@@ -715,37 +718,40 @@ CRITICAL RULES:
     modelSelection?: string,
     sessionId?: string
   ) {
+    let finalUserMessage = userMessage;
     try {
-      const finalUserMessage = await this.processVisionImage(userMessage, image);
+      finalUserMessage = await this.processVisionImage(userMessage, image);
       await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
+    } catch (msgError) {
+      this.logger.error('Failed to process message or image:', msgError);
+    }
 
-      const familyInfo = await this.getFamilyContext(familyId);
-      const history = await this.chatService.getHistory(familyId, sessionId, 10);
+    const familyInfo = await this.getFamilyContext(familyId);
+    const history = await this.chatService.getHistory(familyId, sessionId, 10);
+    const primaryModel = modelSelection || 'groq';
 
-      if (modelSelection === 'gemini') {
-        return await this.handleGeminiChat(
-          familyId,
-          history,
-          familyInfo,
-          finalUserMessage,
-          userIds[0],
-          userIds,
-          sessionId
+    try {
+      // Attempt primary model
+      if (primaryModel === 'gemini') {
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+      }
+      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+    } catch (primaryError: any) {
+      this.logger.warn(`Primary model (${primaryModel}) failed, trying fallback:`, primaryError.message);
+      
+      try {
+        // Fallback to the other model
+        if (primaryModel === 'gemini') {
+          return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+        }
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+      } catch (fallbackError: any) {
+        this.logger.error('Both AI models failed:', fallbackError);
+        throw new HttpException(
+          'Hệ thống AI đang quá tải (Rate Limit). Vui lòng thử lại sau ít phút!',
+          HttpStatus.SERVICE_UNAVAILABLE
         );
       }
-
-      return await this.handleGroqChat(
-        familyId,
-        history,
-        familyInfo,
-        finalUserMessage,
-        userIds[0],
-        userIds,
-        sessionId
-      );
-    } catch (e: any) {
-      console.error('Chat Error:', e);
-      throw new HttpException('AI Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -758,119 +764,44 @@ CRITICAL RULES:
     image?: string,
     modelSelection?: string
   ) {
+    let finalUserMessage = userMessage;
     try {
-      const finalUserMessage = await this.processVisionImage(userMessage, image);
+      finalUserMessage = await this.processVisionImage(userMessage, image);
       await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
+    } catch (err) {
+      this.logger.error('Stream pre-processing error:', err);
+    }
 
-      const familyInfo = await this.getFamilyContext(familyId);
-      const history = await this.chatService.getHistory(familyId, sessionId, 10);
+    const familyInfo = await this.getFamilyContext(familyId);
+    const history = await this.chatService.getHistory(familyId, sessionId, 10);
+    const primaryModel = modelSelection || 'groq';
 
-      if (modelSelection === 'gemini') {
-        return await this.handleGeminiStream(
-          familyId,
-          history,
-          familyInfo,
-          finalUserMessage,
-          userIds[0],
-          userIds,
-          { res, sessionId }
-        );
+    const attemptStream = async (model: string) => {
+      if (model === 'gemini') {
+        await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
+      } else {
+        await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
       }
+    };
 
-      return await this.handleGroqStream(
-        familyId,
-        history,
-        familyInfo,
-        finalUserMessage,
-        userIds[0],
-        userIds,
-        { res, sessionId }
-      );
-    } catch (e: any) {
-      console.error('Stream Error:', e);
-      res.write(`data: ${JSON.stringify({ content: 'Lỗi AI.' })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
+    try {
+      await attemptStream(primaryModel);
+    } catch (primaryError: any) {
+      this.logger.warn(`Primary stream model (${primaryModel}) failed, trying fallback...`);
+      try {
+        const fallbackModel = primaryModel === 'gemini' ? 'groq' : 'gemini';
+        await attemptStream(fallbackModel);
+      } catch (fallbackError) {
+        this.logger.error('Both stream models failed:', fallbackError);
+        res.write(`data: ${JSON.stringify({ content: 'Xin lỗi, hiện tại cả hai máy chủ AI đều đang bận. Vui lòng thử lại sau nhé!' })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
     }
   }
 
-  async generateHoroscope(userName: string, birthday?: Date): Promise<string> {
-    try {
-      const now = new Date();
-      // Shift by 7 hours to get ICT time accurately when generating horoscope
-      const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      const today = ictDate.toISOString().split('T')[0];
-      const model = this.gemini.getGenerativeModel({
-        model: 'gemini-flash-latest',
-        systemInstruction: `
-Bạn là trợ lý viết bản tin tử vi/chiêm tinh theo hướng thực tế, rõ ràng và trung lập.
-
-Mục tiêu của bạn không phải là khẳng định chắc chắn tương lai, mà là:
-- đưa ra nhận định mang tính tham khảo cho tuần mới,
-- phân tích xu hướng năng lượng trong tuần,
-- gợi ý hành vi thực tế để người dùng dễ áp dụng.
-
-Nguyên tắc bắt buộc:
-- Không khẳng định tương lai như một sự thật chắc chắn.
-- Không bịa thêm dữ liệu cá nhân như giờ sinh, nơi sinh, cung mọc, bản đồ sao hoặc lá số nếu người dùng không cung cấp.
-- Nếu thiếu ngày sinh hoặc dữ liệu chưa đủ, phải ngầm hiểu đây là bản nhận định chung theo ngày hiện tại.
-- Văn phong phải tự nhiên, có chiều sâu, không sáo rỗng, không quá tâng bốc, không cố tích cực hóa mọi thứ.
-- Có thể chỉ ra rủi ro, điểm yếu, áp lực hoặc khả năng phát sinh vấn đề nếu hợp lý.
-- Nội dung phải cụ thể, dễ hiểu, có giá trị ứng dụng trong đời sống hằng ngày.
-
-Yêu cầu định dạng:
-- Trình bày bằng HTML nhẹ, chỉ dùng các thẻ: <b>, <p>, <br>
-- Không dùng markdown
-- Không dùng danh sách ul/ol/li
-- Mỗi mục là một đoạn <p>
-- Các tiêu đề mục đặt trong thẻ <b>
-- Giữ nội dung sạch, dễ render trên giao diện web/app
-`,
-      });
-
-      const birthdayInfo = birthday
-        ? `Người dùng sinh ngày ${birthday.toISOString().split('T')[0]}.`
-        : `Người dùng chưa cung cấp ngày sinh. Hãy viết theo hướng nhận định tổng quan dựa trên năng lượng của ngày hiện tại, không tự bịa thêm dữ liệu cá nhân.`;
-
-      const prompt = `
-Hôm nay là ngày ${today}.
-Hãy viết một bản tin tử vi/chiêm tinh cho tuần mới (7 ngày tới) cho người dùng tên là ${userName}.
-
-Thông tin người dùng:
-${birthdayInfo}
-
-Yêu cầu nội dung:
-- Giọng văn chuyên nghiệp, huyền bí vừa đủ nhưng vẫn gần gũi và thực tế.
-- Không viết theo kiểu "an ủi cho vui"; hãy ưu tiên nhận định thẳng, rõ và có chiều sâu.
-- Không khẳng định chắc chắn tương lai sẽ xảy ra.
-- Nếu có điểm cần cẩn trọng, hãy nói rõ nhưng không cực đoan.
-- Tránh viết quá chung chung như “có thể có cơ hội mới” nếu không giải thích cụ thể.
-- Mỗi mục nên dài khoảng 2 đến 4 câu.
-- Tổng thể phải mạch lạc, không lặp ý giữa các mục.
-
-Bản tin phải có đúng 6 mục sau:
-1. 🌟 Tổng quan tuần mới: Nêu năng lượng chủ đạo và xu hướng nổi bật trong tuần.
-2. 💼 Sự nghiệp & Công việc: Chỉ ra cơ hội, áp lực, rủi ro hoặc cách hành động phù hợp trong tuần này.
-3. 💰 Tài lộc: Đánh giá mức độ ổn định tài chính, có nên chi mạnh hoặc đầu tư trong tuần không.
-4. ❤️ Tình duyên & Mối quan hệ: Nêu cách giao tiếp phù hợp, điều nên tránh với người thân, bạn đời hoặc người đang quan tâm.
-5. 🍏 Sức khỏe: Nêu điểm cần chú ý về thể lực, tinh thần, nghỉ ngơi, ăn uống hoặc vận động trong tuần.
-6. 🎐 Gợi ý trong tuần: Đưa ra con số, màu sắc hoặc một hành động cụ thể mang lại năng lượng tích cực cho cả tuần.
-
-Yêu cầu đầu ra:
-- Chỉ trả về HTML nhẹ
-- Dùng <p> cho từng đoạn
-- Dùng <b> cho tiêu đề từng mục
-- Có thể dùng <br> để xuống dòng trong từng đoạn nếu cần
-- Không thêm giải thích ngoài nội dung bản tin
-`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      return text || 'Không thể tạo bản tin tử vi lúc này.';
-    } catch (e) {
-      console.error('Horoscope Generation Error:', e);
-      return 'Xin lỗi, các vì sao hôm nay đang bị che khuất, tôi chưa thể đưa ra dự đoán.';
-    }
+  async generateHoroscope(userName: string, birthday?: Date, context: string = ''): Promise<string> {
+    return this.horoscopeService.generateWeeklyHoroscope(userName, birthday, context);
   }
 
   /**
