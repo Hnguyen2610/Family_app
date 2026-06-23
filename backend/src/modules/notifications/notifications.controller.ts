@@ -32,7 +32,7 @@ export class NotificationsController {
     // 2. If Monday (1), trigger Super Admin Weekly Horoscope
     if (dayOfWeek === 1) {
       this.logger.log('It is Monday! Triggering weekly horoscope...');
-      await this.notificationsService.sendSuperAdminWeeklyHoroscope();
+      await this.notificationsService.sendWeeklyHoroscope();
     }
 
     // 3. If 1st of month, trigger Monthly Summary
