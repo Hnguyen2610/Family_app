@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { usersAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
-import { FiTrash2, FiUser, FiMail, FiArrowRight } from 'react-icons/fi';
+import { FiTrash2, FiUser, FiMail, FiArrowRight, FiHome, FiUsers } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
+import { useTranslation } from '@/lib/i18n';
 
 interface Member {
   id: string;
@@ -14,13 +15,16 @@ interface Member {
   birthday: string | null;
 }
 
-const ROLES = ['Bố', 'Mẹ', 'Con trai lớn', 'Con gái lớn', 'Con út', 'Ông', 'Bà'];
+const ROLES_KEYS = [
+  'family.role.father', 'family.role.mother', 'family.role.son',
+  'family.role.daughter', 'family.role.grandpa', 'family.role.grandma', 'family.role.other'
+];
 
 export default function FamilyMembers() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
-
+  const { t,language } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -40,11 +44,11 @@ export default function FamilyMembers() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
-      const response = await usersAPI.getAll(familyId);
+      const response = await usersAPI.getAll(familyId, user?.id);
       setMembers(response.data);
     } catch (error) {
       console.error('Failed to fetch members:', error);
-      toast.error('Không thể tải danh sách thành viên');
+      toast.error(t('family.toastError'));
     } finally {
       setLoading(false);
     }
@@ -53,13 +57,13 @@ export default function FamilyMembers() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.email) {
-      toast.error('Vui lòng điền đủ tên và email');
+      toast.error(t('family.toastMissingFields'));
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      toast.error('Vui lòng nhập đúng định dạng email (ví dụ: a@domain.com)');
+      toast.error(t('family.toastInvalidEmail'));
       return;
     }
 
@@ -70,13 +74,13 @@ export default function FamilyMembers() {
           ...formData,
           familyId,
         });
-        toast.success(`Đã cập nhật thông tin ${formData.name}`);
+        toast.success(`${t('family.toastSaveSuccess')} ${formData.name}`);
       } else {
         await usersAPI.create({
           ...formData,
           familyId,
         });
-        toast.success(`Đã thêm ${formData.name} vào gia đình`);
+        toast.success(`${t('family.toastAddSuccess')}: ${formData.name}`);
       }
 
       setFormData({ name: '', email: '', role: '', birthday: '' });
@@ -103,20 +107,20 @@ export default function FamilyMembers() {
 
   const handleDelete = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Bạn có chắc muốn xóa ${name}?`)) {
+    if (confirm(`${t('family.deleteConfirm')} (${name})`)) {
       try {
         await usersAPI.delete(id);
-        toast.success(`Đã xóa ${name}`);
+        toast.success(language === 'vi' ? `Đã xóa ${name}` : `Removed ${name}`);
         fetchMembers();
       } catch (error) {
         console.error('Failed to delete member:', error);
-        toast.error('Không thể xóa thành viên');
+        toast.error(t('family.toastError'));
       }
     }
   };
 
   const formatDisplayDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN', {
+    return new Date(dateString).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -125,17 +129,17 @@ export default function FamilyMembers() {
 
   if (!currentFamilyId && user?.globalRole !== 'SUPER_ADMIN') {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-        <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center text-4xl shadow-inner">
-          🏠
+      <div className="flex flex-col items-center justify-center py-20 text-center space-y-8 glass rounded-2xl border border-black/5 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 shadow-sm">
+        <div className="w-24 h-24 bg-white dark:bg-slate-900/50 rounded-2xl flex items-center justify-center shadow-xl border border-black/5 dark:border-white/5 animate-soft-float">
+          <FiHome size={40} className="text-primary" />
         </div>
-        <div className="space-y-2 max-w-sm">
-          <h3 className="text-2xl font-black text-slate-800 tracking-tight">Chưa có gia đình</h3>
-          <p className="text-slate-500 font-medium">Bạn chưa tham gia vào gia đình nào. Hãy liên hệ với Quản trị viên để được thêm vào gia đình của mình nhé!</p>
+        <div className="space-y-3 max-w-md">
+          <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">{t('common.noFamily')}</h3>
+          <p className="text-slate-500 font-medium leading-relaxed">{t('common.noFamilyDesc')}</p>
         </div>
         <div className="pt-4">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-400 shadow-sm">
-            <FiMail className="text-indigo-400" />
+          <div className="inline-flex items-center gap-2 px-6 py-2 bg-white dark:bg-slate-900 border border-black/5 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 shadow-md">
+            <FiMail className="text-primary" />
             {user?.email}
           </div>
         </div>
@@ -144,254 +148,166 @@ export default function FamilyMembers() {
   }
 
   return (
-    <div className="space-y-10 md:space-y-16">
+    <div className="space-y-12">
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-            Family Hub
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black/5 dark:border-white/5 pb-8">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-md text-[9px] font-black uppercase tracking-[0.2em] border border-primary/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+            {language === 'vi' ? 'Quản lý thành viên' : 'Management System'}
           </div>
-          <h2 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight leading-none">
-            Thành <span className="gradient-text">viên</span>
+          <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">
+            {language === 'vi' ? 'Thành viên ' : 'Family '}<span className="text-primary italic">{language === 'vi' ? 'Gia đình' : 'Members'}</span>
           </h2>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-12 gap-8 md:gap-12 items-start">
+      <div className="grid lg:grid-cols-12 gap-8 items-start">
         {/* Management Form */}
-        <div className="lg:col-span-5 lg:sticky lg:top-32">
-          <div className="p-6 md:p-10 bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-indigo-100/30 overflow-hidden relative group">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-600 to-blue-500" />
-
-            <h3 className="text-xl md:text-2xl font-black text-slate-800 mb-2 flex items-center gap-3">
-              {editingMemberId ? 'Cập nhật' : 'Thêm mới'}
-              {editingMemberId && (
-                <button
-                  onClick={() => {
-                    setEditingMemberId(null);
-                    setFormData({ name: '', email: '', role: '', birthday: '' });
-                  }}
-                  className="text-xs font-bold text-indigo-600 ml-auto bg-indigo-50 px-3 py-1 rounded-full hover:bg-indigo-100 transition-colors"
-                >
-                  Hủy chỉnh sửa
-                </button>
-              )}
+        <div className="lg:col-span-4 lg:sticky lg:top-8">
+          <div className="p-8 glass rounded-2xl border border-black/5 dark:border-white/5 overflow-hidden relative group bg-white/80 dark:bg-slate-900/40">
+            <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-3">
+              {editingMemberId ? t('family.edit') : t('family.add')}
             </h3>
-            <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-8">
-              Thông tin cơ bản
-            </p>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <label
-                  htmlFor="name"
-                  className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1"
-                >
-                  Họ và tên
-                </label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.name')}</label>
                 <div className="relative group/input">
-                  <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within/input:text-indigo-500 transition-colors" />
+                  <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within/input:text-primary transition-colors" />
                   <input
-                    id="name"
                     type="text"
-                    placeholder="Ví dụ: Nguyễn Văn A"
+                    placeholder="Nguyễn Hoàng Nguyên"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="input-field pl-12 text-sm md:text-base"
-                    autoComplete="name"
+                    className="input-field pl-12"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label
-                  htmlFor="email"
-                  className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1"
-                >
-                  Email
-                </label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.email')}</label>
                 <div className="relative group/input">
-                  <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within/input:text-indigo-500 transition-colors" />
+                  <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within/input:text-primary transition-colors" />
                   <input
-                    id="email"
                     type="email"
-                    placeholder="nguyenvan@family.com"
+                    placeholder="nguyen@family.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="input-field pl-12 text-sm md:text-base"
-                    autoComplete="email"
+                    className="input-field pl-12"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-2">
-                  <label
-                    htmlFor="role"
-                    className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1"
-                  >
-                    Vai trò
-                  </label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.role')}</label>
                   <select
-                    id="role"
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="input-field appearance-none text-xs md:text-sm"
+                    className="input-field"
                   >
-                    <option value="">Chọn vai trò...</option>
-                    {ROLES.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
+                    <option value="">{language === 'vi' ? 'Chọn vai trò...' : 'Select role...'}</option>
+                    {ROLES_KEYS.map((roleKey) => (
+                      <option key={roleKey} value={t(roleKey as any)}>{t(roleKey as any)}</option>
                     ))}
                   </select>
                 </div>
 
                 <div className="space-y-2">
-                  <label
-                    htmlFor="birthday"
-                    className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1"
-                  >
-                    Ngày sinh
-                  </label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.birthday')}</label>
                   <input
-                    id="birthday"
                     type="date"
                     value={formData.birthday}
                     onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
-                    className="input-field text-xs md:text-sm"
+                    className="input-field"
                   />
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="btn-primary w-full py-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black flex items-center justify-center gap-3 group/btn hover:translate-y-[-2px] active:translate-y-[1px]"
-              >
-                {editingMemberId ? 'Lưu thay đổi' : 'Thêm thành viên'}
-                <FiArrowRight className="group-hover/btn:translate-x-1 transition-transform" />
+              <button type="submit" className="btn-primary w-full group/btn">
+                {editingMemberId ? t('family.update') : t('family.submit')}
+                <FiArrowRight className="inline-block ml-2 group-hover/btn:translate-x-1 transition-transform" />
               </button>
+
+              {editingMemberId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingMemberId(null);
+                    setFormData({ name: '', email: '', role: '', birthday: '' });
+                  }}
+                  className="w-full py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  {t('settings.abort')}
+                </button>
+              )}
             </form>
           </div>
         </div>
 
         {/* Member Grid */}
-        <div className="lg:col-span-7">
+        <div className="lg:col-span-8">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-white/50 rounded-[2.5rem] border border-slate-200 border-dashed">
-              <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">
-                Đang tải dữ liệu...
-              </p>
+            <div className="flex flex-col items-center justify-center py-20 glass rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/40">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-slate-500 font-bold uppercase tracking-widest text-[9px]">{language === 'vi' ? 'Đang truy xuất dữ liệu...' : 'Querying data...'}</p>
             </div>
           ) : members.length === 0 ? (
-            <div className="text-center py-20 bg-white/50 rounded-[2.5rem] border border-slate-200 border-dashed">
-              <span className="text-6xl mb-6 block opacity-20 filter grayscale">👪</span>
-              <p className="text-slate-400 font-black uppercase tracking-widest text-xs">
-                Ngôi nhà còn trống
-              </p>
-              <p className="text-slate-300 text-[10px] mt-2">Hãy thêm thành viên đầu tiên nhé!</p>
+            <div className="text-center py-20 glass rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/40">
+              <FiUsers size={40} className="mx-auto mb-4 text-slate-300 dark:text-slate-800" />
+              <p className="text-slate-500 font-black uppercase tracking-widest text-xs">{language === 'vi' ? 'Cơ sở dữ liệu trống' : 'Database Empty'}</p>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-4 md:gap-8">
+            <div className="grid sm:grid-cols-2 gap-6">
               {members.map((member) => (
                 <div
                   key={member.id}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => handleEdit(member)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleEdit(member);
-                    }
-                  }}
-                  className={`group relative p-6 md:p-8 rounded-[2.5rem] transition-all duration-700 border-2 cursor-pointer outline-none focus:ring-4 focus:ring-indigo-500/10 text-left w-full h-full flex flex-col ${
+                  className={`group relative p-8 rounded-2xl transition-all duration-500 border border-white/5 cursor-pointer flex flex-col ${
                     editingMemberId === member.id
-                      ? 'bg-indigo-600 border-indigo-500 shadow-2xl shadow-indigo-200 scale-[1.02] z-10'
-                      : 'bg-white border-white hover:border-indigo-100 hover:shadow-2xl hover:shadow-indigo-100/40 hover:-translate-y-2'
+                      ? 'bg-primary/10 border-primary/40 shadow-2xl shadow-primary/10'
+                      : 'bg-slate-100/40 dark:bg-slate-900/40 hover:bg-slate-100/60 dark:hover:bg-slate-900/60 border-black/5 dark:border-white/10 hover:border-primary/20 hover:-translate-y-1'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-6 md:mb-8">
-                    <div
-                      className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl md:rounded-3xl flex items-center justify-center text-xl md:text-2xl font-black transition-all duration-700 shadow-lg ${
-                        editingMemberId === member.id
-                          ? 'bg-white/20 text-white'
-                          : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white group-hover:scale-110'
-                      }`}
-                    >
+                  <div className="flex justify-between items-start mb-8">
+                    <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-xl font-black transition-all duration-500 ${
+                      editingMemberId === member.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-primary group-hover:text-primary-foreground'
+                    }`}>
                       {member.name.charAt(0).toUpperCase()}
                     </div>
                     <button
                       onClick={(e) => handleDelete(member.id, member.name, e)}
-                      className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 ${
-                        editingMemberId === member.id
-                          ? 'text-white/40 hover:text-white hover:bg-white/10'
-                          : 'text-slate-200 hover:text-rose-500 hover:bg-rose-50'
-                      }`}
-                      title="Xóa"
+                      className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
                     >
-                      <FiTrash2 size={18} />
+                      <FiTrash2 size={16} />
                     </button>
                   </div>
 
-                  <div className="mt-auto">
-                    <h4
-                      className={`text-lg md:text-2xl font-black mb-1 md:mb-2 transition-all duration-700 ${
-                        editingMemberId === member.id ? 'text-white' : 'text-slate-800'
-                      }`}
-                    >
-                      {member.name}
-                    </h4>
-                    <p
-                      className={`text-[10px] md:text-xs font-bold flex items-center gap-2 mb-6 transition-all duration-700 ${
-                        editingMemberId === member.id ? 'text-white/70' : 'text-slate-400'
-                      }`}
-                    >
-                      <FiMail
-                        size={12}
-                        className={
-                          editingMemberId === member.id ? 'text-white/40' : 'text-indigo-300'
-                        }
-                      />
-                      <span className="truncate">{member.email}</span>
-                    </p>
+                  <div className="mt-auto space-y-4">
+                    <div>
+                      <h4 className="text-xl font-black text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors">{member.name}</h4>
+                      <div className="flex items-center gap-2 text-slate-500 text-[11px] font-medium mt-1">
+                        <FiMail size={12} className="text-slate-600" />
+                        <span className="truncate">{member.email}</span>
+                      </div>
+                    </div>
 
                     <div className="flex flex-wrap gap-2">
                       {member.role && (
-                        <span
-                          className={`px-4 py-1.5 text-[9px] md:text-[10px] font-black rounded-full uppercase tracking-widest transition-all duration-700 ${
-                            editingMemberId === member.id
-                              ? 'bg-white/15 text-white'
-                              : 'bg-slate-50 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600'
-                          }`}
-                        >
+                        <span className="px-3 py-1 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[9px] font-black rounded-md uppercase tracking-wider border border-black/5 dark:border-white/5 group-hover:border-primary/20 transition-colors">
                           {member.role}
                         </span>
                       )}
                       {member.birthday && (
-                        <span
-                          className={`px-4 py-1.5 text-[9px] md:text-[10px] font-black rounded-full uppercase tracking-widest flex items-center gap-1.5 transition-all duration-700 ${
-                            editingMemberId === member.id
-                              ? 'bg-white/15 text-white'
-                              : 'bg-rose-50 text-rose-500'
-                          }`}
-                        >
-                          🎂 {formatDisplayDate(member.birthday)}
+                        <span className="px-3 py-1 bg-primary/5 text-primary/70 text-[9px] font-black rounded-md uppercase tracking-wider border border-primary/10">
+                           {formatDisplayDate(member.birthday)}
                         </span>
                       )}
                     </div>
                   </div>
-
-                  {editingMemberId === member.id && (
-                    <div className="absolute top-4 right-4 hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-md text-white px-4 py-1.5 rounded-full shadow-lg border border-white/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                      <span className="text-[9px] font-black uppercase tracking-widest">
-                        Đang sửa
-                      </span>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>

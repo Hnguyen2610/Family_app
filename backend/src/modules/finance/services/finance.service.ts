@@ -79,7 +79,7 @@ export class FinanceService {
       try {
         const aiResult = await this.aiAgentService.categorizeTransaction(dto.description);
         category = aiResult.category as TransactionCategory;
-        
+
         // Only override type if it was not explicitly provided (e.g. if it's default OTHER or undefined)
         // For bank transactions, type is usually determined by amount (+/-), which is more reliable.
         if (!type || type === 'OTHER' as any) {
@@ -126,7 +126,7 @@ export class FinanceService {
     const endOfDay = new Date(now.setHours(23, 59, 59, 999));
 
     const budget = await this.getOrCreateBudget(userId);
-    
+
     const transactions = await this.prisma.transaction.findMany({
       where: {
         userId,
@@ -175,7 +175,6 @@ export class FinanceService {
     const isNewIncome = dto.category === TransactionCategory.SALARY || dto.category === TransactionCategory.BONUS;
 
     if (isOldIncome || isNewIncome) {
-      const budget = await this.getOrCreateBudget(userId);
       let incomeDiff = 0;
 
       if (isOldIncome) incomeDiff -= oldTx.amount;

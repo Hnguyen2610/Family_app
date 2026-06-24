@@ -26,8 +26,8 @@ export class FinanceController {
   async getMonthlyReport(@Request() req: any, @Query('month') month?: number, @Query('year') year?: number) {
     const now = new Date();
     return this.financeService.getMonthlyReportData(
-      req.user.id, 
-      month || (now.getMonth() + 1), 
+      req.user.id,
+      month || (now.getMonth() + 1),
       year || now.getFullYear()
     );
   }
@@ -91,6 +91,43 @@ export class FinanceController {
       reference: txData.reference,
       paymentId: txData.paymentId,
       date: txData.when || new Date().toISOString(),
+    });
+  }
+
+  /**
+   * SePay Webhook - Official partner for Vietinbank Personal accounts
+   */
+  @Post('webhook/sepay')
+  async handleSePayWebhook(
+    @Body() body: any,
+    @Headers('authorization') authHeader: string
+  ) {
+    // 1. Verify SePay Token
+    const expectedToken = process.env.SEPAY_WEBHOOK_TOKEN || 'family-sepay-token-2026';
+    const token = authHeader?.replace('Apikey ', '');
+
+    if (token !== expectedToken) {
+      this.logger.warn('Unauthorized SePay Webhook attempt');
+      throw new UnauthorizedException('Invalid SePay token');
+    }
+
+    this.logger.log(`Received SePay Webhook: ${body.reference_number}`);
+
+    // 2. Map SePay fields to our Transaction model
+    const amountIn = parseFloat(body.amount_in || '0');
+    const amountOut = parseFloat(body.amount_out || '0');
+    const amount = amountIn > 0 ? amountIn : amountOut;
+    const type = amountIn > 0 ? 'INCOME' as any : 'EXPENSE' as any;
+
+    const userId = process.env.PRIMARY_USER_ID || 'all';
+
+    return this.financeService.addTransaction(userId, {
+      amount,
+      type,
+      description: body.transaction_content || body.body,
+      reference: body.reference_number,
+      paymentId: body.id?.toString(),
+      date: body.transaction_date,
     });
   }
 }

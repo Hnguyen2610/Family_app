@@ -112,17 +112,27 @@ export class MealsService {
     return mealHistory;
   }
 
-  async getMealHistory(familyId: string, days: number = 30) {
+  async getMealHistory(familyId: string, days: number = 30, userId?: string) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    const where: any = {
+      date: { gte: startDate },
+    };
+
+    if (familyId === 'all' && userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { families: { select: { id: true } } },
+      });
+      const familyIds = user?.families.map((f) => f.id) || [];
+      where.familyId = { in: familyIds };
+    } else {
+      where.familyId = familyId;
+    }
+
     return this.prisma.mealHistory.findMany({
-      where: {
-        familyId,
-        date: {
-          gte: startDate,
-        },
-      },
+      where,
       include: { meal: true },
       orderBy: { date: 'desc' },
     });
@@ -173,13 +183,27 @@ export class MealsService {
 
   // ========== Smart Menu Generation ==========
 
-  async generateFamilyMenu(familyId: string) {
-    // 1. Get all users in the family
-    const users = await this.prisma.user.findMany({
-      where: { familyId },
-      select: { id: true },
-    });
-    const userIds = users.map((u) => u.id);
+  async generateFamilyMenu(familyId: string, userId?: string) {
+    // 1. Get all users whose preferences we should consider
+    let userIds: string[] = [];
+    let familyIds: string[] = [];
+
+    if (familyId === 'all' && userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { families: { include: { users: { select: { id: true } } } } },
+      });
+      familyIds = user?.families.map((f) => f.id) || [];
+      const allMembers = user?.families.flatMap((f) => f.users) || [];
+      userIds = Array.from(new Set(allMembers.map((u) => u.id)));
+    } else {
+      familyIds = [familyId];
+      const users = await this.prisma.user.findMany({
+        where: { families: { some: { id: familyId } } },
+        select: { id: true },
+      });
+      userIds = users.map((u) => u.id);
+    }
 
     // 2. Get all distinct meal preferences for these users
     const preferences = await this.prisma.mealPreference.findMany({
@@ -199,13 +223,13 @@ export class MealsService {
       if (meal.category === 'SOUP') soups.set(meal.id, meal);
     });
 
-    // 4. Get recent history (last 3 days) to avoid exact repetition
+    // 4. Get recent history to avoid exact repetition
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
     const recentMeals = await this.prisma.mealHistory.findMany({
       where: {
-        familyId,
+        familyId: { in: familyIds },
         date: { gte: threeDaysAgo },
       },
       select: { mealId: true },
@@ -217,10 +241,7 @@ export class MealsService {
       const allItems = Array.from(bucket.values());
       if (allItems.length === 0) return null;
 
-      // Try playing fair: exclude recently eaten
       const freshItems = allItems.filter((i) => !recentMealIds.has(i.id));
-
-      // If we've eaten everything recently, fallback to allowing repeats
       const pool = freshItems.length > 0 ? freshItems : allItems;
 
       const randomIndex = Math.floor(Math.random() * pool.length);
@@ -236,14 +257,15 @@ export class MealsService {
     if (selectedVegetable) combo.push(selectedVegetable);
     if (selectedSoup) combo.push(selectedSoup);
 
-    // 5. Optionally, we record this immediately to history so the next prompt doesn't get the exact same.
-    // If you only want to suggest and not lock in, comment this out. But user requested:
-    // "Khi prompt hỏi AI xem hôm nay ăn gì, AI sẽ random các món từ trong db để hoàn thiện 1 bữa ăn..."
-    for (const meal of combo) {
-      await this.recordMeal(familyId, {
-        mealId: meal.id,
-        category: meal.category,
-      });
+    // 5. Record to history. If 'all', record to the first family of the user
+    const targetFamilyId = familyId === 'all' ? (familyIds[0] || 'all') : familyId;
+    if (targetFamilyId && targetFamilyId !== 'all') {
+      for (const meal of combo) {
+        await this.recordMeal(targetFamilyId, {
+          mealId: meal.id,
+          category: meal.category,
+        });
+      }
     }
 
     return {

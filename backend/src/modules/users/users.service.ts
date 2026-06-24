@@ -16,7 +16,7 @@ export class UsersService {
     if (dto.birthday) {
       data.birthday = new Date(dto.birthday);
     }
-    
+
     if (familyIds && familyIds.length > 0) {
       data.families = {
         connect: familyIds.map(id => ({ id }))
@@ -31,7 +31,7 @@ export class UsersService {
     });
 
     // Send Welcome Email
-    this.mailService.sendWelcomeEmail(user.email, user.name).catch(err => 
+    this.mailService.sendWelcomeEmail(user.email, user.name).catch(err =>
       console.error('Failed to send welcome email', err)
     );
 
@@ -47,13 +47,30 @@ export class UsersService {
     });
   }
 
-  async findAll(familyId: string) {
-    return this.prisma.user.findMany({
-      where: { 
+  async findAll(familyId: string, currentUserId?: string) {
+    let where: any = {
+      families: {
+        some: { id: familyId }
+      }
+    };
+
+    if (familyId === 'all' && currentUserId) {
+      // Find all families the current user belongs to
+      const currentUser = await this.prisma.user.findUnique({
+        where: { id: currentUserId },
+        include: { families: { select: { id: true } } }
+      });
+      const familyIds = currentUser?.families.map(f => f.id) || [];
+
+      where = {
         families: {
-          some: { id: familyId }
+          some: { id: { in: familyIds } }
         }
-      },
+      };
+    }
+
+    return this.prisma.user.findMany({
+      where,
       select: {
         id: true,
         name: true,
@@ -119,7 +136,7 @@ export class UsersService {
     for (const familyId of addedIds) {
       const family = await this.prisma.family.findUnique({ where: { id: familyId } });
       if (family) {
-        this.mailService.sendFamilyAddedEmail(user.email, user.name, family.name).catch(err => 
+        this.mailService.sendFamilyAddedEmail(user.email, user.name, family.name).catch(err =>
           console.error('Failed to send family added email', err)
         );
       }

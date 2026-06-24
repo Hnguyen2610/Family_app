@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import apiClient, { usersAPI } from '@/lib/api-client';
+import { usersAPI, mealsAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { FiUsers, FiCpu, FiCheckCircle } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
 import MealPreferenceModal from './MealPreferenceModal';
-
+import { useTranslation } from '@/lib/i18n';
 interface Member {
   id: string;
   name: string;
@@ -17,26 +17,26 @@ interface Member {
 export default function MealPlanner() {
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  
+
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [generatingMenu, setGeneratingMenu] = useState(false);
   const [generatedMenu, setGeneratedMenu] = useState<any>(null);
-
+  const { t, language } = useTranslation();
   const { user, currentFamilyId } = useAuth();
   const familyId = currentFamilyId || '';
 
   useEffect(() => {
-    fetchMembers();
-  }, []);
+    if (familyId) fetchMembers();
+  }, [familyId]);
 
   const fetchMembers = async () => {
     setLoadingMembers(true);
     try {
-      const response = await usersAPI.getAll(familyId);
+      const response = await usersAPI.getAll(familyId, user?.id);
       setMembers(response.data);
     } catch (error) {
       console.error('Failed to fetch members:', error);
-      toast.error('Không thể tải danh sách thành viên');
+      toast.error(t('family.toastError'));
     } finally {
       setLoadingMembers(false);
     }
@@ -45,12 +45,12 @@ export default function MealPlanner() {
   const handleGenerateMenu = async () => {
     setGeneratingMenu(true);
     try {
-      const response = await apiClient.get(`/api/meals/family/${familyId}/generate-menu`);
+      const response = await mealsAPI.generateMenu(familyId, user?.id);
       setGeneratedMenu(response.data);
-      toast.success('Đã lên thực đơn thành công!');
+      toast.success(t('common.success'));
     } catch (error) {
       console.error('Failed to generate menu', error);
-      toast.error('Không thể tạo AI menu lúc này');
+      toast.error(t('common.error'));
     } finally {
       setGeneratingMenu(false);
     }
@@ -58,74 +58,74 @@ export default function MealPlanner() {
 
   if (!currentFamilyId && user?.globalRole !== 'SUPER_ADMIN') {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-        <div className="w-24 h-24 bg-orange-50 rounded-full flex items-center justify-center text-4xl shadow-inner">
-          🍽️
+      <div className="flex flex-col items-center justify-center py-20 text-center space-y-8 glass rounded-2xl border border-black/5 dark:border-white/5 bg-white/80 dark:bg-slate-900/40 backdrop-blur-xl">
+        <div className="w-20 h-20 bg-slate-100 dark:bg-slate-900 border border-black/5 dark:border-white/5 rounded-2xl flex items-center justify-center text-4xl text-primary animate-pulse">
+          <FiCpu />
         </div>
-        <div className="space-y-2 max-w-sm">
-          <h3 className="text-2xl font-black text-slate-800 tracking-tight">Chưa có kế hoạch ăn uống</h3>
-          <p className="text-slate-500 font-medium">Bạn chưa tham gia vào gia đình nào. Hãy gia nhập gia đình để cùng lên thực đơn nhé!</p>
+        <div className="space-y-4 max-w-sm">
+          <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">{t('meal.accessDenied')}</h3>
+          <p className="text-slate-500 font-medium text-sm leading-relaxed">{t('meal.noFamilyFound')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-10 md:space-y-16">
-      
+    <div className="space-y-12">
+
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-pulse"></span>
-            Meal Planner
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-white/5 pb-10">
+        <div className="space-y-4">
+          <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em]">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+            {t('meal.nutritionEngine')}
           </div>
-          <h2 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight leading-none">
-            Hôm nay <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-rose-500">ăn gì?</span>
+          <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
+            {t('meal.title')} <span className="text-primary">{t('meal.subtitle')}</span>
           </h2>
-          <p className="text-slate-400 font-medium text-sm md:text-base">
-            Chọn thành viên để thêm món yêu thích, sau đó để AI gợi ý bữa ăn!
+          <p className="text-slate-500 font-medium text-sm md:text-base">
+            {t('meal.optimize')}
           </p>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-12 gap-8 md:gap-12 items-start">
-        
+      <div className="grid lg:grid-cols-12 gap-10 items-start">
+
         {/* Members Grid */}
         <div className="lg:col-span-8">
-          <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
-            <FiUsers className="text-orange-500" /> Khẩu vị gia đình
+          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest mb-8 flex items-center gap-3">
+             <FiUsers className="text-primary" /> {t('meal.activeNodes')}
           </h3>
-          
+
           {loadingMembers ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-white/50 rounded-[2.5rem] border border-slate-200 border-dashed">
-              <div className="w-10 h-10 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Đang tải dữ liệu...</p>
+            <div className="flex flex-col items-center justify-center py-24 glass rounded-2xl border border-black/5 dark:border-white/5 border-dashed bg-slate-50/50 dark:bg-slate-900/40">
+              <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-slate-600 font-black uppercase tracking-widest text-[9px]">Querying Nodes...</p>
             </div>
           ) : members.length === 0 ? (
-            <div className="text-center py-20 bg-white/50 rounded-[2.5rem] border border-slate-200 border-dashed">
-              <span className="text-6xl mb-6 block opacity-20 filter grayscale">👨‍👩‍👧‍👦</span>
-              <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Chưa có ai</p>
-              <p className="text-slate-300 text-[10px] mt-2">Vui lòng sang tab "Gia đình" để thêm thành viên trước.</p>
+            <div className="text-center py-24 glass rounded-2xl border border-black/5 dark:border-white/5 border-dashed bg-slate-50/50 dark:bg-slate-900/40">
+              <FiUsers className="text-5xl mb-6 mx-auto opacity-10 text-primary" />
+              <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">No Nodes Detected</p>
+              <p className="text-slate-600 text-[10px] mt-3">Synchronize family data to proceed.</p>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
               {members.map((member) => (
-                <div
-                  key={member.id}
-                  onClick={() => setSelectedMember(member)}
-                  className="group relative p-6 bg-white rounded-3xl border border-slate-100 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-100/50 hover:-translate-y-1 transition-all cursor-pointer flex flex-col items-center text-center gap-4"
-                >
-                  <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl font-black group-hover:bg-orange-500 group-hover:text-white transition-colors duration-500">
-                    {member.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h4 className="font-black text-slate-800">{member.name}</h4>
-                    {member.role && (
-                      <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">{member.role}</span>
-                    )}
-                  </div>
-                  <div className="absolute inset-0 bg-gradient-to-tr from-orange-500/0 via-orange-500/0 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl pointer-events-none" />
+                  <div
+                    key={member.id}
+                    onClick={() => setSelectedMember(member)}
+                    className="group relative p-8 bg-slate-100/40 dark:bg-slate-900/40 rounded-2xl border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all cursor-pointer flex flex-col items-center text-center gap-6 overflow-hidden"
+                  >
+                    <div className="w-16 h-16 rounded-xl bg-slate-200 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-2xl font-black group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500">
+                      {member.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors text-lg truncate w-full px-2">{member.name}</h4>
+                      {member.role && (
+                        <span className="text-[9px] uppercase tracking-widest font-black text-slate-500 mt-1 block">{member.role}</span>
+                      )}
+                    </div>
+                  <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
               ))}
             </div>
@@ -133,31 +133,32 @@ export default function MealPlanner() {
         </div>
 
         {/* AI Menu Generator Block */}
-        <div className="lg:col-span-4 lg:sticky lg:top-32 space-y-6">
-          <div className="p-6 md:p-8 bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-500/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+        <div className="lg:col-span-4 lg:sticky lg:top-32 space-y-8">
+          <div className="p-8 glass rounded-2xl border border-primary/30 bg-white/80 dark:bg-primary/5 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-6 opacity-5">
+               <FiCpu size={100} />
+            </div>
 
-            <h3 className="text-xl font-black text-white mb-2 flex items-center gap-3 relative z-10">
-              <FiCpu className="text-orange-400" /> AI Menu
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest mb-2 flex items-center gap-3 relative z-10">
+              <FiCpu className="text-primary" /> {language === 'vi' ? 'Động cơ dinh dưỡng' : 'Nutrition Core'}
             </h3>
-            <p className="text-slate-400 text-xs mb-8 relative z-10">
-              Gợi ý thực đơn hôm nay dựa trên những chuyên gia ẩm thực gia đình bạn.
+            <p className="text-slate-500 text-[10px] uppercase font-black tracking-widest mb-8 relative z-10">
+              {t('meal.optimize')}
             </p>
 
             <button
               onClick={handleGenerateMenu}
               disabled={generatingMenu || members.length === 0}
-              className="w-full relative z-10 py-4 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-black uppercase tracking-widest text-xs transition-all flex justify-center items-center gap-2 hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed group/btn"
+              className="btn-primary w-full flex justify-center items-center gap-3 py-4 relative z-10"
             >
               {generatingMenu ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Đang suy nghĩ...
+                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                  {t('meal.synthesis')}
                 </>
               ) : (
                 <>
-                  ✨ GỢI Ý NGAY
+                  <FiCpu /> {t('meal.execute')}
                 </>
               )}
             </button>
@@ -165,39 +166,31 @@ export default function MealPlanner() {
 
           {/* Generated Result Container */}
           {generatedMenu && (
-            <div className="p-6 md:p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 animate-in slide-in-from-bottom-8 fade-in duration-500 flex flex-col gap-4">
-              <div className="flex items-center gap-2 text-emerald-500 font-bold text-sm mb-2">
-                <FiCheckCircle /> Thực đơn hôm nay:
-              </div>
-              
-              <div className="space-y-3">
-                <div className="p-4 bg-rose-50/50 border border-rose-100 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🍗</span>
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-0.5">Món chính</div>
-                    <div className="font-bold text-slate-800">{generatedMenu.mainCourse?.name || 'Thịt kho tàu (Mặc định)'}</div>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🥦</span>
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-0.5">Rau xanh</div>
-                    <div className="font-bold text-slate-800">{generatedMenu.vegetable?.name || 'Rau muống xào (Mặc định)'}</div>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🥣</span>
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-0.5">Canh</div>
-                    <div className="font-bold text-slate-800">{generatedMenu.soup?.name || 'Canh chua (Mặc định)'}</div>
-                  </div>
-                </div>
+            <div className="p-8 glass border border-black/5 dark:border-white/5 rounded-2xl animate-in slide-in-from-right-8 duration-700 flex flex-col gap-6 bg-white/80 dark:bg-slate-900/60 shadow-xl">
+              <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-[0.2em] mb-2">
+                <FiCheckCircle /> {t('meal.syncedResult')}
               </div>
 
-              <div className="text-[10px] text-center text-slate-400 mt-4 italic">
-                Thực đơn đã được lưu vào lịch sử để tránh trùng lặp ngày mai!
+              <div className="space-y-4">
+                {[
+                  { label: t('meal.category.MAIN_COURSE'), name: generatedMenu.mainCourse?.name || t('meal.standardUnit'), icon: <FiCheckCircle />, color: 'primary' },
+                  { label: t('meal.category.VEGETABLE'), name: generatedMenu.vegetable?.name || t('meal.standardUnit'), icon: <FiCheckCircle />, color: 'primary' },
+                  { label: t('meal.category.SOUP'), name: generatedMenu.soup?.name || t('meal.standardUnit'), icon: <FiCheckCircle />, color: 'primary' }
+                ].map((item, idx) => (
+                  <div key={idx} className="p-5 bg-slate-50 dark:bg-slate-900/60 border border-black/5 dark:border-white/5 rounded-xl flex items-center gap-4 group/item hover:border-primary/20 transition-all shadow-sm">
+                    <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-black/5 dark:border-white/5 flex items-center justify-center text-primary text-xl shadow-sm">
+                      {item.icon}
+                    </div>
+                    <div>
+                      <div className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1 group-hover/item:text-primary transition-colors">{item.label}</div>
+                      <div className="font-black text-slate-900 dark:text-slate-100 text-sm italic">{item.name}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-[9px] text-center text-slate-600 dark:text-slate-600 font-bold uppercase tracking-widest mt-4">
+                {t('meal.allocationArchived')}
               </div>
             </div>
           )}

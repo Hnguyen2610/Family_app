@@ -1,11 +1,13 @@
-import type { Metadata } from 'next';
-import { Quicksand } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/Providers';
+import { Toaster } from 'react-hot-toast';
 
-const quicksand = Quicksand({ subsets: ['latin', 'vietnamese'] });
-
-import { Viewport } from 'next';
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin', 'vietnamese'],
+  variable: '--font-jakarta',
+});
 
 export const viewport: Viewport = {
   themeColor: '#4f46e5',
@@ -15,17 +17,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Family Calendar + AI Assistant',
-  description: 'Calendar, meal planning, and AI chatbot for families',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: 'FamCal',
-  },
-  icons: {
-    icon: '/icon.png',
-    apple: '/icon.png',
-  },
+  title: 'Family Hub',
+  description: 'AI-Powered Family Management System',
 };
 
 export default function RootLayout({
@@ -34,10 +27,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${quicksand.className} bg-[#f8fafc] text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900`}>
+    <html lang="vi" suppressHydrationWarning className="dark">
+      <body className={`${jakarta.variable} font-sans antialiased text-[15px] tracking-tight tech-grid min-h-screen`}>
         <Providers>
-          {children}
+          <main className="min-h-screen transition-colors duration-500">
+            {children}
+          </main>
+          <Toaster position="top-center" />
         </Providers>
       </body>
     </html>

@@ -58,7 +58,7 @@ export class EventsService {
     try {
       // Determine which users to notify based on scope
       let usersToNotify: any[] = [];
-      
+
       if (event.scope === 'GLOBAL') {
         // Notify ALL users in the system for global events
         usersToNotify = await this.prisma.user.findMany({
@@ -70,25 +70,25 @@ export class EventsService {
       } else {
         // Notify only family members for FAMILY events
         usersToNotify = await this.prisma.user.findMany({
-          where: { 
+          where: {
             families: { some: { id: familyId } },
             id: { not: event.createdBy } // Exclude creator
           },
           select: { id: true, email: true, notificationSettings: true }
         });
       }
-      
+
       const eventType = event.type;
-      
+
       // Filter members based on their granular notification settings
       const filteredMembers = usersToNotify.filter(m => {
         const settings = (m.notificationSettings) || {};
         if (Object.keys(settings).length === 0) return true;
         return settings[eventType] !== false;
       });
-      
+
       const emails = filteredMembers.map(m => m.email);
-        
+
       if (emails.length > 0) {
         await this.mailService.sendEventNotificationEmail(emails, {
           title: event.title,
@@ -123,9 +123,6 @@ export class EventsService {
     } else if (hasFamily) {
       const family = await this.prisma.family.findUnique({ where: { id: familyId } });
       const familyName = family?.name || 'Gia đình';
-
-      const startOfMonth = month && year ? new Date(year, month - 1, 1) : null;
-      const endOfMonth = month && year ? new Date(year, month, 0, 23, 59, 59) : null;
 
       const where: any = {
         AND: [
@@ -336,9 +333,9 @@ export class EventsService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const isAdmin = 
-      user.globalRole === 'ADMIN' || 
-      user.globalRole === 'SUPER_ADMIN' || 
+    const isAdmin =
+      user.globalRole === 'ADMIN' ||
+      user.globalRole === 'SUPER_ADMIN' ||
       user.role?.toLowerCase() === 'admin' ||
       user.role?.toLowerCase() === 'super_admin';
 
@@ -378,12 +375,12 @@ export class EventsService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const isAdmin = 
-      user.globalRole === 'ADMIN' || 
-      user.globalRole === 'SUPER_ADMIN' || 
+    const isAdmin =
+      user.globalRole === 'ADMIN' ||
+      user.globalRole === 'SUPER_ADMIN' ||
       user.role?.toLowerCase() === 'admin' ||
       user.role?.toLowerCase() === 'super_admin';
-    
+
     // If not admin, the record must have been created by the user
     const where: any = { id: baseId, familyId };
     if (!isAdmin) {
@@ -406,7 +403,7 @@ export class EventsService {
       where: { id: userId },
       include: { families: { select: { id: true, name: true } } },
     });
-    
+
     const familiesMap: Record<string, string> = {};
     const familyIds = user?.families.map((f) => f.id) || [];
     user?.families.forEach((f) => (familiesMap[f.id] = f.name));
@@ -523,7 +520,7 @@ export class EventsService {
     ];
 
     const holidayEvents: any[] = [];
-    
+
     // Solar holidays
     solarHolidays.forEach(h => {
       if (h.month === month) {

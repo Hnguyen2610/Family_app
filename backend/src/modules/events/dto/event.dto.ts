@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsDate, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsDate } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EventType, EventScope } from '@prisma/client';
 

@@ -5,6 +5,10 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/family_calendar"
 
 # Install dependencies
 RUN npm install
@@ -22,6 +26,10 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/family_calendar"
 
 # Install all dependencies (dev tools needed for CLI and debugging)
 RUN npm install
@@ -30,7 +38,6 @@ RUN npm install
 COPY --from=builder /app/dist ./dist
 
 # Copy prisma schema for migrations
-COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma ./prisma
 
 # Expose port

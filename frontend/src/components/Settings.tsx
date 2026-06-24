@@ -3,9 +3,9 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTranslation } from '@/lib/i18n';
-import { 
-  FiUser, FiBell, FiMoon, FiGlobe, FiLogOut, FiShield, 
-  FiChevronRight, FiSun, FiMonitor, FiClock, FiCheck, FiX, FiEdit2, FiSmartphone 
+import {
+  FiUser, FiBell, FiMoon, FiGlobe, FiLogOut, FiShield,
+  FiChevronRight, FiSun, FiMonitor, FiClock, FiCheck, FiX, FiEdit2, FiSmartphone
 } from 'react-icons/fi';
 import { useState, useEffect } from 'react';
 import { usersAPI } from '@/lib/api-client';
@@ -21,18 +21,19 @@ interface SettingItemProps {
 
 const SettingItem = ({ icon, label, value, onClick }: SettingItemProps) => {
   return (
-    <button 
+    <button
       onClick={onClick}
-      className="group flex items-center justify-start w-full text-left gap-4 p-4 rounded-2xl bg-white/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-900 hover:bg-white dark:hover:bg-slate-900 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className="group flex items-center justify-start w-full text-left gap-5 p-5 rounded-xl bg-slate-100/40 dark:bg-slate-900/60 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all cursor-pointer outline-none overflow-hidden relative shadow-sm"
     >
-      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xl group-hover:bg-indigo-600 group-hover:text-white transition-all">
+      <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-xl group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500">
         {icon}
       </div>
       <div className="flex-1">
-        <p className="text-sm font-black text-slate-700 dark:text-slate-200">{label}</p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{value}</p>
+        <p className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest leading-none mb-1">{label}</p>
+        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter opacity-60">{value}</p>
       </div>
-      <FiChevronRight className="text-slate-300 dark:text-slate-700 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-all" />
+      <FiChevronRight className="text-slate-400 dark:text-slate-700 group-hover:text-primary group-hover:translate-x-1 transition-all" />
+      <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
     </button>
   );
 };
@@ -44,6 +45,7 @@ interface ProfileSectionProps {
 }
 
 const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) => {
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState(user?.name || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -59,10 +61,10 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
       await usersAPI.update(user.id, { name: newName });
       await refreshUser();
       setIsEditing(false);
-      toast.success(language === 'vi' ? 'Cập nhật tên thành công!' : 'Name updated successfully!');
+      toast.success(t('settings.loginSuccess'));
     } catch (error) {
       console.error('Failed to update name:', error);
-      toast.error(language === 'vi' ? 'Cập nhật tên thất bại' : 'Failed to update name');
+      toast.error(t('common.error'));
     } finally {
       setIsSaving(false);
     }
@@ -70,29 +72,29 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
 
   if (isEditing) {
     return (
-      <div className="flex flex-col gap-3 animate-in slide-in-from-left-2 duration-300">
-        <input 
+      <div className="flex flex-col gap-4 animate-in slide-in-from-left-2 duration-300">
+        <input
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          className="bg-white/20 border border-white/30 rounded-xl px-4 py-2 text-white font-black placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 w-full md:w-64 backdrop-blur-md"
+          className="input-field w-full md:w-64"
           placeholder={language === 'vi' ? 'Nhập tên của bạn...' : 'Enter your name...'}
           autoFocus
         />
-        <div className="flex gap-2">
-          <button 
+        <div className="flex gap-3">
+          <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-4 py-1.5 bg-white text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-1 shadow-lg shadow-indigo-900/20 disabled:opacity-50"
+            className="btn-primary px-5 py-2 text-[10px] flex items-center gap-2"
           >
-            <FiCheck /> {language === 'vi' ? 'Lưu' : 'Save'}
+            <FiCheck /> {t('settings.commit')}
           </button>
-          <button 
+          <button
             onClick={() => { setIsEditing(false); setNewName(user?.name || ''); }}
             disabled={isSaving}
-            className="px-4 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1"
+            className="px-5 py-2 glass border border-black/10 dark:border-white/10 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 hover:bg-slate-100 dark:hover:text-white"
           >
-            <FiX /> {language === 'vi' ? 'Hủy' : 'Cancel'}
+            <FiX /> {t('settings.abort')}
           </button>
         </div>
       </div>
@@ -101,20 +103,20 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
 
   return (
     <>
-      <div className="flex items-center gap-3">
-        <h2 className="text-2xl md:text-3xl font-black">{user?.name}</h2>
-        <button 
+      <div className="flex items-center gap-4">
+        <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic capitalize">
+          {user?.name || 'Anonymous User'}
+        </h2>
+        <button
           onClick={() => setIsEditing(true)}
-          className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white/70 hover:text-white transition-all active:scale-95"
-          title={language === 'vi' ? 'Chỉnh sửa tên' : 'Edit Name'}
+          className="p-2 bg-slate-100 dark:bg-white/5 hover:bg-primary/20 rounded-lg text-slate-500 hover:text-primary transition-all border border-black/5 dark:border-white/5"
         >
           <FiEdit2 size={16} />
         </button>
       </div>
-      <p className="text-indigo-100 font-medium opacity-80">{user?.email}</p>
-      <div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-lg text-[10px] font-black uppercase tracking-widest inline-block mt-3 border border-white/20">
-        {user?.globalRole === 'SUPER_ADMIN' ? 'Quản trị viên hệ thống' : 'Thành viên gia đình'}
-      </div>
+      <p className="text-primary font-black text-[10px] uppercase tracking-[0.2em] mt-2 opacity-60">
+        {user?.email} // {user?.globalRole === 'SUPER_ADMIN' ? (language === 'vi' ? 'Quyền tối cao' : 'Root Access') : (language === 'vi' ? 'Thành viên' : 'Node User')}
+      </p>
     </>
   );
 };
@@ -141,54 +143,54 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-20">
       {/* Profile Header */}
-      <div className="flex items-center gap-6 p-6 rounded-[2rem] bg-indigo-600 text-white shadow-xl shadow-indigo-100/50 dark:shadow-indigo-900/20 relative overflow-hidden group">
-        <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-700" />
-        <div className="w-20 h-20 md:w-24 md:h-24 rounded-[2rem] bg-white/20 backdrop-blur-md flex items-center justify-center text-4xl shadow-inner border border-white/20">
-          👤
+      <div className="flex flex-col md:flex-row items-center md:items-start gap-10 p-10 md:p-12 glass rounded-2xl border border-black/10 dark:border-white/5 relative overflow-hidden group">
+        <div className="absolute top-0 right-0 p-10 opacity-5">
+           <FiUser size={160} />
         </div>
-        <div className="relative z-10 flex-1">
+        <div className="w-24 h-24 md:w-40 md:h-40 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 flex items-center justify-center text-6xl text-primary shadow-xl relative z-10">
+          <FiUser />
+        </div>
+        <div className="relative z-10 flex-1 text-center md:text-left">
           <ProfileSection user={user} refreshUser={refreshUser} language={language} />
         </div>
       </div>
 
       {/* Settings Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-4">
-          <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
-            {language === 'vi' ? 'Cá nhân' : 'Personal'}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
+             {language === 'vi' ? 'Truy cập hệ thống' : 'System Access'}
           </h3>
-          <SettingItem icon={<FiUser />} label={t('settings.profile')} value={t('settings.profileDesc')} />
-          <SettingItem icon={<FiShield />} label={t('settings.security')} value={t('settings.securityDesc')} />
+          <SettingItem icon={<FiUser />} label={t('settings.profile')} value={language === 'vi' ? 'Tài khoản & thay mật khẩu' : 'Credential Overhaul'} />
+          <SettingItem icon={<FiShield />} label={t('settings.security')} value={language === 'vi' ? 'Bảo mật giao thức' : 'Protocol Lockdown'} />
         </div>
 
-        <div className="space-y-4">
-          <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
-            {language === 'vi' ? 'Ứng dụng' : 'Application'}
+        <div className="space-y-6">
+          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
+             {language === 'vi' ? 'Liên lạc' : 'Communication'}
           </h3>
-          <SettingItem 
-            icon={<FiBell />} 
-            label={t('settings.notifications')} 
+          <SettingItem
+            icon={<FiBell />}
+            label={t('settings.notifications')}
             value={getNotificationValue()}
             onClick={() => onNavigate('notifications')}
           />
           {isSupported && (
-            <SettingItem 
-              icon={<FiSmartphone />} 
-              label={language === 'vi' ? 'Thông báo thiết bị' : 'Device Push'} 
-              value={isProcessing ? (language === 'vi' ? 'Đang xử lý...' : 'Processing...') : (isSubscribed ? (language === 'vi' ? 'Đã bật' : 'Enabled') : (language === 'vi' ? 'Bấm để bật (Khuyên dùng)' : 'Tap to enable'))}
+            <SettingItem
+              icon={<FiSmartphone />}
+              label={language === 'vi' ? 'Đẩy điện thoại' : 'Neural Push'}
+              value={isProcessing ? (language === 'vi' ? 'Đang đồng bộ...' : 'Syncing...') : (isSubscribed ? (language === 'vi' ? 'Đang hoạt động' : 'Active') : (language === 'vi' ? 'Chưa kết nối' : 'Bypass Mode'))}
               onClick={async () => {
                 if (isProcessing) return;
                 let success = false;
                 if (isSubscribed) {
                   success = await unsubscribe();
-                  if (success) toast.success(language === 'vi' ? 'Đã tắt thông báo' : 'Notifications disabled');
+                  if (success) toast.success(language === 'vi' ? 'Đã hủy kết nối' : 'Link severed');
                 } else {
                   success = await subscribe();
-                  if (success) {
-                    toast.success(language === 'vi' ? 'Đã bật thông báo thành công!' : 'Notifications enabled successfully!');
-                  }
+                  if (success) toast.success(language === 'vi' ? 'Đã kết nối' : 'Connection established');
                 }
               }}
             />
@@ -197,38 +199,38 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
       </div>
 
       {/* Appearance & Language Sections */}
-      <div className="space-y-4">
+      <div className="space-y-8">
         {/* Theme Section */}
-        <div className="p-6 rounded-[2.5rem] bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 text-indigo-500 flex items-center justify-center text-2xl shadow-sm">
+        <div className="p-8 md:p-10 glass rounded-2xl border border-black/5 dark:border-white/5 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-10">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-3xl">
                 {currentThemeIcon()}
               </div>
               <div>
-                <p className="text-base font-black text-slate-800 dark:text-slate-100">{t('settings.appearance')}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Thay đổi tông màu ứng dụng</p>
+                <p className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase">{t('settings.appearance')}</p>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{language === 'vi' ? 'Ma trận ánh sáng' : 'Luminosity Matrix'}</p>
               </div>
             </div>
-            
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl self-start md:self-center">
+
+            <div className="flex bg-slate-100 dark:bg-slate-950 border border-black/5 dark:border-white/5 p-1.5 rounded-xl self-start lg:self-center overflow-x-auto no-scrollbar max-w-full">
               {[
                 { id: 'light', icon: <FiSun />, label: t('settings.appearanceLight') },
                 { id: 'dark', icon: <FiMoon />, label: t('settings.appearanceDark') },
-                { id: 'system', icon: <FiMonitor />, label: t('settings.appearanceSystem') },
-                { id: 'scheduled', icon: <FiClock />, label: t('settings.appearanceScheduled') }
+                { id: 'system', icon: <FiMonitor />, label: language === 'vi' ? 'Hệ thống' : 'Hybrid' },
+                { id: 'scheduled', icon: <FiClock />, label: language === 'vi' ? 'Tự động' : 'Cycle' }
               ].map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setTheme(item.id as any)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                    theme === item.id 
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                  className={`flex items-center gap-2 px-6 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                    theme === item.id
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
                   }`}
                 >
                   {item.icon}
-                  <span className="hidden xs:inline">{item.label}</span>
+                  <span>{item.label}</span>
                 </button>
               ))}
             </div>
@@ -236,33 +238,33 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
         </div>
 
         {/* Language Section */}
-        <div className="p-6 rounded-[2.5rem] bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 text-indigo-500 flex items-center justify-center text-2xl shadow-sm">
+        <div className="p-8 md:p-10 glass rounded-2xl border border-black/5 dark:border-white/5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-10">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-3xl">
                 <FiGlobe />
               </div>
               <div>
-                <p className="text-base font-black text-slate-800 dark:text-slate-100">{t('settings.language')}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{t('settings.languageDesc')}</p>
+                <p className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase">{t('settings.language')}</p>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{language === 'vi' ? 'Lựa chọn ngôn ngữ' : 'Linguistic Overlay'}</p>
               </div>
             </div>
-            
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl self-start md:self-center">
+
+            <div className="flex bg-slate-100 dark:bg-slate-950 border border-black/5 dark:border-white/5 p-1.5 rounded-xl self-start lg:self-center">
               {[
-                { id: 'vi', flag: '🇻🇳', label: 'Tiếng Việt' },
-                { id: 'en', flag: '🇺🇸', label: 'English' }
+                { id: 'vi', label: 'Tiếng Việt' },
+                { id: 'en', label: 'English' }
               ].map((lang) => (
-                <button 
+                <button
                   key={lang.id}
                   onClick={() => setLanguage(lang.id as any)}
-                  className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-black transition-all ${
-                    language === lang.id 
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                  className={`flex items-center gap-2 px-8 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                    language === lang.id
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
                   }`}
                 >
-                  <span>{lang.flag}</span> {lang.label}
+                  {lang.label}
                 </button>
               ))}
             </div>
@@ -270,17 +272,17 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
         </div>
       </div>
 
-      {/* Danger Zone */}
-      <div className="pt-4">
+      {/* Termination */}
+      <div className="pt-10">
         <button
           onClick={logout}
-          className="w-full flex items-center justify-center gap-3 p-5 rounded-[2rem] bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30 hover:bg-rose-600 dark:hover:bg-rose-600 hover:text-white transition-all font-black text-base shadow-sm group"
+          className="w-full flex items-center justify-center gap-3 py-6 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all font-black text-sm uppercase tracking-[0.3em] group"
         >
           <FiLogOut className="text-xl group-hover:scale-110 transition-transform" />
           {t('settings.logoutBtn')}
         </button>
-        <p className="text-center mt-6 text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">
-          {t('settings.version')} Antigravity 🚀
+        <p className="text-center mt-10 text-[9px] text-slate-400 dark:text-slate-700 font-black uppercase tracking-[0.3em]">
+           {t('settings.version')} Family Hub
         </p>
       </div>
     </div>

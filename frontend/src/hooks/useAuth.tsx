@@ -54,20 +54,20 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     try {
       const response = await authAPI.loginWithGoogle(token);
       const { user: userData, accessToken } = response.data;
-      
+
       setUser(userData);
       localStorage.setItem('family_user', JSON.stringify(userData));
-      
+
       // Handle multi-family selection logic
       const savedFamilyId = localStorage.getItem('family_id');
       const families = userData.families || [];
       const hasSavedFamily = families.some((f: any) => f.id === savedFamilyId);
-      
+
       const targetFamilyId = hasSavedFamily ? savedFamilyId : (families[0]?.id || userData.familyId || null);
       setCurrentFamilyId(targetFamilyId);
-      
+
       localStorage.setItem('family_token', accessToken);
-      
+
       return userData;
     } catch (error) {
       console.error('AuthProvider: Login failed', error);
@@ -89,10 +89,12 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       const userData = response.data;
       setUser(userData);
       localStorage.setItem('family_user', JSON.stringify(userData));
-      
+
       const savedFamilyId = localStorage.getItem('family_id');
       const families = userData.families || [];
-      if (savedFamilyId && !families.some((f: any) => f.id === savedFamilyId)) {
+      if (savedFamilyId === 'all') {
+         setCurrentFamilyId('all');
+      } else if (savedFamilyId && !families.some((f: any) => f.id === savedFamilyId)) {
           // If saved ID is no longer valid, fallback to first
            setCurrentFamilyId(families[0]?.id || userData.familyId || null);
       } else if (!savedFamilyId && (families.length > 0 || userData.familyId)) {
@@ -107,7 +109,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     const savedUser = localStorage.getItem('family_user');
     const savedFamilyId = localStorage.getItem('family_id');
     const token = localStorage.getItem('family_token');
-    
+
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
@@ -124,9 +126,9 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
         localStorage.removeItem('family_user');
       }
     }
-    
+
     setIsLoading(false);
-    
+
     if (token) {
       refreshUser();
     }

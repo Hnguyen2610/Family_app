@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { eventsAPI, mealsAPI } from '@/lib/api-client';
 import { useTranslation } from '@/lib/i18n';
-import { FiCalendar, FiCoffee, FiMessageSquare, FiUsers, FiArrowRight, FiClock, FiHeart } from 'react-icons/fi';
+import { FiCalendar, FiMessageSquare, FiArrowRight, FiCoffee, FiHeart } from 'react-icons/fi';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -15,15 +15,13 @@ interface DashboardProps {
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const { user, currentFamilyId } = useAuth();
   const { t, language } = useTranslation();
-  
+
   const [todayEvents, setTodayEvents] = useState<any[]>([]);
   const [suggestedMeals, setSuggestedMeals] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Quick Chat Input
   const [chatMessage, setChatMessage] = useState('');
-
-  const family = user?.families?.find((f: any) => f.id === currentFamilyId) || user?.family;
 
   useEffect(() => {
     if (!currentFamilyId || !user) return;
@@ -32,11 +30,11 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       try {
         setIsLoading(true);
         const now = new Date();
-        
+
         // 1. Fetch Events
         const eventsRes = await eventsAPI.getAll(currentFamilyId, now.getMonth() + 1, now.getFullYear(), user?.id);
         const allEvents = eventsRes.data || [];
-        
+
         const todayStr = format(now, 'yyyy-MM-dd');
         const today = allEvents.filter((e: any) => e.date.startsWith(todayStr));
         // Sort by time
@@ -65,197 +63,172 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
-    // For now, we simply navigate to chat to let them continue. 
-    // Passing the initial message would require a global store or url param, 
+    // For now, we simply navigate to chat to let them continue.
+    // Passing the initial message would require a global store or url param,
     // but a simple trick is to save to localStorage as a "pending_chat_prompt"
     localStorage.setItem('pending_chat_prompt', chatMessage);
     onNavigate('chat');
   };
 
-  const todayFormatted = format(new Date(), language === 'vi' ? 'EEEE, dd MMMM, yyyy' : 'EEEE, MMMM dd, yyyy', { 
-    locale: language === 'vi' ? vi : undefined 
+  const todayFormattedText = format(new Date(), language === 'vi' ? 'dd MMMM, yyyy' : 'MMMM dd, yyyy', {
+    locale: language === 'vi' ? vi : undefined
   });
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center p-20 animate-pulse">
-        <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
-        <p className="text-slate-400 font-medium tracking-widest uppercase text-sm">
-          {language === 'vi' ? 'Đang chuẩn bị bảng điều khiển...' : 'Preparing dashboard...'}
+      <div className="flex flex-col items-center justify-center p-20">
+        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">
+          {language === 'vi' ? 'Đang khởi tạo hệ thống...' : 'Initializing Interface...'}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-6 md:space-y-8">
+    <div className="space-y-12">
       {/* Date Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-indigo-100/50 dark:border-slate-800/50 pb-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-8">
         <div>
-          <h2 className="text-xs md:text-sm font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-2">
-            <FiClock /> {language === 'vi' ? 'Hôm nay' : 'Today'}
-          </h2>
-          <h1 className="text-2xl md:text-4xl font-black text-slate-800 dark:text-slate-100 capitalize">
-            {todayFormatted}
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-md text-[9px] font-black uppercase tracking-[0.2em] border border-primary/20 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+            {language === 'vi' ? 'Giao diện bảng điều khiển' : 'Interface Dashboard'}
+          </div>
+          <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tighter capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
+            {format(new Date(), 'EEEE', { locale: language === 'vi' ? vi : undefined })}, <span className="text-primary">{todayFormattedText}</span>
           </h1>
         </div>
-        <button 
+        <button
           onClick={() => onNavigate('calendar')}
-          className="text-sm font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-4 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-2 w-fit"
+          className="btn-primary flex items-center gap-2 group"
         >
-          {language === 'vi' ? 'Mở Lịch đầy đủ' : 'Full Calendar'} <FiArrowRight />
+          {language === 'vi' ? 'Lịch hệ thống' : 'System Calendar'}
+          <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8">
-        
-        {/* Left Column: Events (spans 7 cols) */}
-        <div className="col-span-1 md:col-span-7 space-y-6">
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-md rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800/50 shadow-sm h-full">
-            <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center text-xl">
-                <FiCalendar />
-              </div>
-              {language === 'vi' ? 'Sự kiện hôm nay' : "Today's Events"}
-              <span className="ml-auto bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs px-2.5 py-1 rounded-full">
-                {todayEvents.length} {language === 'vi' ? 'sự kiện' : 'events'}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+        {/* Left Column: Events */}
+        <div className="lg:col-span-7 space-y-8">
+          <div className="glass rounded-2xl p-8 border border-black/5 dark:border-white/5 h-full bg-white/80 dark:bg-slate-900/40">
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
+              <FiCalendar className="text-primary" />
+              {t('dashboard.operations')}
+              <span className="ml-auto bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500 text-[10px] px-2 py-1 rounded border border-black/5 dark:border-white/5">
+                {todayEvents.length} {t('dashboard.tasks')}
               </span>
             </h3>
 
             {todayEvents.length > 0 ? (
               <div className="space-y-4">
                 {todayEvents.map((ev, idx) => (
-                  <div key={ev.id || idx} className="flex items-start gap-4 p-4 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700/50 group hover:border-indigo-300 transition-all">
-                    <div className="w-14 shrink-0 text-center flex flex-col items-center justify-center pt-1">
-                      <span className="text-lg font-black text-slate-700 dark:text-slate-200">
-                        {ev.time ? ev.time.substring(0, 5) : 'Cả ngày'}
+                  <div key={ev.id || idx} className="flex items-start gap-6 p-6 rounded-xl bg-slate-100/40 dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all group">
+                    <div className="w-16 shrink-0 pt-1">
+                      <span className="text-xs font-black text-slate-500 dark:text-slate-500 group-hover:text-primary transition-colors">
+                        {ev.time ? ev.time.substring(0, 5) : '00:00'}
                       </span>
                     </div>
-                    <div className="w-1 w-full max-w-[4px] bg-indigo-100 dark:bg-slate-700 rounded-full self-stretch" />
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-base text-slate-800 dark:text-slate-100 truncate">{ev.title}</h4>
+                      <h4 className="font-black text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate">{ev.title}</h4>
                       {ev.description && (
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{ev.description}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-2 line-clamp-1 font-medium">{ev.description}</p>
                       )}
-                      {ev.scope === 'PRIVATE' && (
-                        <span className="inline-block mt-2 px-2 py-0.5 rounded border border-rose-200 bg-rose-50 text-rose-600 text-[10px] uppercase font-black tracking-widest">
-                          Cá nhân
-                        </span>
-                      )}
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      <FiArrowRight size={14} className="text-primary" />
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-10 px-4 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">
-                <FiHeart className="text-4xl text-slate-300 dark:text-slate-600 mb-4" />
-                <p className="text-base text-slate-500 dark:text-slate-400 font-medium mb-1">
-                  {language === 'vi' ? 'Hôm nay gia đình rảnh rỗi!' : 'No events today!'}
+              <div className="flex flex-col items-center justify-center py-20 text-center glass rounded-xl border border-dashed border-black/5 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/40">
+                <FiHeart className="text-3xl text-slate-300 dark:text-slate-800 mb-4" />
+                <p className="text-xs text-slate-500 font-black uppercase tracking-widest">
+                  {t('dashboard.noTasks')}
                 </p>
-                <p className="text-xs text-slate-400">
-                  {language === 'vi' ? 'Hãy dành thời gian tận hưởng nhé.' : 'Take some time to relax.'}
-                </p>
-                <button 
+                <button
                   onClick={() => onNavigate('calendar')}
-                  className="mt-6 text-indigo-600 font-bold text-sm bg-indigo-50 px-4 py-2 rounded-xl"
+                  className="mt-6 text-primary font-black text-[10px] uppercase tracking-widest border border-primary/20 px-4 py-2 rounded-md hover:bg-primary/5 transition-colors"
                 >
-                  {language === 'vi' ? '+ Thêm sự kiện' : '+ Add Event'}
+                  + {t('dashboard.schedule')}
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Column: AI & Meals & Family (spans 5 cols) */}
-        <div className="col-span-1 md:col-span-5 flex flex-col gap-6">
-          
+        {/* Right Column: AI & Meals */}
+        <div className="lg:col-span-5 flex flex-col gap-8">
+
           {/* Quick Chat AI */}
-          <div className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-[2rem] p-6 text-white shadow-xl shadow-indigo-200/50 dark:shadow-none relative overflow-hidden group">
-            <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-white/20 blur-2xl rounded-full group-hover:scale-150 transition-transform duration-700" />
-            
-            <h3 className="relative z-10 text-lg font-black flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl shadow-inner">
-                <FiMessageSquare />
-              </div>
-              {language === 'vi' ? 'Hỏi trợ lý AI' : 'Ask AI Assistant'}
+          <div className="glass-dark rounded-2xl p-8 border border-primary/30 bg-primary/5 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-5">
+              <FiMessageSquare size={100} />
+            </div>
+
+            <h3 className="relative z-10 text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-6">
+              <FiMessageSquare className="text-primary" />
+              {t('dashboard.neuralAccess')}
             </h3>
-            
-            <form onSubmit={handleChatSubmit} className="relative z-10 flex gap-2">
-              <input 
-                type="text" 
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                placeholder={language === 'vi' ? "Tối nay ăn gì nhỉ?..." : "What's for dinner?..."}
-                className="w-full bg-white/20 border border-white/30 rounded-xl px-4 py-3 placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/50 text-sm font-medium backdrop-blur-sm"
-              />
-              <button 
+
+            <form onSubmit={handleChatSubmit} className="relative z-10 space-y-4">
+              <div className="relative group/input">
+                <input
+                  type="text"
+                  value={chatMessage}
+                  onChange={(e) => setChatMessage(e.target.value)}
+                  placeholder={language === 'vi' ? "Yêu cầu hệ thống..." : "System command..."}
+                  className="input-field"
+                />
+              </div>
+              <button
                 type="submit"
-                className="bg-white text-indigo-600 w-12 shrink-0 rounded-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-md"
+                className="btn-primary w-full flex items-center justify-center gap-2 group/btn"
               >
-                <FiArrowRight size={20} className="font-bold" />
+                {t('dashboard.execute')}
+                <FiArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
             </form>
           </div>
 
           {/* Meal Suggestions */}
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-md rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800/50 flex-1">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center text-xl">
-                  <FiCoffee />
-                </div>
-                {language === 'vi' ? 'Gợi ý món ngon' : 'Meal Ideas'}
+          <div className="glass-dark rounded-2xl p-8 border border-white/5 flex-1">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3">
+                <FiCoffee className="text-primary" />
+                {t('dashboard.nutrition')}
               </h3>
-              <button 
+              <button
                 onClick={() => onNavigate('meals')}
-                className="text-xs font-black uppercase tracking-widest text-teal-600 hover:text-teal-700 bg-teal-50 px-3 py-1.5 rounded-lg"
+                className="text-[9px] font-black uppercase tracking-widest text-primary border border-primary/20 px-3 py-1.5 rounded bg-primary/5"
               >
-                {t('nav.mealsFull')}
+                {t('nav.ledger')}
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid gap-4">
               {suggestedMeals.length > 0 ? (
                 suggestedMeals.map((meal, i) => (
-                  <div key={meal.id || i} className="flex gap-4 items-center bg-white dark:bg-slate-800 p-3 rounded-2xl shadow-sm border border-slate-50 dark:border-slate-700/50 cursor-pointer hover:border-teal-200 transition-colors" onClick={() => onNavigate('meals')}>
+                  <div key={meal.id || i} className="flex gap-4 items-center bg-slate-100/40 dark:bg-slate-900/40 p-4 rounded-xl border border-black/5 dark:border-white/5 cursor-pointer hover:border-primary/30 transition-all group" onClick={() => onNavigate('meals')}>
                     {meal.imageUrl ? (
-                      <img src={meal.imageUrl} alt={meal.name} className="w-16 h-16 rounded-[1rem] object-cover bg-slate-100" />
+                      <img src={meal.imageUrl} alt={meal.name} className="w-12 h-12 rounded-lg object-cover bg-slate-200 dark:bg-slate-800" />
                     ) : (
-                      <div className="w-16 h-16 rounded-[1rem] bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center text-2xl">
-                        🍲
+                      <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-primary border border-black/5 dark:border-white/5">
+                        <FiHeart size={20} />
                       </div>
                     )}
-                    <div className="flex-1">
-                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 line-clamp-1">{meal.name}</h4>
-                      <p className="text-xs font-medium text-slate-500 mt-1 capitalize">{meal.category || 'Món chính'}</p>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-slate-900 dark:text-slate-100 text-sm group-hover:text-primary transition-colors truncate">{meal.name}</h4>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{meal.category || 'Stable'}</p>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-500 text-center py-6">{language === 'vi' ? 'Chưa có dữ liệu món ăn.' : 'No meals available.'}</p>
+                <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest text-center py-6">{t('common.noData')}</p>
               )}
             </div>
           </div>
-
-          {/* Family Mini Card */}
-           <div 
-             onClick={() => onNavigate('family')}
-             className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-md rounded-[2rem] p-5 border border-slate-100 dark:border-slate-800/50 flex items-center justify-between cursor-pointer hover:border-indigo-300 transition-colors group"
-           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-[1rem] bg-blue-100 text-blue-600 flex items-center justify-center text-xl">
-                <FiUsers />
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400">{language === 'vi' ? 'Gia đình' : 'Family'}</p>
-                <h4 className="font-black text-slate-800 dark:text-slate-100 text-lg">{family?.name || 'Gia đình của bạn'}</h4>
-              </div>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-              <FiArrowRight />
-            </div>
-          </div>
-
         </div>
       </div>
     </div>

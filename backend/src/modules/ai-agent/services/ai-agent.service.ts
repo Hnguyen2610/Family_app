@@ -69,7 +69,7 @@ export class AiAgentService {
             properties: {
               familyId: {
                 type: 'string',
-                description: 'Family ID',
+                description: 'Family ID. Use "all" to search for events across all families the user belongs to.',
               },
               month: {
                 type: 'number',
@@ -128,6 +128,10 @@ export class AiAgentService {
                 enum: ['NONE', 'WEEKLY', 'MONTHLY', 'YEARLY'],
                 description:
                   'Recurrence frequency. Use MONTHLY/YEARLY with useLunar for traditional events.',
+              },
+              familyId: {
+                type: 'string',
+                description: 'Family ID to create the event in. If not provided, it will use the current active family.',
               },
               useLunar: {
                 type: 'boolean',
@@ -227,7 +231,7 @@ You have access to tools that you MUST use to help the user. Never say you canno
 When creating events, pay close attention to the day of the week to avoid calculation errors. For example, if today is Monday the 23rd, "this Sunday" is the 29th.
 
 CRITICAL RULES FOR TOOLS:
-1. NO NESTED TOOL CALLS: Never try to call a tool inside the arguments of another tool. 
+1. NO NESTED TOOL CALLS: Never try to call a tool inside the arguments of another tool.
 2. SEQUENTIAL EXECUTION: If you need to convert a date (e.g., from Lunar to Solar) before creating an event, YOU MUST:
    a. Call getSolarDateFromLunar first.
    b. Use the result from the first call to call createEvent in the NEXT step.
@@ -270,16 +274,41 @@ CRITICAL RULES:
 - After calling a tool, present the results clearly and naturally.`;
   }
 
-  private async getFamilyContext(familyId: string): Promise<string> {
-    const allUsers = await this.prisma.user.findMany({ where: { familyId } });
-    return allUsers
-      .map(
-        (u) =>
-          `- ${u.name} (Vai trò: ${u.role || 'Chưa rõ'}, Ngày sinh dương lịch: ${
-            u.birthday ? u.birthday.toISOString().split('T')[0] : 'Chưa cập nhật'
-          })`
-      )
-      .join('\n');
+  private async getFamilyContext(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        families: {
+          include: {
+            users: {
+              select: {
+                name: true,
+                role: true,
+                birthday: true,
+                email: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!user || !user.families.length) return 'Không có thông tin gia đình.';
+
+    let context = '';
+    for (const family of user.families) {
+      context += `\nGIA ĐÌNH: ${family.name}\n`;
+      context += family.users
+        .map(
+          (u) =>
+            `- ${u.name} (Vai trò: ${u.role || 'Chưa rõ'}, Ngày sinh: ${
+              u.birthday ? u.birthday.toISOString().split('T')[0] : 'Chưa cập nhật'
+            }, Email: ${u.email})`
+        )
+        .join('\n');
+      context += '\n';
+    }
+    return context;
   }
 
   private async processVisionImage(userMessage: string, image?: string): Promise<string> {
@@ -315,8 +344,7 @@ CRITICAL RULES:
     toolName: string,
     args: any,
     familyId: string,
-    userId: string,
-    userIds: string[] = []
+    userId: string
   ): Promise<any> {
     try {
       console.log(`Executing tool: ${toolName}`, args);
@@ -327,13 +355,16 @@ CRITICAL RULES:
         case 'getGoldPrice':
           return await this.getGoldPrice();
 
-        case 'getEventsByMonth':
+        case 'getEventsByMonth': {
+          // If the user asks across all families or we want broad search
+          const searchFamilyId = args.familyId === 'all' ? 'all' : (args.familyId || familyId);
           return await this.eventsService.getEventsByMonth(
-            args.familyId || familyId,
+            searchFamilyId,
             args.month,
             args.year,
             args.userId || userId
           );
+        }
 
         case 'createEvent':
         case 'updateEvent':
@@ -348,7 +379,7 @@ CRITICAL RULES:
               }
             }
 
-            const event = await this.eventsService.create(familyId, userId, {
+            const event = await this.eventsService.create(args.familyId || familyId, userId, {
               title: args.title,
               description: args.description,
               date: eventDate,
@@ -503,7 +534,6 @@ CRITICAL RULES:
     familyInfo: string,
     finalUserMessage: string,
     userId: string,
-    userIds: string[],
     sessionId?: string
   ) {
     const genModel = this.gemini.getGenerativeModel({
@@ -533,8 +563,7 @@ CRITICAL RULES:
           part.functionCall.name,
           part.functionCall.args,
           familyId,
-          userId,
-          userIds
+          userId
         );
         currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
       } else {
@@ -552,7 +581,6 @@ CRITICAL RULES:
     familyInfo: string,
     finalUserMessage: string,
     userId: string,
-    userIds: string[],
     sessionId?: string
   ) {
     const messages = [
@@ -576,8 +604,7 @@ CRITICAL RULES:
           tc.function.name,
           JSON.parse(tc.function.arguments),
           familyId,
-          userId,
-          userIds
+          userId
         );
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
       }
@@ -600,7 +627,6 @@ CRITICAL RULES:
     familyInfo: string,
     finalUserMessage: string,
     userId: string,
-    userIds: string[],
     streamOptions: { res: any; sessionId?: string }
   ) {
     const { res, sessionId } = streamOptions;
@@ -633,8 +659,7 @@ CRITICAL RULES:
             part.functionCall.name,
             part.functionCall.args,
             familyId,
-            userId,
-            userIds
+            userId
           );
           currentInput = [
             { functionResponse: { name: part.functionCall.name, response: toolRes } },
@@ -660,7 +685,6 @@ CRITICAL RULES:
     familyInfo: string,
     finalUserMessage: string,
     userId: string,
-    userIds: string[],
     streamOptions: { res: any; sessionId?: string }
   ) {
     const { res, sessionId } = streamOptions;
@@ -685,8 +709,7 @@ CRITICAL RULES:
           tc.function.name,
           JSON.parse(tc.function.arguments),
           familyId,
-          userId,
-          userIds
+          userId
         );
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
       }
@@ -726,25 +749,26 @@ CRITICAL RULES:
       this.logger.error('Failed to process message or image:', msgError);
     }
 
-    const familyInfo = await this.getFamilyContext(familyId);
+    const targetUserId = userIds[0] || '';
+    const familyInfo = await this.getFamilyContext(targetUserId);
     const history = await this.chatService.getHistory(familyId, sessionId, 10);
     const primaryModel = modelSelection || 'groq';
 
     try {
       // Attempt primary model
       if (primaryModel === 'gemini') {
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
       }
-      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
     } catch (primaryError: any) {
       this.logger.warn(`Primary model (${primaryModel}) failed, trying fallback:`, primaryError.message);
-      
+
       try {
         // Fallback to the other model
         if (primaryModel === 'gemini') {
-          return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+          return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
         }
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, sessionId);
+        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
       } catch (fallbackError: any) {
         this.logger.error('Both AI models failed:', fallbackError);
         throw new HttpException(
@@ -772,15 +796,16 @@ CRITICAL RULES:
       this.logger.error('Stream pre-processing error:', err);
     }
 
-    const familyInfo = await this.getFamilyContext(familyId);
+    const targetUserId = userIds[0] || '';
+    const familyInfo = await this.getFamilyContext(targetUserId);
     const history = await this.chatService.getHistory(familyId, sessionId, 10);
     const primaryModel = modelSelection || 'groq';
 
     const attemptStream = async (model: string) => {
       if (model === 'gemini') {
-        await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
+        await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds[0], { res, sessionId });
       } else {
-        await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds[0], userIds, { res, sessionId });
+        await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds[0], { res, sessionId });
       }
     };
 
@@ -810,7 +835,7 @@ CRITICAL RULES:
   async categorizeTransaction(
     description: string
   ): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
-    const prompt = `Phân loại giao dịch ngân hàng Việt Nam. 
+    const prompt = `Phân loại giao dịch ngân hàng Việt Nam.
 Danh mục: FOOD, TRANSPORT, SHOPPING, UTILITIES, RENT, ENTERTAINMENT, HEALTH, EDUCATION, SALARY, BONUS, INVESTMENT, OTHER.
 
 Nội dung giao dịch: "${description}"

@@ -2,9 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 generator client {
@@ -25,7 +23,6 @@ model User {
   familyId   String?
   family     Family?   @relation("LegacyFamily", fields: [familyId], references: [id], onDelete: SetNull)
   families   Family[]  @relation("UserFamilies")
-
   googleId             String? @unique
   avatarUrl            String?
   notificationSettings Json?   @default("{}")

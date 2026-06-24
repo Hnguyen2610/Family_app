@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
@@ -32,8 +33,8 @@ export class UsersController {
   }
 
   @Get('family/:familyId')
-  findAll(@Param('familyId') familyId: string) {
-    return this.usersService.findAll(familyId);
+  findAll(@Param('familyId') familyId: string, @Request() req: any) {
+    return this.usersService.findAll(familyId, req.user?.id);
   }
 
   @Get(':id')

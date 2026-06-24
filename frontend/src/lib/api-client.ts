@@ -53,7 +53,7 @@ export const mealsAPI = {
   create: (data: any) => apiClient.post('/api/meals', data),
   update: (id: string, data: any) => apiClient.put(`/api/meals/${id}`, data),
   delete: (id: string) => apiClient.delete(`/api/meals/${id}`),
-  
+
   // Custom Preferences
   addCustomPreference: (userId: string, mealName: string, category: string) =>
     apiClient.post('/api/meals/preferences/custom', { userId, mealName, category }),
@@ -61,6 +61,16 @@ export const mealsAPI = {
     apiClient.get(`/api/meals/preferences/${userId}`),
   removePreference: (userId: string, mealId: string) =>
     apiClient.delete(`/api/meals/preferences/${userId}/${mealId}`),
+
+  // Suggestions & History
+  generateMenu: (familyId: string, userId?: string) =>
+    apiClient.get(`/api/meals/family/${familyId}/generate-menu`, {
+      params: { userId },
+    }),
+  getRecentHistory: (familyId: string, days?: number, userId?: string) =>
+    apiClient.get('/api/meals/history/recent', {
+      params: { familyId, days, userId },
+    }),
 };
 
 // Chat API
@@ -84,7 +94,7 @@ export const chatAPI = {
     const token = typeof window !== 'undefined' ? localStorage.getItem('family_token') : null;
     const response = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
@@ -143,8 +153,8 @@ export const familiesAPI = {
 
 // Users API
 export const usersAPI = {
-  getAll: (familyId?: string) =>
-    familyId ? apiClient.get(`/api/users/family/${familyId}`) : apiClient.get('/api/users'),
+  getAll: (familyId?: string, userId?: string) =>
+    familyId ? apiClient.get(`/api/users/family/${familyId}`, { params: { userId } }) : apiClient.get('/api/users'),
   getById: (id: string) => apiClient.get(`/api/users/${id}`),
   create: (data: any) => apiClient.post('/api/users', data),
   update: (id: string, data: any) => apiClient.put(`/api/users/${id}`, data),
@@ -163,9 +173,9 @@ export const notificationsAPI = {
   markAllAsRead: (userId: string) => apiClient.post('/api/notifications/read-all', null, { params: { userId } }),
   delete: (id: string, userId: string) => apiClient.delete(`/api/notifications/${id}`, { params: { userId } }),
   deleteAll: (userId: string) => apiClient.delete('/api/notifications/all', { params: { userId } }),
-  subscribePush: (userId: string, subscription: any) => 
+  subscribePush: (userId: string, subscription: any) =>
     apiClient.post('/api/notifications/push/subscribe', subscription, { params: { userId } }),
-  unsubscribePush: (userId: string, endpoint: string) => 
+  unsubscribePush: (userId: string, endpoint: string) =>
     apiClient.post('/api/notifications/push/unsubscribe', { endpoint }, { params: { userId } }),
 };
 

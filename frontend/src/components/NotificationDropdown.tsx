@@ -4,11 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useTranslation } from '@/lib/i18n';
-import { 
-  FiBell, 
-  FiCalendar, 
-  FiLayout, 
-  FiCheckCircle, 
+import {
+  FiBell,
+  FiCalendar,
+  FiLayout,
+  FiCheckCircle,
   FiCheck,
   FiChevronRight,
   FiSettings,
@@ -88,7 +88,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                 <p className={messageClasses}>{n.message}</p>
                 <div className="flex flex-wrap gap-2 mt-3">
                     {!n.isRead && (
-                        <button 
+                        <button
                             type="button"
                             onClick={handleMarkRead}
                             className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 px-2 py-1 rounded-lg transition-all"
@@ -96,7 +96,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                             <FiCheck size={14} /> {language === 'vi' ? 'Đã đọc' : 'Mark read'}
                         </button>
                     )}
-                    <button 
+                    <button
                         type="button"
                         onClick={handleDelete}
                         className="text-xs font-black text-rose-500 hover:text-rose-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/30 px-2 py-1 rounded-lg transition-all"
@@ -105,11 +105,11 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                         <FiTrash2 size={14} /> {language === 'vi' ? 'Xóa' : 'Delete'}
                     </button>
                     {n.metadata?.path && (
-                        <Link 
-                            href={n.metadata.path} 
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if(!n.isRead) markAsRead(n.id); 
+                        <Link
+                            href={n.metadata.path}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if(!n.isRead) markAsRead(n.id);
                             }}
                             className="text-xs font-black text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all"
                         >
@@ -158,7 +158,7 @@ export default function NotificationDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 md:w-12 md:h-12 rounded-2xl md:rounded-3xl bg-indigo-600 text-white shadow-lg shadow-indigo-200 flex items-center justify-center hover:bg-indigo-700 transition-all active:scale-95 relative"
+        className="w-11 h-11 md:w-13 md:h-13 rounded-xl md:rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-200/50 flex items-center justify-center hover:bg-indigo-700 transition-all active:scale-95 relative"
         aria-label="Notifications"
       >
         <FiBell size={20} />
@@ -183,14 +183,14 @@ export default function NotificationDropdown() {
               )}
             </div>
             <div className="flex gap-2">
-                <button 
+                <button
                   onClick={() => { markAllAsRead(); }}
                   className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-90"
                   title={language === 'vi' ? 'Đánh dấu tất cả đã đọc' : 'Mark all as read'}
                 >
                   <FiCheckCircle size={18} />
                 </button>
-                <button 
+                <button
                   onClick={() => { if (confirm(language === 'vi' ? 'Xóa tất cả thông báo?' : 'Delete all notifications?')) deleteAllNotifications(); }}
                   className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all active:scale-90"
                   title={language === 'vi' ? 'Xóa tất cả thông báo' : 'Delete all notifications'}
@@ -218,7 +218,7 @@ export default function NotificationDropdown() {
             ) : (
               <div className="divide-y divide-slate-50 dark:divide-slate-800/50">
                 {notifications.map((n) => (
-                  <NotificationItem 
+                  <NotificationItem
                     key={n.id}
                     n={n}
                     language={language}
@@ -230,9 +230,9 @@ export default function NotificationDropdown() {
               </div>
             )}
           </div>
-          
+
           <div className="p-4 bg-slate-50/50 dark:bg-slate-800/30 text-center">
-             <button 
+             <button
                 onClick={() => setIsOpen(false)}
                 className="text-[10px] font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 uppercase tracking-widest transition-all"
              >
@@ -244,13 +244,13 @@ export default function NotificationDropdown() {
 
       {selectedNotification && isMounted && createPortal(
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-          <button 
+          <button
             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300 cursor-default border-none"
             onClick={() => setSelectedNotification(null)}
             aria-label="Close modal"
           />
           <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-800 p-8 animate-in zoom-in-95 fade-in duration-300">
-            <button 
+            <button
               onClick={() => setSelectedNotification(null)}
               className="absolute top-6 right-6 w-10 h-10 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center transition-all active:scale-90"
             >
@@ -261,11 +261,11 @@ export default function NotificationDropdown() {
               <div className="w-20 h-20 rounded-[2rem] bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-3xl mb-6 shadow-inner ring-8 ring-indigo-50/50 dark:ring-indigo-900/10">
                 {getIcon(selectedNotification.type)}
               </div>
-              
+
               <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 leading-tight">
                 {selectedNotification.title}
               </h3>
-              
+
               <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em] mb-6">
                 {new Date(selectedNotification.createdAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US', {
                     day: 'numeric',
@@ -285,7 +285,7 @@ export default function NotificationDropdown() {
               <div className="w-full flex gap-3 mt-8">
                 {selectedNotification.metadata?.path && (
                   <Link href={selectedNotification.metadata.path} className="flex-1">
-                    <button 
+                    <button
                       onClick={() => {
                         setSelectedNotification(null);
                         setIsOpen(false);
@@ -296,7 +296,7 @@ export default function NotificationDropdown() {
                     </button>
                   </Link>
                 )}
-                <button 
+                <button
                   onClick={() => {
                     deleteNotification(selectedNotification.id);
                     setSelectedNotification(null);
@@ -306,7 +306,7 @@ export default function NotificationDropdown() {
                 >
                   <FiTrash2 size={20} />
                 </button>
-                <button 
+                <button
                   onClick={() => setSelectedNotification(null)}
                   className={`p-4 rounded-2xl font-black text-sm transition-all active:scale-[0.98] ${selectedNotification.metadata?.path ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
                 >

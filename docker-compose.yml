@@ -40,7 +40,7 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
-    command: sh -c "npm run db:push && npm run db:seed && npm run start:dev"
+    command: sh -c "npx prisma generate && npm run db:push && npm run db:seed && npm run start:dev"
 
   # Next.js Frontend
   frontend:

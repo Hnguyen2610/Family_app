@@ -86,15 +86,19 @@ export class MealsController {
   @Get('history/recent')
   getMealHistory(
     @Query('familyId') familyId: string,
+    @Query('userId') userId?: string,
     @Query('days') days?: string,
   ) {
-    return this.mealsService.getMealHistory(familyId, days ? Number.parseInt(days) : 30);
+    return this.mealsService.getMealHistory(familyId, days ? Number.parseInt(days) : 30, userId);
   }
 
   // ========== Suggestions (AI / Family Menu) ==========
 
   @Get('family/:familyId/generate-menu')
-  generateFamilyMenu(@Param('familyId') familyId: string) {
-    return this.mealsService.generateFamilyMenu(familyId);
+  generateFamilyMenu(
+    @Param('familyId') familyId: string,
+    @Query('userId') userId?: string,
+  ) {
+    return this.mealsService.generateFamilyMenu(familyId, userId);
   }
 }
