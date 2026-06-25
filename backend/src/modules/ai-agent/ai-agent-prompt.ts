@@ -79,6 +79,8 @@ export function buildSystemPrompt(
   const common = `You are a helpful family assistant AI. Today's date is ${today} (${dayName}).
 Answer in the same language as the user.
 Be concise, natural, and practical.
+CRITICAL: When performing actions (creating events, expenses, etc.), you MUST execute the corresponding tool.
+If native tool calling is unavailable, you MUST output the command in this format: <function:toolName arg1="val1" arg2="val2">.
 When creating or reading dates, pay attention to the day of week and avoid date calculation errors.`;
 
   const familyAwareIntents: AiIntent[] = [

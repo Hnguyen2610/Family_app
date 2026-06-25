@@ -323,6 +323,53 @@ export class TelegramService implements OnModuleInit {
         '😅 Xin lỗi, trợ lý AI đang bận một chút, hãy thử lại sau nhé!',
       );
     });
+
+    // 5. Handle Photos & Documents (Vision)
+    this.bot.on(['photo', 'document'], async (ctx) => {
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      const chatId = ctx.chat.id.toString();
+      const senderId = isGroup ? ctx.from?.id?.toString() : chatId;
+
+      const user = senderId ? await this.getLinkedUser(senderId) : null;
+      if (!user) {
+        await ctx.reply('Bạn cần liên kết tài khoản trước khi gửi file cho AI.');
+        return;
+      }
+
+      const activeFamily = getActiveFamily(user);
+      if (!activeFamily) return;
+
+      // Extract image
+      let fileId = '';
+      if ('photo' in ctx.message) {
+        fileId = ctx.message.photo.pop()?.file_id || '';
+      } else if ('document' in ctx.message && (ctx.message.document.mime_type?.startsWith('image/') || ctx.message.document.mime_type === 'application/pdf')) {
+        fileId = ctx.message.document.file_id;
+      }
+
+      if (!fileId) return;
+
+      const caption = (ctx.message as any).caption || '';
+
+      try {
+        await ctx.sendChatAction('upload_photo');
+        const fileLink = await this.bot.telegram.getFileLink(fileId);
+        
+        await ctx.sendChatAction('typing');
+        const response = await this.aiAgentService.chat(
+          activeFamily.id,
+          caption || 'Bạn thấy gì trong này?',
+          [user.id],
+          fileLink.href,
+          'gemini', // Use gemini for vision by default
+        );
+        
+        await ctx.reply(response.content);
+      } catch (error) {
+        this.logger.error('Telegram vision error', error);
+        await ctx.reply('😅 Lỗi khi xử lý hình ảnh, hãy thử lại sau nhé!');
+      }
+    });
   }
 
   async handleWebhookUpdate(update: any) {

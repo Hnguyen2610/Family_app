@@ -312,7 +312,42 @@ export class AiAgentService {
       });
     }
     if (cacheKey) setCachedResponse(cacheKey, result, getSkillTtl(intentRoute.intent));
+
+    // Handle pseudo-function calls (hallucinations or text-based tools)
+    if (result.content && result.content.includes('<function:')) {
+      await this.interceptAndExecuteMutations(result.content, familyId, targetUserId, skill, skillContext);
+    }
+
     return { ...result, cached: false };
+  }
+
+  /**
+   * Parse <function:name arg="val"> tags and execute them via the skill.
+   */
+  private async interceptAndExecuteMutations(content: string, familyId: string, userId: string, skill: any, context: any) {
+    const pattern = /<function:(\w+)\s+([^>]+)>/g;
+    let match;
+
+    while ((match = pattern.exec(content)) !== null) {
+      const toolName = match[1];
+      const paramsStr = match[2];
+      const args: any = {};
+      
+      const argPattern = /(\w+)="?([^"\s>]+)"?/g;
+      let argMatch;
+      while ((argMatch = argPattern.exec(paramsStr)) !== null) {
+        args[argMatch[1]] = argMatch[2];
+      }
+
+      try {
+        this.logger.log(`[Mutation Interceptor] Executing: ${toolName} for userId ${userId}`);
+        // Ensure familyId is provided if missing in args
+        if (!args.familyId) args.familyId = familyId;
+        await skill.executeTool(toolName, args, context);
+      } catch (err) {
+        this.logger.error(`[Mutation Interceptor] Failed to execute ${toolName}`, err);
+      }
+    }
   }
 
   // ─── Stream ────────────────────────────────────────────────────────────────
