@@ -5,21 +5,26 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTranslation } from '@/lib/i18n';
 import {
   FiUser, FiBell, FiMoon, FiGlobe, FiLogOut, FiShield,
-  FiChevronRight, FiSun, FiMonitor, FiClock, FiCheck, FiX, FiEdit2, FiSmartphone
+  FiChevronRight, FiSun, FiMonitor, FiClock, FiCheck, FiX, FiEdit2, FiSmartphone, FiBookOpen, FiFileText
 } from 'react-icons/fi';
+
 import { useState, useEffect } from 'react';
 import { usersAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { useWebPush } from '@/hooks/useWebPush';
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import IosPwaGuide from './IosPwaGuide';
 
 interface SettingItemProps {
   readonly icon: React.ReactNode;
   readonly label: string;
+  readonly labelClassName?: string;
   readonly value: string;
   readonly onClick?: () => void;
 }
 
-const SettingItem = ({ icon, label, value, onClick }: SettingItemProps) => {
+const SettingItem = ({ icon, label, labelClassName, value, onClick }: SettingItemProps) => {
   return (
     <button
       onClick={onClick}
@@ -29,9 +34,10 @@ const SettingItem = ({ icon, label, value, onClick }: SettingItemProps) => {
         {icon}
       </div>
       <div className="flex-1">
-        <p className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest leading-none mb-1">{label}</p>
+        <p className={`text-sm font-black uppercase tracking-widest leading-none mb-1 ${labelClassName || 'text-slate-900 dark:text-slate-100'}`}>{label}</p>
         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter opacity-60">{value}</p>
       </div>
+
       <FiChevronRight className="text-slate-400 dark:text-slate-700 group-hover:text-primary group-hover:translate-x-1 transition-all" />
       <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
     </button>
@@ -73,29 +79,30 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
   if (isEditing) {
     return (
       <div className="flex flex-col gap-4 animate-in slide-in-from-left-2 duration-300">
-        <input
+        <Input
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          className="input-field w-full md:w-64"
+          className="w-full md:w-64"
           placeholder={language === 'vi' ? 'Nhập tên của bạn...' : 'Enter your name...'}
           autoFocus
         />
         <div className="flex gap-3">
-          <button
+          <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="btn-primary px-5 py-2 text-[10px] flex items-center gap-2"
+            className="px-5 py-2 h-10 text-[10px] flex items-center gap-2"
           >
             <FiCheck /> {t('settings.commit')}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => { setIsEditing(false); setNewName(user?.name || ''); }}
             disabled={isSaving}
-            className="px-5 py-2 glass border border-black/10 dark:border-white/10 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 hover:bg-slate-100 dark:hover:text-white"
+            className="px-5 py-2 h-10 text-[10px] uppercase tracking-widest flex items-center gap-2"
           >
             <FiX /> {t('settings.abort')}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -125,7 +132,8 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
   const { user, refreshUser, logout } = useAuth();
   const { t, language } = useTranslation();
   const { theme, setTheme, setLanguage } = useSettingsStore();
-  const { isSupported, isSubscribed, isProcessing, subscribe, unsubscribe } = useWebPush();
+  const { isSupported, isSubscribed, isProcessing, isIOS, isStandalone, subscribe, unsubscribe } = useWebPush();
+  const [showIosGuide, setShowIosGuide] = useState(false);
 
   const getNotificationValue = () => {
     const hasSettings = user?.notificationSettings && Object.keys(user.notificationSettings as object).length > 0;
@@ -165,6 +173,20 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
           </h3>
           <SettingItem icon={<FiUser />} label={t('settings.profile')} value={language === 'vi' ? 'Tài khoản & thay mật khẩu' : 'Credential Overhaul'} />
           <SettingItem icon={<FiShield />} label={t('settings.security')} value={language === 'vi' ? 'Bảo mật giao thức' : 'Protocol Lockdown'} />
+          <SettingItem
+             icon={<FiBookOpen />}
+             label="AI Memory"
+             labelClassName="text-indigo-600 dark:text-indigo-400"
+             value={language === 'vi' ? 'Trí nhớ cá nhân hóa' : 'Cognitive Profile'}
+             onClick={() => onNavigate('ai-memory')}
+           />
+          <SettingItem
+             icon={<FiFileText />}
+             label={language === 'vi' ? 'Sổ tay gia đình' : 'Family Notes'}
+             labelClassName="text-indigo-600 dark:text-indigo-400"
+             value={language === 'vi' ? 'Dữ liệu cho RAG' : 'Long-form RAG knowledge'}
+             onClick={() => onNavigate('notes')}
+           />
         </div>
 
         <div className="space-y-6">
@@ -177,13 +199,29 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
             value={getNotificationValue()}
             onClick={() => onNavigate('notifications')}
           />
-          {isSupported && (
+          {(isSupported || isIOS) && (
             <SettingItem
               icon={<FiSmartphone />}
               label={language === 'vi' ? 'Đẩy điện thoại' : 'Neural Push'}
-              value={isProcessing ? (language === 'vi' ? 'Đang đồng bộ...' : 'Syncing...') : (isSubscribed ? (language === 'vi' ? 'Đang hoạt động' : 'Active') : (language === 'vi' ? 'Chưa kết nối' : 'Bypass Mode'))}
+              value={
+                isIOS && !isStandalone 
+                  ? (language === 'vi' ? 'Yêu cầu cài đặt' : 'Installation Required')
+                  : (isProcessing ? (language === 'vi' ? 'Đang đồng bộ...' : 'Syncing...') : (isSubscribed ? (language === 'vi' ? 'Đang hoạt động' : 'Active') : (language === 'vi' ? 'Chưa kết nối' : 'Bypass Mode')))
+              }
               onClick={async () => {
                 if (isProcessing) return;
+                
+                // Show iOS guide if on iOS but not standalone
+                if (isIOS && !isStandalone) {
+                  setShowIosGuide(true);
+                  return;
+                }
+
+                if (!isSupported) {
+                  toast.error(language === 'vi' ? 'Trình duyệt không hỗ trợ thông báo' : 'Browser lacks push capabilities');
+                  return;
+                }
+
                 let success = false;
                 if (isSubscribed) {
                   success = await unsubscribe();
@@ -195,8 +233,24 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
               }}
             />
           )}
+          <SettingItem
+            icon={<span className="text-xl">✈️</span>}
+            label="Telegram Bot"
+            value={
+              user?.telegramChatId 
+                ? (language === 'vi' ? `Đã kết nối (${user.telegramUsername || '—'})` : `Linked (@${user.telegramUsername || '—'})`)
+                : (language === 'vi' ? 'Nhấn để kết nối' : 'Tap to Connect')
+            }
+            onClick={() => {
+              if (user?.id) {
+                window.open(`https://t.me/NHN2610_bot?start=${user.id}`, '_blank');
+              }
+            }}
+          />
         </div>
       </div>
+
+      {showIosGuide && <IosPwaGuide onClose={() => setShowIosGuide(false)} />}
 
       {/* Appearance & Language Sections */}
       <div className="space-y-8">

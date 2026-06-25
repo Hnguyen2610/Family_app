@@ -14,18 +14,20 @@ generator client {
 // User & Family
 // ============================================
 model User {
-  id         String    @id @default(cuid())
-  email      String    @unique
-  name       String
-  role       String?
-  globalRole String    @default("USER")
-  birthday   DateTime?
-  familyId   String?
-  family     Family?   @relation("LegacyFamily", fields: [familyId], references: [id], onDelete: SetNull)
-  families   Family[]  @relation("UserFamilies")
-  googleId             String? @unique
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  name                 String
+  role                 String?
+  globalRole           String    @default("USER")
+  birthday             DateTime?
+  familyId             String?
+  family               Family?   @relation("LegacyFamily", fields: [familyId], references: [id], onDelete: SetNull)
+  families             Family[]  @relation("UserFamilies")
+  googleId             String?   @unique
   avatarUrl            String?
-  notificationSettings Json?   @default("{}")
+  notificationSettings Json?     @default("{}")
+  telegramChatId       String?   @unique
+  telegramUsername     String?
 
   createdEvents   Event[]
   mealPreferences MealPreference[]
@@ -40,10 +42,12 @@ model User {
 }
 
 model Family {
-  id          String @id @default(cuid())
-  name        String
-  users       User[] @relation("UserFamilies")
-  legacyUsers User[] @relation("LegacyFamily")
+  id              String       @id @default(cuid())
+  name            String
+  users           User[]       @relation("UserFamilies")
+  legacyUsers     User[]       @relation("LegacyFamily")
+  aiDocuments     AiDocument[]
+  telegramGroupId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -169,6 +173,65 @@ model ChatMessage {
 
   @@index([familyId])
   @@index([sessionId])
+  @@index([createdAt])
+}
+
+model AiDocument {
+  id         String  @id @default(cuid())
+  familyId   String
+  family     Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  title      String
+  content    String
+  sourceType String  @default("family_wiki")
+  createdBy  String?
+  metadata   Json?
+
+  chunks AiDocumentChunk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId])
+  @@index([createdAt])
+}
+
+model AiDocumentChunk {
+  id              String                      @id @default(cuid())
+  documentId      String
+  document        AiDocument                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  familyId        String
+  content         String
+  chunkIndex      Int
+  tokenHint       Int                         @default(0)
+  embedding       Json?
+  embeddingVector Unsupported("vector(768)")? @map("embedding_vector")
+  metadata        Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([documentId, chunkIndex])
+  @@index([documentId])
+  @@index([familyId])
+}
+
+model AiExtractionDraft {
+  id             String  @id @default(cuid())
+  familyId       String
+  userId         String?
+  draftType      String
+  status         String  @default("DRAFT")
+  sourceType     String  @default("image")
+  summary        String?
+  rawText        String?
+  structuredData Json
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId])
+  @@index([userId])
+  @@index([status])
   @@index([createdAt])
 }
 

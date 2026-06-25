@@ -4,6 +4,22 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import { FiSettings, FiArrowUpRight, FiActivity, FiTrendingUp, FiCreditCard, FiTrash2, FiEdit2, FiInfo, FiSmartphone, FiCalendar, FiBriefcase, FiShoppingBag, FiTruck, FiCoffee, FiHome, FiMusic, FiHeart, FiBookOpen, FiGift, FiLayers, FiX } from 'react-icons/fi';
 import api from '@/lib/api-client';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface Transaction {
   id: string;
@@ -317,126 +333,151 @@ export default function Finance() {
       </div>
 
       {/* Salary Settings Modal */}
-      {isEditingBudget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsEditingBudget(false)} />
-          <div className="relative glass border border-black/10 dark:border-white/5 p-10 md:p-12 w-full max-w-xl animate-in zoom-in-95 duration-300 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
-            <h3 className="text-3xl font-black mb-2 text-slate-900 dark:text-slate-100 italic tracking-tighter">{language === 'vi' ? 'Cấu hình ' : 'Budget '}<span className="text-primary not-italic">{language === 'vi' ? 'Ngân sách' : 'Config'}</span></h3>
-            <p className="text-slate-500 mb-8 font-medium text-xs uppercase tracking-widest leading-relaxed">Define monthly inflow parameters for automated liquidity analysis.</p>
+      <Dialog open={isEditingBudget} onOpenChange={setIsEditingBudget}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+              {language === 'vi' ? 'Cấu hình ' : 'Budget '}
+              <span className="text-primary not-italic">{language === 'vi' ? 'Ngân sách' : 'Config'}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-500 mb-4 font-medium text-xs uppercase tracking-widest leading-relaxed">
+            Define monthly inflow parameters for automated liquidity analysis.
+          </p>
 
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Total Monthly Yield (VNĐ)</label>
-                <input
-                  type="number"
-                  placeholder="25,000,000"
-                  className="input-field text-xl font-black py-4"
-                  value={newMonthlyIncome}
-                  onChange={(e) => setNewMonthlyIncome(e.target.value)}
-                />
-              </div>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">
+                Total Monthly Yield (VNĐ)
+              </Label>
+              <Input
+                type="number"
+                placeholder="25,000,000"
+                className="text-xl font-black h-16"
+                value={newMonthlyIncome}
+                onChange={(e) => setNewMonthlyIncome(e.target.value)}
+              />
+            </div>
 
-              <div className="flex gap-4 pt-6">
-                <button
-                  onClick={() => setIsEditingBudget(false)}
-                  className="flex-1 py-4 bg-slate-800 text-slate-400 hover:text-white rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/5 transition-all"
-                >
-                  Terminate
-                </button>
-                <button
-                  onClick={handleUpdateBudget}
-                  className="btn-primary flex-1"
-                >
-                  Commit Entry
-                </button>
-              </div>
+            <div className="flex gap-4 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsEditingBudget(false)}
+                className="flex-1 h-14"
+              >
+                Terminate
+              </Button>
+              <Button
+                onClick={handleUpdateBudget}
+                className="flex-1 h-14"
+              >
+                Commit Entry
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Transaction Modal */}
-      {isEditingTransaction && editingTransaction && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsEditingTransaction(false)} />
-          <div className="relative glass border border-black/10 dark:border-white/5 p-10 md:p-12 w-full max-w-xl animate-in zoom-in-95 duration-300 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
-            <h3 className="text-3xl font-black mb-8 text-slate-900 dark:text-slate-100 italic tracking-tighter">{language === 'vi' ? 'Sửa ' : 'Edit '}<span className="text-primary not-italic">{language === 'vi' ? 'Sổ cái' : 'Ledger'}</span> Entry</h3>
+      <Dialog open={isEditingTransaction} onOpenChange={setIsEditingTransaction}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+              {language === 'vi' ? 'Sửa ' : 'Edit '}
+              <span className="text-primary not-italic">{language === 'vi' ? 'Sổ cái' : 'Ledger'}</span> Entry
+            </DialogTitle>
+          </DialogHeader>
 
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Yield / Cost (VNĐ)</label>
-                  <input
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Yield / Cost (VNĐ)</Label>
+                  <Input
                     type="number"
-                    className="input-field"
-                    value={editingTransaction.amount}
-                    onChange={(e) => setEditingTransaction({ ...editingTransaction, amount: Number(e.target.value) })}
+                    value={editingTransaction?.amount || 0}
+                    onChange={(e) => editingTransaction && setEditingTransaction({ ...editingTransaction, amount: Number(e.target.value) })}
                   />
-                </div>
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Type</label>
-                  <select
-                    className="input-field"
-                    value={editingTransaction.type}
-                    onChange={(e) => setEditingTransaction({ ...editingTransaction, type: e.target.value as any })}
-                  >
-                    <option value="EXPENSE">Expense</option>
-                    <option value="INCOME">Income</option>
-                  </select>
-                </div>
               </div>
-
               <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Classification</label>
-                <select
-                  className="input-field"
-                  value={editingTransaction.category}
-                  onChange={(e) => setEditingTransaction({ ...editingTransaction, category: e.target.value })}
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Type</Label>
+                <Select
+                  value={editingTransaction?.type || 'EXPENSE'}
+                  onValueChange={(val: any) => editingTransaction && setEditingTransaction({ ...editingTransaction, type: val as 'INCOME' | 'EXPENSE' })}
                 >
-                  <option value="FOOD">Ăn uống</option>
-                  <option value="TRANSPORT">Di chuyển</option>
-                  <option value="SHOPPING">Mua sắm</option>
-                  <option value="UTILITIES">Tiện ích</option>
-                  <option value="RENT">Tiền nhà</option>
-                  <option value="ENTERTAINMENT">Giải trí</option>
-                  <option value="HEALTH">Sức khỏe</option>
-                  <option value="EDUCATION">Giáo dục</option>
-                  <option value="SALARY">Lương</option>
-                  <option value="BONUS">Thưởng</option>
-                  <option value="INVESTMENT">Đầu tư</option>
-                  <option value="OTHER">Khác</option>
-                </select>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Entry Context</label>
-                <input
-                  type="text"
-                  placeholder="System details..."
-                  className="input-field"
-                  value={editingTransaction.description}
-                  onChange={(e) => setEditingTransaction({ ...editingTransaction, description: e.target.value })}
-                />
-              </div>
-
-              <div className="flex gap-4 pt-8">
-                <button
-                  onClick={() => setIsEditingTransaction(false)}
-                  className="flex-1 py-4 bg-slate-800 text-slate-400 hover:text-white rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/5 transition-all"
-                >
-                  Terminate
-                </button>
-                <button
-                  onClick={handleUpdateTransaction}
-                  className="btn-primary flex-1"
-                >
-                  Commit Changes
-                </button>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EXPENSE">Expense</SelectItem>
+                    <SelectItem value="INCOME">Income</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Classification</Label>
+              <Select
+                value={editingTransaction?.category || ''}
+                onValueChange={(val) => editingTransaction && setEditingTransaction({ ...editingTransaction, category: val as string })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                   <SelectItem value="FOOD">Ăn uống</SelectItem>
+                   <SelectItem value="TRANSPORT">Di chuyển</SelectItem>
+                   <SelectItem value="SHOPPING">Mua sắm</SelectItem>
+                   <SelectItem value="UTILITIES">Tiện ích</SelectItem>
+                   <SelectItem value="RENT">Tiền nhà</SelectItem>
+                   <SelectItem value="ENTERTAINMENT">Giải trí</SelectItem>
+                   <SelectItem value="HEALTH">Sức khỏe</SelectItem>
+                   <SelectItem value="EDUCATION">Giáo dục</SelectItem>
+                   <SelectItem value="SALARY">Lương</SelectItem>
+                   <SelectItem value="BONUS">Thưởng</SelectItem>
+                   <SelectItem value="INVESTMENT">Đầu tư</SelectItem>
+                   <SelectItem value="OTHER">Khác</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Entry Context</Label>
+              <Input
+                type="text"
+                placeholder="System details..."
+                value={editingTransaction?.description || ''}
+                onChange={(e) => editingTransaction && setEditingTransaction({ ...editingTransaction, description: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Date</Label>
+              <Input
+                type="date"
+                value={editingTransaction?.date ? new Date(editingTransaction.date).toISOString().split('T')[0] : ''}
+                onChange={(e) => editingTransaction && setEditingTransaction({ ...editingTransaction, date: e.target.value })}
+              />
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsEditingTransaction(false)}
+                className="flex-1 h-14"
+              >
+                Terminate
+              </Button>
+              <Button
+                onClick={handleUpdateTransaction}
+                className="flex-1 h-14"
+              >
+                Commit Changes
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Monthly Detailed Report Modal */}
       {isViewingReport && monthlyReport && (

@@ -1,17 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { eventsAPI } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function NewMonthModal() {
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [monthName, setMonthName] = useState('');
 
   const { user } = useAuth();
   const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const checkNewMonth = () => {
@@ -51,11 +57,16 @@ export default function NewMonthModal() {
     }
   };
 
-  if (!isOpen || !familyId) return null;
+  if (!isOpen || !familyId || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500">
-      <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-700 shadow-indigo-200/50 border border-white">
+  return createPortal(
+    <div className="fixed inset-0 z-[500] flex items-center justify-center p-3 md:p-4">
+      <div 
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500"
+        onClick={() => setIsOpen(false)}
+      />
+      <div className="relative bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-700 shadow-indigo-200/50 border border-white">
+
         {/* Decorative Header */}
         <div className="bg-indigo-600 p-8 md:p-10 text-center relative overflow-hidden">
           {/* Animated Background Elements */}
@@ -168,6 +179,7 @@ export default function NewMonthModal() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

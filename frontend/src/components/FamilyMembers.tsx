@@ -6,6 +6,16 @@ import toast from 'react-hot-toast';
 import { FiTrash2, FiUser, FiMail, FiArrowRight, FiHome, FiUsers } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 interface Member {
   id: string;
@@ -172,63 +182,66 @@ export default function FamilyMembers() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.name')}</label>
+                <Label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.name')}</Label>
                 <div className="relative group/input">
-                  <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within/input:text-primary transition-colors" />
-                  <input
-                    type="text"
+                  <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within/input:text-primary transition-colors z-10" />
+                  <Input
                     placeholder="Nguyễn Hoàng Nguyên"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="input-field pl-12"
+                    className="pl-12"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.email')}</label>
+                <Label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.email')}</Label>
                 <div className="relative group/input">
-                  <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within/input:text-primary transition-colors" />
-                  <input
+                  <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within/input:text-primary transition-colors z-10" />
+                  <Input
                     type="email"
                     placeholder="nguyen@family.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="input-field pl-12"
+                    className="pl-12"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.role')}</label>
-                  <select
+                  <Label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.role')}</Label>
+                  <Select
                     value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="input-field"
+                    onValueChange={(val) => setFormData({ ...formData, role: val as string })}
                   >
-                    <option value="">{language === 'vi' ? 'Chọn vai trò...' : 'Select role...'}</option>
-                    {ROLES_KEYS.map((roleKey) => (
-                      <option key={roleKey} value={t(roleKey as any)}>{t(roleKey as any)}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder={language === 'vi' ? 'Chọn vai trò...' : 'Select role...'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLES_KEYS.map((roleKey) => (
+                        <SelectItem key={roleKey} value={t(roleKey as any)}>
+                          {t(roleKey as any)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.birthday')}</label>
-                  <input
+                  <Label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t('family.birthday')}</Label>
+                  <Input
                     type="date"
                     value={formData.birthday}
                     onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
-                    className="input-field"
                   />
                 </div>
               </div>
 
-              <button type="submit" className="btn-primary w-full group/btn">
+              <Button type="submit" className="w-full h-12 rounded-xl text-sm font-bold gap-2">
                 {editingMemberId ? t('family.update') : t('family.submit')}
-                <FiArrowRight className="inline-block ml-2 group-hover/btn:translate-x-1 transition-transform" />
-              </button>
+                <FiArrowRight className="inline-block group-hover/btn:translate-x-1 transition-transform" />
+              </Button>
 
               {editingMemberId && (
                 <button

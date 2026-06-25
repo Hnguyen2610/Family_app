@@ -8,7 +8,10 @@ let cachedApp: any;
 
 async function bootstrap() {
   if (!cachedApp) {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+    app.use(json({ limit: '10mb' }));
+    app.use(urlencoded({ extended: true, limit: '10mb' }));
 
     // Enable CORS
     app.enableCors({
@@ -50,10 +53,6 @@ async function bootstrap() {
       }
     }));
 
-    // Increase JSON limit for Base64 image uploads
-    app.use(json({ limit: '10mb' }));
-    app.use(urlencoded({ extended: true, limit: '10mb' }));
-
     await app.init();
     cachedApp = app.getHttpAdapter().getInstance();
   }
@@ -63,7 +62,9 @@ async function bootstrap() {
 // For local development
 if (process.env.NODE_ENV !== 'production') {
   const startLocal = async () => {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, { bodyParser: false });
+    app.use(json({ limit: '10mb' }));
+    app.use(urlencoded({ extended: true, limit: '10mb' }));
     app.enableCors();
     app.useGlobalPipes(new ValidationPipe({ transform: true }));
     const port = process.env.PORT || 3001;

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { familiesAPI, usersAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FiEdit2, FiTrash2, FiPlus, FiChevronDown, FiUser } from 'react-icons/fi';
 
 interface FamilyManagerProps {
   onTabChange?: (tab: 'families' | 'users') => void;
@@ -102,23 +105,23 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
   return (
     <div className="space-y-6">
       {/* Create Form */}
-      <div className="bg-white/50 p-6 rounded-2xl border border-slate-100 shadow-sm">
-        <h3 className="text-lg font-black mb-4 uppercase tracking-wider text-slate-700">Tạo gia đình mới</h3>
-        <form onSubmit={handleCreateFamily} className="flex gap-3">
-          <input
+      <div className="glass p-8 rounded-[2rem] border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-900/40">
+        <h3 className="text-sm font-black mb-6 uppercase tracking-widest text-slate-900 dark:text-slate-100 italic">Tạo gia đình mới</h3>
+        <form onSubmit={handleCreateFamily} className="flex flex-col sm:flex-row gap-4">
+          <Input
             type="text"
             value={newFamilyName}
             onChange={(e) => setNewFamilyName(e.target.value)}
-            placeholder="Tên gia đình (VD: Gia đình Nguyễn)"
-            className="flex-1 px-5 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all font-bold text-slate-800 shadow-inner"
+            placeholder="Tên gia đình (VD: Gia đình Nguyễn)..."
+            className="flex-1 h-12"
           />
-          <button
+          <Button
             type="submit"
             disabled={isCreating}
-            className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-red-700 disabled:opacity-50 transition-all shadow-lg shadow-red-100 active:scale-95"
+            className="h-12 px-8 font-black uppercase tracking-widest text-[10px] gap-2"
           >
-            {isCreating ? 'Đang tạo...' : 'Tạo'}
-          </button>
+            {isCreating ? 'Đang tạo...' : <><FiPlus size={16} /> Tạo</>}
+          </Button>
         </form>
       </div>
 
@@ -137,72 +140,76 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
                   <div className="flex-1">
                     {editingFamilyId === family.id ? (
                       <div className="flex items-center gap-3">
-                        <input
+                        <Input
                           autoFocus
                           type="text"
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1 max-w-md px-4 py-2 rounded-xl border-2 border-red-500 focus:outline-none font-black text-xl text-slate-800"
+                          className="flex-1 max-w-md h-12 text-lg font-black italic"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleUpdateName(family.id);
                             if (e.key === 'Escape') setEditingFamilyId(null);
                           }}
                         />
-                        <button 
+                        <Button 
                           onClick={() => handleUpdateName(family.id)}
-                          className="px-4 py-2 bg-red-600 text-white rounded-xl font-black text-sm active:scale-95 transition-all"
+                          className="h-12 px-6"
                         >
                           Lưu
-                        </button>
-                        <button 
+                        </Button>
+                        <Button 
+                          variant="ghost"
                           onClick={() => setEditingFamilyId(null)}
-                          className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl font-black text-sm active:scale-95 transition-all"
+                          className="h-12 px-6"
                         >
                           Hủy
-                        </button>
+                        </Button>
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center gap-3">
-                          <h4 className="text-xl font-black text-slate-900">{family.name}</h4>
-                          <button
+                          <h4 className="text-xl font-black text-slate-900 dark:text-slate-100 italic tracking-tight">{family.name}</h4>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => {
                               setEditingFamilyId(family.id);
                               setEditingName(family.name);
                             }}
-                            className="p-2 text-slate-300 hover:text-red-600 transition-all active:scale-90"
-                            title="Đổi tên"
+                            className="h-8 w-8 text-slate-400 hover:text-primary"
                           >
-                            ✏️
-                          </button>
+                            <FiEdit2 size={12} />
+                          </Button>
                         </div>
                         <div className="flex items-center gap-4 mt-2">
-                           <p className="text-[10px] text-slate-400 font-mono tracking-tight bg-slate-50 px-2 py-0.5 rounded">ID: {family.id}</p>
+                           <p className="text-[10px] text-slate-400 font-black uppercase tracking-tight bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">NODE ID: {family.id}</p>
                            <button 
                               onClick={() => toggleExpand(family.id)}
-                              className="text-xs font-black text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-widest"
+                              className="text-[10px] font-black text-primary hover:underline transition-colors uppercase tracking-widest flex items-center gap-1"
                            >
-                              👥 {family._count?.users || 0} thành viên
+                              <FiUser size={10} /> {family._count?.users || 0} Nodes
                            </button>
                         </div>
                       </>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
+                  <div className="flex items-center gap-3">
+                    <Button
+                        variant={expandedFamilyId === family.id ? 'default' : 'ghost'}
+                        size="icon"
                         onClick={() => toggleExpand(family.id)}
-                        className={`p-3 rounded-2xl transition-all active:scale-90 ${expandedFamilyId === family.id ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-400 hover:text-indigo-600'}`}
-                        title="Xem thành viên"
+                        className={`h-11 w-11 transition-all ${expandedFamilyId === family.id ? '' : 'text-slate-400'}`}
                       >
-                       <span className={`inline-block transition-transform duration-300 ${expandedFamilyId === family.id ? 'rotate-180' : ''}`}>▼</span>
-                    </button>
-                    <button
+                       <FiChevronDown className={`transition-transform duration-300 ${expandedFamilyId === family.id ? 'rotate-180' : ''}`} size={18} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleDelete(family.id)}
-                      className="p-3 bg-slate-50 text-slate-300 hover:bg-red-50 hover:text-red-600 rounded-2xl transition-all active:scale-90"
-                      title="Xóa gia đình"
+                      className="h-11 w-11 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10"
                     >
-                      🗑️
-                    </button>
+                      <FiTrash2 size={18} />
+                    </Button>
                   </div>
                 </div>
 

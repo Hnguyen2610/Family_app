@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { eventsAPI, mealsAPI } from '@/lib/api-client';
 import { useTranslation } from '@/lib/i18n';
-import { FiCalendar, FiMessageSquare, FiArrowRight, FiCoffee, FiHeart } from 'react-icons/fi';
+import { FiCalendar, FiMessageSquare, FiArrowRight, FiCoffee, FiHeart, FiChevronDown } from 'react-icons/fi';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface DashboardProps {
   readonly onNavigate: (tab: 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' | 'notifications') => void;
@@ -17,6 +19,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const { t, language } = useTranslation();
 
   const [todayEvents, setTodayEvents] = useState<any[]>([]);
+  const [monthEvents, setMonthEvents] = useState<any[]>([]);
+  const [scheduleView, setScheduleView] = useState<'today' | 'month'>('today');
   const [suggestedMeals, setSuggestedMeals] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,6 +44,11 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         // Sort by time
         today.sort((a: any, b: any) => (a.time || '24:00').localeCompare(b.time || '24:00'));
         setTodayEvents(today);
+        
+        // Sort all month events by date
+        const sortedMonth = [...allEvents].sort((a: any, b: any) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+        setMonthEvents(sortedMonth);
+
 
         // 2. Fetch Meals
         const mealsRes = await mealsAPI.getAll();
@@ -112,23 +121,50 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         {/* Left Column: Events */}
         <div className="lg:col-span-7 space-y-8">
           <div className="glass rounded-2xl p-8 border border-black/5 dark:border-white/5 h-full bg-white/80 dark:bg-slate-900/40">
-            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
-              <FiCalendar className="text-primary" />
-              {t('dashboard.operations')}
-              <span className="ml-auto bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500 text-[10px] px-2 py-1 rounded border border-black/5 dark:border-white/5">
-                {todayEvents.length} {t('dashboard.tasks')}
+            <div className="flex items-center justify-between mb-8">
+              <div className="relative group/view">
+                <button 
+                  className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 hover:text-primary transition-colors pr-8 py-1"
+                >
+                  <FiCalendar className="text-primary" />
+                  {scheduleView === 'today' ? t('dashboard.operations') : (language === 'vi' ? 'Lịch trình tháng này' : 'Monthly Schedule')}
+                  <FiChevronDown size={14} className="group-hover/view:translate-y-0.5 transition-transform" />
+                </button>
+                <div className="absolute top-full left-0 mt-2 w-48 glass rounded-xl border border-black/5 dark:border-white/5 opacity-0 invisible group-hover/view:opacity-100 group-hover/view:visible transition-all z-20 shadow-xl py-2">
+                  <button 
+                    onClick={() => setScheduleView('today')}
+                    className={`w-full text-left px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-primary/5 ${scheduleView === 'today' ? 'text-primary' : 'text-slate-500'}`}
+                  >
+                    {t('dashboard.operations')}
+                  </button>
+                  <button 
+                    onClick={() => setScheduleView('month')}
+                    className={`w-full text-left px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-primary/5 ${scheduleView === 'month' ? 'text-primary' : 'text-slate-500'}`}
+                  >
+                    {language === 'vi' ? 'Lịch trình tháng này' : 'Monthly Schedule'}
+                  </button>
+                </div>
+              </div>
+              <span className="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500 text-[10px] px-2 py-1 rounded border border-black/5 dark:border-white/5">
+                {scheduleView === 'today' ? todayEvents.length : monthEvents.length} {t('dashboard.tasks')}
               </span>
-            </h3>
+            </div>
 
-            {todayEvents.length > 0 ? (
-              <div className="space-y-4">
-                {todayEvents.map((ev, idx) => (
-                  <div key={ev.id || idx} className="flex items-start gap-6 p-6 rounded-xl bg-slate-100/40 dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all group">
+            {(scheduleView === 'today' ? todayEvents : monthEvents).length > 0 ? (
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                {(scheduleView === 'today' ? todayEvents : monthEvents).map((ev, idx) => (
+                  <div key={ev.id || idx} className="relative flex items-start gap-6 p-6 rounded-xl bg-slate-100/40 dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all group">
                     <div className="w-16 shrink-0 pt-1">
-                      <span className="text-xs font-black text-slate-500 dark:text-slate-500 group-hover:text-primary transition-colors">
-                        {ev.time ? ev.time.substring(0, 5) : '00:00'}
+                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 block mb-1">
+                        {scheduleView === 'month' ? format(new Date(ev.date), 'dd/MM') : (ev.time ? ev.time.substring(0, 5) : '00:00')}
                       </span>
+                      {scheduleView === 'month' && (
+                        <span className="text-[10px] font-bold text-primary block">
+                          {ev.time ? ev.time.substring(0, 5) : '00:00'}
+                        </span>
+                      )}
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <h4 className="font-black text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate">{ev.title}</h4>
                       {ev.description && (
@@ -145,8 +181,9 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               <div className="flex flex-col items-center justify-center py-20 text-center glass rounded-xl border border-dashed border-black/5 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/40">
                 <FiHeart className="text-3xl text-slate-300 dark:text-slate-800 mb-4" />
                 <p className="text-xs text-slate-500 font-black uppercase tracking-widest">
-                  {t('dashboard.noTasks')}
+                  {scheduleView === 'today' ? t('dashboard.noTasks') : (language === 'vi' ? 'Không có sự kiện trong tháng' : 'No events this month')}
                 </p>
+
                 <button
                   onClick={() => onNavigate('calendar')}
                   className="mt-6 text-primary font-black text-[10px] uppercase tracking-widest border border-primary/20 px-4 py-2 rounded-md hover:bg-primary/5 transition-colors"
@@ -174,21 +211,21 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
             <form onSubmit={handleChatSubmit} className="relative z-10 space-y-4">
               <div className="relative group/input">
-                <input
+                <Input
                   type="text"
                   value={chatMessage}
                   onChange={(e) => setChatMessage(e.target.value)}
                   placeholder={language === 'vi' ? "Yêu cầu hệ thống..." : "System command..."}
-                  className="input-field"
+                  className="h-12"
                 />
               </div>
-              <button
+              <Button
                 type="submit"
-                className="btn-primary w-full flex items-center justify-center gap-2 group/btn"
+                className="w-full flex items-center justify-center gap-2 group/btn h-12"
               >
                 {t('dashboard.execute')}
                 <FiArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-              </button>
+              </Button>
             </form>
           </div>
 

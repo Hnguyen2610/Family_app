@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { usersAPI, familiesAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export default function UserManager() {
   const [users, setUsers] = useState<any[]>([]);
@@ -129,30 +138,35 @@ export default function UserManager() {
         <h3 className="text-lg font-black mb-4 uppercase tracking-wider text-slate-700">
           {editingUserId ? 'Chỉnh sửa người dùng' : 'Thêm người dùng mới'}
         </h3>
-        <form onSubmit={editingUserId ? handleUpdateUser : handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <input
-            type="text"
-            value={editingUserId ? editingData.name : newUser.name}
-            onChange={(e) => editingUserId 
-              ? setEditingData({ ...editingData, name: e.target.value })
-              : setNewUser({ ...newUser, name: e.target.value })
-            }
-            placeholder="Tên hiển thị"
-            className="px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-bold shadow-inner"
-          />
-          <input
-            type="email"
-            value={editingUserId ? editingData.email : newUser.email}
-            onChange={(e) => editingUserId
-              ? setEditingData({ ...editingData, email: e.target.value })
-              : setNewUser({ ...newUser, email: e.target.value })
-            }
-            placeholder="Email"
-            className="px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-bold shadow-inner"
-          />
+        <form onSubmit={editingUserId ? handleUpdateUser : handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên hiển thị</p>
+            <Input
+              value={editingUserId ? editingData.name : newUser.name}
+              onChange={(e) => editingUserId 
+                ? setEditingData({ ...editingData, name: e.target.value })
+                : setNewUser({ ...newUser, name: e.target.value })
+              }
+              placeholder="Tên hiển thị"
+            />
+          </div>
+          
+          <div className="space-y-2">
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</p>
+             <Input
+                type="email"
+                value={editingUserId ? editingData.email : newUser.email}
+                onChange={(e) => editingUserId
+                  ? setEditingData({ ...editingData, email: e.target.value })
+                  : setNewUser({ ...newUser, email: e.target.value })
+                }
+                placeholder="Email"
+              />
+          </div>
+
           <div className="space-y-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Gia đình</p>
-            <div className="flex flex-wrap gap-2 p-2 rounded-2xl border border-slate-200 bg-white shadow-inner max-h-32 overflow-y-auto">
+            <div className="flex flex-wrap gap-2 p-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/50 shadow-inner max-h-32 overflow-y-auto">
               {families.map(f => {
                 const isSelected = editingUserId 
                   ? editingData.familyIds.includes(f.id)
@@ -177,8 +191,8 @@ export default function UserManager() {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${
                       isSelected 
-                        ? 'bg-red-500 text-white shadow-md shadow-red-100' 
-                        : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                        ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10' 
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
                     {f.name}
@@ -187,34 +201,44 @@ export default function UserManager() {
               })}
             </div>
           </div>
-          <select
-            value={editingUserId ? editingData.globalRole : newUser.role}
-            onChange={(e) => editingUserId
-              ? setEditingData({ ...editingData, globalRole: e.target.value })
-              : setNewUser({ ...newUser, role: e.target.value })
-            }
-            className="px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-bold bg-white shadow-inner"
-          >
-            <option value="USER">USER</option>
-            <option value="ADMIN">ADMIN</option>
-            <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-          </select>
+
+          <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Quyền hạn</p>
+            <Select
+              value={editingUserId ? editingData.globalRole : newUser.role}
+              onValueChange={(val) => editingUserId
+                ? setEditingData({ ...editingData, globalRole: val as string })
+                : setNewUser({ ...newUser, role: val as 'USER' | 'ADMIN' | 'SUPER_ADMIN' })
+              }
+            >
+              <SelectTrigger className="h-12">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="USER">USER</SelectItem>
+                <SelectItem value="ADMIN">ADMIN</SelectItem>
+                <SelectItem value="SUPER_ADMIN">SUPER_ADMIN</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex gap-2">
-            <button
+            <Button
               type="submit"
               disabled={isCreating || isUpdating}
-              className="flex-1 bg-red-600 text-white px-4 py-2 rounded-2xl font-black hover:bg-red-700 disabled:opacity-50 transition-all shadow-lg shadow-red-100 active:scale-95"
+              className="flex-1 h-12"
             >
               {getButtonText()}
-            </button>
+            </Button>
             {editingUserId && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setEditingUserId(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-500 rounded-2xl font-black hover:bg-slate-200 transition-all active:scale-95 text-xs"
+                className="h-12 px-4"
               >
                 Hủy
-              </button>
+              </Button>
             )}
           </div>
         </form>

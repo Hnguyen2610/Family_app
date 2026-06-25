@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateMealDto,
@@ -11,6 +11,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class MealsService {
+  private readonly logger = new Logger(MealsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => NotificationsService))
@@ -79,7 +81,7 @@ export class MealsService {
 
   // ========== Meal History ==========
 
-  async recordMeal(familyId: string, dto: RecordMealDto) {
+  async recordMeal(familyId: string, dto: RecordMealDto, silent: boolean = false) {
     const mealHistory = await this.prisma.mealHistory.create({
       data: {
         mealId: dto.mealId,
@@ -89,6 +91,8 @@ export class MealsService {
       },
       include: { meal: true },
     });
+
+    if (silent) return mealHistory;
 
     // Notify family members
     try {
@@ -260,13 +264,37 @@ export class MealsService {
     // 5. Record to history. If 'all', record to the first family of the user
     const targetFamilyId = familyId === 'all' ? (familyIds[0] || 'all') : familyId;
     if (targetFamilyId && targetFamilyId !== 'all') {
+      const mealNames = [];
       for (const meal of combo) {
         await this.recordMeal(targetFamilyId, {
           mealId: meal.id,
           category: meal.category,
-        });
+        }, true); // Silent
+        mealNames.push(meal.name);
+      }
+
+      // Send single aggregated notification
+      if (mealNames.length > 0) {
+        try {
+          const familyMembers = await this.prisma.user.findMany({
+            where: { families: { some: { id: targetFamilyId } } },
+            select: { id: true },
+          });
+
+          for (const member of familyMembers) {
+            await this.notificationsService.createNotification(member.id, {
+              type: 'MEAL_ADDED',
+              title: 'Thực đơn hôm nay',
+              message: `Món mới đã được cập nhật: ${mealNames.join(', ')}`,
+              metadata: { path: '/meals' },
+            });
+          }
+        } catch (e) {
+          this.logger.error('Failed to send aggregated meal notification', e);
+        }
       }
     }
+
 
     return {
       mainCourse: selectedMain || null,

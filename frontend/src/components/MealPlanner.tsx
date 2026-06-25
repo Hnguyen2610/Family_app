@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { usersAPI, mealsAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { FiUsers, FiCpu, FiCheckCircle } from 'react-icons/fi';
+import { Button } from "@/components/ui/button";
 import { useAuth } from '@/hooks/useAuth';
 import MealPreferenceModal from './MealPreferenceModal';
 import { useTranslation } from '@/lib/i18n';
@@ -146,10 +147,10 @@ export default function MealPlanner() {
               {t('meal.optimize')}
             </p>
 
-            <button
+            <Button
               onClick={handleGenerateMenu}
               disabled={generatingMenu || members.length === 0}
-              className="btn-primary w-full flex justify-center items-center gap-3 py-4 relative z-10"
+              className="w-full flex justify-center items-center gap-3 h-14 relative z-10"
             >
               {generatingMenu ? (
                 <>
@@ -161,7 +162,7 @@ export default function MealPlanner() {
                   <FiCpu /> {t('meal.execute')}
                 </>
               )}
-            </button>
+            </Button>
           </div>
 
           {/* Generated Result Container */}

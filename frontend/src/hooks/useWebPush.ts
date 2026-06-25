@@ -8,9 +8,19 @@ export function useWebPush() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
+    // Detect iOS
+    const isIosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(isIosDevice);
+
+    // Detect Standalone (PWA)
+    const isPwa = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    setIsStandalone(!!isPwa);
+
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true);
       setPermission(Notification.permission);
@@ -103,5 +113,5 @@ export function useWebPush() {
     }
   };
 
-  return { isSupported, isSubscribed, permission, isProcessing, subscribe, unsubscribe };
+  return { isSupported, isSubscribed, permission, isProcessing, isIOS, isStandalone, subscribe, unsubscribe };
 }

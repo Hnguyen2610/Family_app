@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Query, Headers, UnauthorizedException, Logger, Body } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -11,6 +12,7 @@ export class NotificationsController {
     private readonly prisma: PrismaService
   ) {}
 
+  @SkipThrottle()
   @Get('daily')
   async triggerDailyReminder(
     @Headers('x-vercel-cron-auth') customAuth: string,
@@ -28,6 +30,10 @@ export class NotificationsController {
     // 1. Always trigger Family Daily Reminders
     this.logger.log('Triggering daily reminders...');
     await this.notificationsService.sendDailyReminder();
+
+    // 1.5. Trigger proactive assistant suggestions with dedupe protection
+    this.logger.log('Triggering proactive assistant...');
+    const proactiveAssistant = await this.notificationsService.runProactiveAssistant();
     
     // 2. If Monday (1), trigger Super Admin Weekly Horoscope
     if (dayOfWeek === 1) {
@@ -46,12 +52,14 @@ export class NotificationsController {
       message: 'Morning notifications processed',
       tasks: {
         dailyReminder: true,
+        proactiveAssistant,
         weeklyHoroscope: dayOfWeek === 1,
         monthlySummary: dateOfMonth === 1
       }
     };
   }
 
+  @SkipThrottle()
   @Get('finance-report')
   async triggerMonthlyFinanceReport(
     @Headers('x-vercel-cron-auth') customAuth: string,
@@ -89,6 +97,7 @@ export class NotificationsController {
     return this.notificationsService.delete(id, userId);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('push/subscribe')
   async subscribePush(
     @Query('userId') userId: string,

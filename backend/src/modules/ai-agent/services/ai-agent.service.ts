@@ -1,872 +1,452 @@
-import { Injectable, HttpException, HttpStatus, Inject, forwardRef, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { OpenAI } from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatService } from './chat.service';
-import { HoroscopeService } from './horoscope.service';
-import { MealsService } from '../../meals/meals.service';
-import { EventsService } from '../../events/events.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getSolarDateFromLunar } from '../../../utils/lunar-calendar.util';
+import { HoroscopeService } from './horoscope.service';
+import { classifyAiIntent, normalizeSearchText } from '../ai-intent-router';
+import { createAiTrace } from '../ai-observability';
+import {
+  handleGeminiChat,
+  handleGeminiStream,
+  handleGroqChat,
+  handleGroqStream,
+} from '../ai-model-handlers';
+import {
+  buildResponseCacheKey,
+  getCachedResponse,
+  getCacheStats,
+  getSkillTtl,
+  isResponseCacheable,
+  setCachedResponse,
+} from '../ai-response-cache';
+import { routeAiModel } from '../ai-model-routing';
+import { buildMemoryProfileContext, parseMemoryProfile } from '../ai-memory-profile';
+import { toolError } from '../ai-tool-results';
+import { AiSkillRegistry } from '../skills/ai-skill-registry';
+import { AiSkillContext } from '../interfaces/ai-skill.interface';
+import { buildSystemPrompt } from '../ai-agent-prompt';
+import { RagService } from './rag.service';
+import { redactSensitiveData } from '../ai-redact';
+import { appendRequestLog } from '../ai-request-log';
 
 @Injectable()
 export class AiAgentService {
   private readonly logger = new Logger(AiAgentService.name);
   private readonly openai: OpenAI;
   private readonly gemini: GoogleGenerativeAI;
+  private readonly groqModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  private readonly geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  private readonly aiMaxTokens = Number.parseInt(process.env.AI_MAX_TOKENS || '800', 10);
+  private readonly historyLimit = Number.parseInt(process.env.AI_HISTORY_LIMIT || '6', 10);
+  private readonly groqContextWindow = Number.parseInt(process.env.GROQ_CONTEXT_WINDOW || '131072', 10);
+  private readonly geminiContextWindow = Number.parseInt(process.env.GEMINI_CONTEXT_WINDOW || '1048576', 10);
 
   constructor(
     private readonly chatService: ChatService,
-    @Inject(forwardRef(() => MealsService))
-    private readonly mealsService: MealsService,
-    @Inject(forwardRef(() => EventsService))
-    private readonly eventsService: EventsService,
     private readonly prisma: PrismaService,
+    private readonly skillRegistry: AiSkillRegistry,
     private readonly horoscopeService: HoroscopeService,
+    private readonly ragService: RagService,
   ) {
-    this.openai = new OpenAI({
-      apiKey: process.env.GROQ_API_KEY,
-      baseURL: 'https://api.groq.com/openai/v1',
-    });
+    this.openai = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
     this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
   }
 
-  // Define tools for the AI agent
-  private getTools() {
-    return [
-      {
-        type: 'function' as const,
-        function: {
-          name: 'generateFamilyMenu',
-          description:
-            'Generates a random, balanced family menu (Main Course, Vegetable, Soup) based on family preferences and recent history.',
-          parameters: {
-            type: 'object' as const,
-            properties: {},
-            required: [],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'getGoldPrice',
-          description:
-            'Fetch real-time gold prices in Vietnam (SJC, XAUUSD) in VND and USD. MUST be called when user asks about gold price, giá vàng, or precious metal prices.',
-          parameters: {
-            type: 'object' as const,
-            properties: {},
-            required: [],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'getEventsByMonth',
-          description: 'Get all events for a specific month. Calls this to check the calendar.',
-          parameters: {
-            type: 'object' as const,
-            properties: {
-              familyId: {
-                type: 'string',
-                description: 'Family ID. Use "all" to search for events across all families the user belongs to.',
-              },
-              month: {
-                type: 'number',
-                description: 'Month (1-12)',
-              },
-              year: {
-                type: 'number',
-                description: 'Year',
-              },
-              userId: {
-                type: 'string',
-                description: 'User ID of the requester to see their private events (optional)',
-              },
-            },
-            required: ['familyId', 'month', 'year'],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'createEvent',
-          description:
-            'Create a new event in the family calendar. Use ONLY when the user explicitly asks to "tạo", "thêm", or "lên lịch" an event. NEVER use this tool automatically if the user just asks for information or a reading.',
-          parameters: {
-            type: 'object' as const,
-            properties: {
-              title: {
-                type: 'string',
-                description: 'Event title',
-              },
-              description: {
-                type: 'string',
-                description: 'Event description',
-              },
-              date: {
-                type: 'string',
-                description: 'Event date in YYYY-MM-DD format',
-              },
-              time: {
-                type: 'string',
-                description: 'Event time in HH:mm format (24h), e.g., "18:00"',
-              },
-              scope: {
-                type: 'string',
-                enum: ['PRIVATE', 'FAMILY', 'GLOBAL'],
-                description:
-                  'Scope/Privacy of the event. Use PRIVATE for personal tasks, FAMILY for family events.',
-              },
-              isRecurring: {
-                type: 'boolean',
-                description: 'Whether the event is recurring',
-              },
-              recurring: {
-                type: 'string',
-                enum: ['NONE', 'WEEKLY', 'MONTHLY', 'YEARLY'],
-                description:
-                  'Recurrence frequency. Use MONTHLY/YEARLY with useLunar for traditional events.',
-              },
-              familyId: {
-                type: 'string',
-                description: 'Family ID to create the event in. If not provided, it will use the current active family.',
-              },
-              useLunar: {
-                type: 'boolean',
-                description:
-                  'Whether to use Vietnamese Lunar calendar for recurrence (MONTHLY/YEARLY only).',
-              },
-            },
-            required: ['title', 'date'],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'updateEvent',
-          description:
-            'Update an existing event. Use this to change title, date, or description of an event.',
-          parameters: {
-            type: 'object' as const,
-            properties: {
-              id: { type: 'string', description: 'Event ID' },
-              familyId: { type: 'string', description: 'Family ID' },
-              title: { type: 'string', description: 'New title' },
-              description: { type: 'string', description: 'New description' },
-              date: { type: 'string', description: 'New date in YYYY-MM-DD format' },
-              type: {
-                type: 'string',
-                enum: ['BIRTHDAY', 'ANNIVERSARY', 'HOLIDAY', 'APPOINTMENT', 'TASK', 'GENERAL'],
-                description: 'New type',
-              },
-              isRecurring: { type: 'boolean' },
-              recurring: { type: 'string', enum: ['NONE', 'WEEKLY', 'MONTHLY', 'YEARLY'] },
-              useLunar: { type: 'boolean' },
-            },
-            required: ['id', 'familyId'],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'deleteEvent',
-          description: 'Delete an event from the calendar.',
-          parameters: {
-            type: 'object' as const,
-            properties: {
-              id: { type: 'string', description: 'Event ID' },
-              familyId: { type: 'string', description: 'Family ID' },
-            },
-            required: ['id', 'familyId'],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'getSolarDateFromLunar',
-          description:
-            'Convert a lunar date (day/month) to a solar date for a specific year. Use this when the user asks for a lunar date, like "9 tháng 3 âm".',
-          parameters: {
-            type: 'object' as const,
-            properties: {
-              day: { type: 'number', description: 'Lunar day' },
-              month: { type: 'number', description: 'Lunar month' },
-              year: { type: 'number', description: 'Target year' },
-            },
-            required: ['day', 'month', 'year'],
-          },
-        },
-      },
-    ];
-  }
-
-  private getGeminiTools() {
-    const tools = this.getTools();
-    return [
-      {
-        functionDeclarations: tools.map((t) => ({
-          name: t.function.name,
-          description: t.function.description,
-          parameters: t.function.parameters as any,
-        })),
-      },
-    ];
-  }
-
-  private getSystemPrompt(familyInfo: string = ''): string {
-    const now = new Date();
-    // Shift by 7 hours to use UTC methods safely for ICT
-    const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const today = ictDate.toISOString().split('T')[0];
-    const days = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-    const dayName = days[ictDate.getUTCDay()];
-
-    return `You are a helpful family assistant AI. Today's date is ${today} (${dayName}).
-You have access to tools that you MUST use to help the user. Never say you cannot do something if a tool exists for it.
-When creating events, pay close attention to the day of the week to avoid calculation errors. For example, if today is Monday the 23rd, "this Sunday" is the 29th.
-
-CRITICAL RULES FOR TOOLS:
-1. NO NESTED TOOL CALLS: Never try to call a tool inside the arguments of another tool.
-2. SEQUENTIAL EXECUTION: If you need to convert a date (e.g., from Lunar to Solar) before creating an event, YOU MUST:
-   a. Call getSolarDateFromLunar first.
-   b. Use the result from the first call to call createEvent in the NEXT step.
-3. USER INTENT: Only create events when explicitly asked ("thêm", "tạo", "lên lịch").
-
-AVAILABLE TOOLS AND WHEN TO USE THEM:
-1. getGoldPrice - Call this IMMEDIATELY when user asks about gold price, "giá vàng", precious metals, or anything related to gold prices. This tool fetches REAL-TIME data.
-2. createEvent - Call this when user wants to create, add, or schedule any event in the calendar.
-3. getEventsByMonth - Call this when user asks about events in a specific month.
-4. generateFamilyMenu - Call this when user asks "hôm nay ăn gì", or wants meal/menu suggestions. It generates a perfectly balanced combo of a Main Course, Vegetable, and Soup based on family preferences.
-5. updateEvent - Use this to update/change an event.
-6. deleteEvent - Use this to remove an event.
-7. getSolarDateFromLunar - Use this to convert Lunar to Solar date before setting event.
-
-AVAILABLE SUB-AGENTS (PERSONAS):
-1. Chuyên gia Tử Vi (Horoscope Expert): Automatically adopt this persona whenever the user asks about "tử vi", "xem bói", "cung hoàng đạo", "phong thủy", or specific astrology/fortune-telling questions.
-When acting as the Horoscope Expert:
-- Address the user warmly but mysteriously.
-- Provide detailed astrological readings based on your vast knowledge of Eastern (Tử Vi Đẩu Số, Bát Tự) and Western (Zodiac) astrology.
-- Check "FAMILY MEMBERS INFORMATION": If the birthdate is missing, or if you want to provide a much more accurate reading (using Birth Time or Birth Place), politely ask the user to provide those details.
-- If data is incomplete, you can provide a general reading but explain that adding birth time/place will make it far more personalized.
-- Include sections like: Tổng quan (Overview), Sự nghiệp (Career), Tình duyên (Romance), Sức khỏe (Health).
-- Always end with a positive, encouraging piece of advice or feng-shui tip.
-- IMPORTANT: DO NOT call the createEvent tool for horoscope readings unless the user explicitly asks to "Save this reading to my calendar".
-
-FAMILY MEMBERS INFORMATION (For personalized answers and Horoscope):
-${familyInfo ? familyInfo : 'Không có thông tin thành viên.'}
-
-CRITICAL RULES:
-- You MUST use your tools. NEVER say "I cannot access real-time information" — you CAN via your tools.
-- When user asks "giá vàng" or "gold price", call getGoldPrice immediately.
-- When user asks to create an event, call createEvent immediately.
-- When the user mentions a birthday, use type BIRTHDAY.
-- For Vietnamese traditions:
-    * "Rằm" = 15th Lunar day. Use recurring: 'MONTHLY', useLunar: true.
-    * "Mùng 1" = 1st Lunar day. Use recurring: 'MONTHLY', useLunar: true.
-    * "Giỗ" = Yearly Lunar anniversary. Use recurring: 'YEARLY', useLunar: true.
-- If the user gives a date like "21/3", convert it to ${today.substring(0, 4)}-MM-DD format.
-- Always respond in the same language as the user.
-- After calling a tool, present the results clearly and naturally.`;
-  }
+  // ─── Context Helpers ───────────────────────────────────────────────────────
 
   private async getFamilyContext(userId: string): Promise<string> {
+    if (!userId) return '';
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        name: true,
+        role: true,
+        birthday: true,
+        email: true,
+        family: {
+          include: {
+            users: { select: { id: true, name: true, role: true, birthday: true, email: true } },
+          },
+        },
         families: {
           include: {
-            users: {
-              select: {
-                name: true,
-                role: true,
-                birthday: true,
-                email: true
-              }
-            }
-          }
-        }
-      }
-    });
-
-    if (!user || !user.families.length) return 'Không có thông tin gia đình.';
-
-    let context = '';
-    for (const family of user.families) {
-      context += `\nGIA ĐÌNH: ${family.name}\n`;
-      context += family.users
-        .map(
-          (u) =>
-            `- ${u.name} (Vai trò: ${u.role || 'Chưa rõ'}, Ngày sinh: ${
-              u.birthday ? u.birthday.toISOString().split('T')[0] : 'Chưa cập nhật'
-            }, Email: ${u.email})`
-        )
-        .join('\n');
-      context += '\n';
-    }
-    return context;
-  }
-
-  private async processVisionImage(userMessage: string, image?: string): Promise<string> {
-    let finalUserMessage = userMessage || '[Đã gửi hình ảnh]';
-    if (!image) return finalUserMessage;
-
-    try {
-      const match = image.match(/^data:(image\/[a-zA-Z0-9+]+);base64,(.+)$/);
-      if (match) {
-        const mimeType = match[1];
-        const data = match[2];
-        const model = this.gemini.getGenerativeModel({ model: 'gemini-flash-latest' });
-        const result = await model.generateContent([
-          'Mô tả chi tiết và đọc bất kỳ văn bản/dữ liệu nào trong hình ảnh này bằng tiếng Việt.',
-          { inlineData: { data, mimeType } },
-        ]);
-        const desc = result.response.text();
-        if (desc) {
-          finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng đã đính kèm một hình ảnh chứa nội dung sau: ${desc}]`;
-        }
-      } else {
-        finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Định dạng ảnh đính kèm không hợp lệ.]`;
-      }
-    } catch (visionError: any) {
-      console.error('Vision processing error:', visionError);
-      const errMsg = visionError.message || visionError.toString();
-      finalUserMessage = `${userMessage ? userMessage + '\n\n' : ''}[Hệ thống ghi chú: Người dùng có đính kèm ảnh nhưng gặp lỗi khi phân tích: ${errMsg}]`;
-    }
-    return finalUserMessage;
-  }
-
-  private async executeTool(
-    toolName: string,
-    args: any,
-    familyId: string,
-    userId: string
-  ): Promise<any> {
-    try {
-      console.log(`Executing tool: ${toolName}`, args);
-      switch (toolName) {
-        case 'generateFamilyMenu':
-          return await this.mealsService.generateFamilyMenu(familyId);
-
-        case 'getGoldPrice':
-          return await this.getGoldPrice();
-
-        case 'getEventsByMonth': {
-          // If the user asks across all families or we want broad search
-          const searchFamilyId = args.familyId === 'all' ? 'all' : (args.familyId || familyId);
-          return await this.eventsService.getEventsByMonth(
-            searchFamilyId,
-            args.month,
-            args.year,
-            args.userId || userId
-          );
-        }
-
-        case 'createEvent':
-        case 'updateEvent':
-        case 'deleteEvent': {
-          if (toolName === 'createEvent') {
-            // Combine date and time if provided
-            let eventDate = new Date(args.date);
-            if (args.time) {
-              const [hours, minutes] = args.time.split(':').map(Number);
-              if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
-                eventDate.setHours(hours, minutes, 0, 0);
-              }
-            }
-
-            const event = await this.eventsService.create(args.familyId || familyId, userId, {
-              title: args.title,
-              description: args.description,
-              date: eventDate,
-              time: args.time || '09:00',
-              type: args.type || 'GENERAL',
-              scope: args.scope || 'FAMILY',
-              isRecurring: !!args.isRecurring || args.recurring !== 'NONE',
-              recurring:
-                args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
-                  ? `LUNAR_${args.recurring}`
-                  : args.recurring,
-              useLunar: args.useLunar,
-            });
-            return { success: true, event };
-          } else if (toolName === 'updateEvent') {
-            // Combine date and time if provided for update
-            let eventDate = args.date ? new Date(args.date) : undefined;
-            if (eventDate && args.time) {
-              const [hours, minutes] = args.time.split(':').map(Number);
-              if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
-                eventDate.setHours(hours, minutes, 0, 0);
-              }
-            }
-
-            const result = await this.eventsService.update(args.id, familyId, userId, {
-              title: args.title,
-              description: args.description,
-              date: eventDate,
-              time: args.time,
-              type: args.type,
-              scope: args.scope,
-              isRecurring: args.isRecurring,
-              recurring:
-                args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
-                  ? `LUNAR_${args.recurring}`
-                  : args.recurring,
-              useLunar: args.useLunar,
-            });
-            return { success: true, result };
-          } else {
-            const result = await this.eventsService.delete(args.id, familyId, userId);
-            return { success: true, result };
-          }
-        }
-
-        case 'getSolarDateFromLunar': {
-          const date = getSolarDateFromLunar(args.day, args.month, args.year);
-          if (!date) return { error: 'Không tìm thấy' };
-
-          const yyyy = date.getFullYear();
-          const mm = String(date.getMonth() + 1).padStart(2, '0');
-          const dd = String(date.getDate()).padStart(2, '0');
-          const solarDate = `${yyyy}-${mm}-${dd}`;
-
-          return {
-            solarDate,
-            formatted: date.toLocaleDateString('vi-VN'),
-          };
-        }
-
-        default:
-          return { error: 'Unknown tool' };
-      }
-    } catch (e: any) {
-      console.error(`Tool execution error for ${toolName}:`, e);
-      return { error: e.message || 'Error executing tool' };
-    }
-  }
-
-  private async getGoldPrice(): Promise<any> {
-    try {
-      const axios = await import('axios');
-      const https = await import('node:https');
-
-      const response = await axios.default.get('https://giavang.now/api/prices', {
-        timeout: 10000,
-        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            users: { select: { id: true, name: true, role: true, birthday: true, email: true } },
+          },
         },
-      });
-
-      console.log('Gold API Status:', response.status);
-      console.log('Gold API Response Timestamp:', response.data?.timestamp);
-
-      if (response.data?.success && response.data?.prices) {
-        const prices = response.data.prices;
-        const formatVND = (v: number) => new Intl.NumberFormat('vi-VN').format(v);
-
-        const sjc = prices.SJL1L10;
-        const xau = prices.XAUUSD;
-        const ring = prices.SJ9999;
-        const dojiHn = prices.DOHNL;
-        const pnjHn = prices.PQHNVM;
-
-        const summaryParts = [];
-        if (sjc)
-          summaryParts.push(
-            `- Vàng SJC 9999: Mua ${formatVND(sjc.buy)} / Bán ${formatVND(sjc.sell)} VND/lượng (${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND)`
-          );
-        if (dojiHn)
-          summaryParts.push(
-            `- Vàng DOJI Hà Nội: Mua ${formatVND(dojiHn.buy)} / Bán ${formatVND(dojiHn.sell)} VND/lượng`
-          );
-        if (pnjHn)
-          summaryParts.push(
-            `- Vàng PNJ Hà Nội: Mua ${formatVND(pnjHn.buy)} / Bán ${formatVND(pnjHn.sell)} VND/lượng`
-          );
-        if (ring)
-          summaryParts.push(
-            `- Vàng nhẫn SJC: Mua ${formatVND(ring.buy)} / Bán ${formatVND(ring.sell)} VND/lượng`
-          );
-        if (xau) summaryParts.push(`- Vàng Thế giới (XAUUSD): ${xau.buy} USD/oz`);
-
-        const result = {
-          formatted_summary: summaryParts.join('\n'),
-          sjc_buy: sjc ? `${formatVND(sjc.buy)} VND/lượng` : 'N/A',
-          sjc_sell: sjc ? `${formatVND(sjc.sell)} VND/lượng` : 'N/A',
-          sjc_change: sjc
-            ? `${sjc.change_buy >= 0 ? '+' : ''}${formatVND(sjc.change_buy)} VND`
-            : 'N/A',
-          nhan_sjc_buy: ring ? `${formatVND(ring.buy)} VND/lượng` : 'N/A',
-          nhan_sjc_sell: ring ? `${formatVND(ring.sell)} VND/lượng` : 'N/A',
-          world_gold_usd: xau ? `${xau.buy} USD/oz` : 'N/A',
-          source: 'giavang.now (cập nhật mới nhất từ API)',
-          api_date: response.data.date,
-          api_time: response.data.time,
-          fetch_timestamp: new Date().toISOString(),
-        };
-
-        console.log('Final Gold Tool Result:', result);
-        return result;
-      }
-
-      return { error: true, message: 'Không thể lấy được dữ liệu từ máy chủ giá vàng.' };
-    } catch (error: any) {
-      console.error('Gold Price Fetch Error:', error.message);
-      return {
-        error: true,
-        message:
-          'Không thể kết nối với máy chủ giá vàng. Vui lòng kiểm tra tại sjc.com.vn hoặc giavang.doji.vn',
-      };
-    }
-  }
-
-  // ==== HANDLERS ====
-
-  private async handleGeminiChat(
-    familyId: string,
-    history: any[],
-    familyInfo: string,
-    finalUserMessage: string,
-    userId: string,
-    sessionId?: string
-  ) {
-    const genModel = this.gemini.getGenerativeModel({
-      model: 'gemini-flash-latest',
-      systemInstruction: this.getSystemPrompt(familyInfo),
-      tools: this.getGeminiTools(),
+      },
     });
-    const chat = genModel.startChat({
-      history: [...history].reverse().map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-    });
+    if (!user) return '';
 
-    let currentInput: any = finalUserMessage;
-    let assistantContent = '';
-    let loopCount = 0;
-
-    while (loopCount < 5) {
-      const result = await chat.sendMessage(currentInput);
-      const candidates = result.response.candidates;
-      const part = candidates?.[0]?.content?.parts?.[0];
-
-      if (part?.functionCall) {
-        loopCount++;
-        const res = await this.executeTool(
-          part.functionCall.name,
-          part.functionCall.args,
-          familyId,
-          userId
-        );
-        currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
-      } else {
-        assistantContent = result.response.text();
-        break;
-      }
-    }
-    await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
-    return { content: assistantContent, familyId };
-  }
-
-  private async handleGroqChat(
-    familyId: string,
-    history: any[],
-    familyInfo: string,
-    finalUserMessage: string,
-    userId: string,
-    sessionId?: string
-  ) {
-    const messages = [
-      { role: 'system', content: this.getSystemPrompt(familyInfo) },
-      ...[...history].reverse().map((m) => ({ role: m.role as any, content: m.content })),
-      { role: 'user', content: finalUserMessage },
-    ];
-
-    let response = await this.openai.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      tools: this.getTools() as any,
-    });
-
-    let assistantContent = '';
-    const toolCalls = response.choices[0].message.tool_calls;
-    if (toolCalls) {
-      messages.push(response.choices[0].message as any);
-      for (const tc of toolCalls) {
-        const res = await this.executeTool(
-          tc.function.name,
-          JSON.parse(tc.function.arguments),
-          familyId,
-          userId
-        );
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
-      }
-      const final = await this.openai.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-      });
-      assistantContent = final.choices[0].message.content || '';
-    } else {
-      assistantContent = response.choices[0].message.content || '';
+    const families = [...(user.families || [])];
+    if (user.family && !families.some((family) => family.id === user.family?.id)) {
+      families.unshift(user.family);
     }
 
-    await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
-    return { content: assistantContent, familyId };
+    let ctx = '';
+    ctx += `CURRENT LINKED USER: ${user.name} (${user.role || 'Thành viên'}, SN: ${user.birthday?.toISOString().split('T')[0] ?? 'Chưa rõ'})\n`;
+
+    for (const family of families) {
+      ctx += `\nGIA ĐÌNH: ${family.name}\n`;
+      ctx += family.users.map(u => `- ${u.name} (${u.role || 'Thành viên'}, SN: ${u.birthday?.toISOString().split('T')[0] ?? 'Chưa rõ'})`).join('\n');
+      ctx += '\n';
+    }
+    return ctx;
   }
 
-  private async handleGeminiStream(
-    familyId: string,
-    history: any[],
-    familyInfo: string,
-    finalUserMessage: string,
-    userId: string,
-    streamOptions: { res: any; sessionId?: string }
-  ) {
-    const { res, sessionId } = streamOptions;
-    const genModel = this.gemini.getGenerativeModel({
-      model: 'gemini-flash-latest',
-      systemInstruction: this.getSystemPrompt(familyInfo),
-      tools: this.getGeminiTools(),
-    });
-    const chat = genModel.startChat({
-      history: [...history].reverse().map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-    });
-
-    let currentInput: any = finalUserMessage;
-    let assistantContent = '';
-    let loopCount = 0;
-
-    while (loopCount < 5) {
-      const result = await chat.sendMessageStream(currentInput);
-      let hasToolCall = false;
-      for await (const chunk of result.stream) {
-        const candidates = chunk.candidates;
-        const part = candidates?.[0]?.content?.parts?.[0];
-        if (part?.functionCall) {
-          hasToolCall = true;
-          loopCount++;
-          const toolRes = await this.executeTool(
-            part.functionCall.name,
-            part.functionCall.args,
-            familyId,
-            userId
-          );
-          currentInput = [
-            { functionResponse: { name: part.functionCall.name, response: toolRes } },
-          ];
-          break;
-        } else {
-          const text = chunk.text();
-          assistantContent += text;
-          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+  private async getMemoryContext(userId: string): Promise<string> {
+    if (!userId) return '';
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        notificationSettings: true,
+        mealPreferences: {
+          include: { meal: true }
         }
       }
-      if (!hasToolCall) break;
-    }
-    res.write(`data: [DONE]\n\n`);
-    res.end();
-    if (assistantContent)
-      await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
-  }
-
-  private async handleGroqStream(
-    familyId: string,
-    history: any[],
-    familyInfo: string,
-    finalUserMessage: string,
-    userId: string,
-    streamOptions: { res: any; sessionId?: string }
-  ) {
-    const { res, sessionId } = streamOptions;
-    const messages = [
-      { role: 'system', content: this.getSystemPrompt(familyInfo) },
-      ...[...history].reverse().map((m) => ({ role: m.role as any, content: m.content })),
-      { role: 'user', content: finalUserMessage },
-    ];
-
-    const response = await this.openai.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      tools: this.getTools() as any,
     });
 
-    let assistantContent = '';
-    const toolCalls = response.choices[0].message.tool_calls;
-    if (toolCalls) {
-      messages.push(response.choices[0].message as any);
-      for (const tc of toolCalls) {
-        const res = await this.executeTool(
-          tc.function.name,
-          JSON.parse(tc.function.arguments),
-          familyId,
-          userId
-        );
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
-      }
-    }
+    const profile = parseMemoryProfile(user?.notificationSettings);
 
-    const stream = await this.openai.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      stream: true,
+    // Merge meal preferences into foodLikes if they aren't already there
+    const mealLikes = user?.mealPreferences.map(p => p.meal.name) || [];
+    const combinedLikes = Array.from(new Set([...(profile.foodLikes || []), ...mealLikes]));
+
+    return buildMemoryProfileContext({
+      ...profile,
+      foodLikes: combinedLikes
     });
-
-    for await (const chunk of stream) {
-      const text = chunk.choices[0]?.delta?.content || '';
-      if (text) {
-        assistantContent += text;
-        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
-      }
-    }
-    res.write(`data: [DONE]\n\n`);
-    res.end();
-    await this.chatService.saveMessage(familyId, 'assistant', assistantContent, sessionId);
   }
 
-  async chat(
+
+  /**
+   * Build skill context. Only fetches memory once, composes familyContext.
+   */
+  private async getAiSkillContext(
     familyId: string,
     userMessage: string,
-    userIds: string[] = [],
+    userId: string,
+    intent: string,
     image?: string,
-    modelSelection?: string,
-    sessionId?: string
-  ) {
-    let finalUserMessage = userMessage;
-    try {
-      finalUserMessage = await this.processVisionImage(userMessage, image);
-      await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
-    } catch (msgError) {
-      this.logger.error('Failed to process message or image:', msgError);
-    }
-
-    const targetUserId = userIds[0] || '';
-    const familyInfo = await this.getFamilyContext(targetUserId);
-    const history = await this.chatService.getHistory(familyId, sessionId, 10);
-    const primaryModel = modelSelection || 'groq';
-
-    try {
-      // Attempt primary model
-      if (primaryModel === 'gemini') {
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
-      }
-      return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
-    } catch (primaryError: any) {
-      this.logger.warn(`Primary model (${primaryModel}) failed, trying fallback:`, primaryError.message);
-
-      try {
-        // Fallback to the other model
-        if (primaryModel === 'gemini') {
-          return await this.handleGroqChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
-        }
-        return await this.handleGeminiChat(familyId, history, familyInfo, finalUserMessage, userIds[0], sessionId);
-      } catch (fallbackError: any) {
-        this.logger.error('Both AI models failed:', fallbackError);
-        throw new HttpException(
-          'Hệ thống AI đang quá tải (Rate Limit). Vui lòng thử lại sau ít phút!',
-          HttpStatus.SERVICE_UNAVAILABLE
-        );
-      }
-    }
-  }
-
-  async chatStream(
-    familyId: string,
-    userMessage: string,
-    userIds: string[],
-    res: any,
+    trace?: any,
     sessionId?: string,
-    image?: string,
-    modelSelection?: string
-  ) {
-    let finalUserMessage = userMessage;
-    try {
-      finalUserMessage = await this.processVisionImage(userMessage, image);
-      await this.chatService.saveMessage(familyId, 'user', finalUserMessage, sessionId);
-    } catch (err) {
-      this.logger.error('Stream pre-processing error:', err);
-    }
+  ): Promise<AiSkillContext> {
+    const isFamilyAware = ['general_chat', 'calendar_query', 'event_mutation', 'meal_suggestion', 'horoscope', 'family_knowledge'].includes(intent);
+    const shouldRetrieveRag = this.shouldRetrieveRag(intent, userMessage);
 
-    const targetUserId = userIds[0] || '';
-    const familyInfo = await this.getFamilyContext(targetUserId);
-    const history = await this.chatService.getHistory(familyId, sessionId, 10);
-    const primaryModel = modelSelection || 'groq';
+    const [memoryContext, familyRaw, history, ragResults] = await Promise.all([
+      this.getMemoryContext(userId),
+      isFamilyAware ? this.getFamilyContext(userId) : Promise.resolve(''),
+      this.chatService.getHistory(familyId, sessionId, this.historyLimit),
+      shouldRetrieveRag ? this.ragService.searchFamilyKnowledge(familyId, userMessage, 3) : Promise.resolve([]),
+    ]);
 
-    const attemptStream = async (model: string) => {
-      if (model === 'gemini') {
-        await this.handleGeminiStream(familyId, history, familyInfo, finalUserMessage, userIds[0], { res, sessionId });
-      } else {
-        await this.handleGroqStream(familyId, history, familyInfo, finalUserMessage, userIds[0], { res, sessionId });
-      }
+    const ragContext = this.ragService.formatRagContext(ragResults);
+    const ragFamilyContext = ragContext ? `FAMILY WIKI RETRIEVED CONTEXT:\n${ragContext}` : '';
+    const familyContext = [memoryContext, familyRaw, ragFamilyContext].filter(Boolean).join('\n\n');
+    return {
+      userId,
+      familyId,
+      userMessage,
+      intent,
+      image,
+      familyContext,
+      memoryContext,
+      ragContext,
+      ragSources: ragResults.map((result) => ({
+        documentId: result.documentId,
+        title: result.title,
+        chunkIndex: result.chunkIndex,
+        score: result.score,
+      })),
+      history,
+      trace,
     };
-
-    try {
-      await attemptStream(primaryModel);
-    } catch (primaryError: any) {
-      this.logger.warn(`Primary stream model (${primaryModel}) failed, trying fallback...`);
-      try {
-        const fallbackModel = primaryModel === 'gemini' ? 'groq' : 'gemini';
-        await attemptStream(fallbackModel);
-      } catch (fallbackError) {
-        this.logger.error('Both stream models failed:', fallbackError);
-        res.write(`data: ${JSON.stringify({ content: 'Xin lỗi, hiện tại cả hai máy chủ AI đều đang bận. Vui lòng thử lại sau nhé!' })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        res.end();
-      }
-    }
   }
 
-  async generateHoroscope(userName: string, birthday?: Date, context: string = ''): Promise<string> {
-    return this.horoscopeService.generateWeeklyHoroscope(userName, birthday, context);
+  private shouldRetrieveRag(intent: string, userMessage: string) {
+    if (intent === 'family_knowledge') return true;
+    if (intent === 'image_vision' || intent === 'gold_price') return false;
+
+    const normalized = normalizeSearchText(userMessage);
+
+    const familySignals = [
+      'nha minh',
+      'gia dinh minh',
+      'so tay',
+      'ghi chu',
+      'family wiki',
+      'wiki gia dinh',
+      'thong tin gia dinh',
+      'theo nha minh',
+      'theo ghi chu',
+    ];
+    const suggestionSignals = [
+      'goi y',
+      'nen',
+      'chuan bi',
+      'ke hoach',
+      'an gi',
+      'thuc don',
+      'qua tang',
+      'sinh nhat',
+      'lich hoc',
+      'don thuoc',
+    ];
+
+    if (familySignals.some((signal) => normalized.includes(signal))) return true;
+    if (['meal_suggestion', 'calendar_query', 'event_mutation', 'horoscope'].includes(intent)) {
+      return suggestionSignals.some((signal) => normalized.includes(signal));
+    }
+
+    return false;
+  }
+
+  // ─── Model deps ────────────────────────────────────────────────────────────
+
+  private buildExecuteTool() {
+    return async (toolName: string, _args: any, _familyId: string, _userId: string): Promise<any> => {
+      this.logger.warn(`Fallback executeTool called for: ${toolName}`);
+      return toolError(toolName, 'Tool not handled by any skill.');
+    };
+  }
+
+  private getModelHandlerDeps(modelOverride?: { groqModel?: string; geminiModel?: string }) {
+    return {
+      logger: this.logger, openai: this.openai, gemini: this.gemini, chatService: this.chatService,
+      groqModel: modelOverride?.groqModel || this.groqModel,
+      geminiModel: modelOverride?.geminiModel || this.geminiModel,
+      aiMaxTokens: this.aiMaxTokens, groqContextWindow: this.groqContextWindow,
+      geminiContextWindow: this.geminiContextWindow, historyLimit: this.historyLimit,
+      executeTool: this.buildExecuteTool(),
+    };
   }
 
   /**
-   * Categorize a transaction description using AI
+   * Compose common system prompt with skill-specific additions.
+   * The skill prompt is APPENDED, not replacing the base.
    */
-  async categorizeTransaction(
-    description: string
-  ): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
-    const prompt = `Phân loại giao dịch ngân hàng Việt Nam.
-Danh mục: FOOD, TRANSPORT, SHOPPING, UTILITIES, RENT, ENTERTAINMENT, HEALTH, EDUCATION, SALARY, BONUS, INVESTMENT, OTHER.
+  private composePrompt(skillContext: AiSkillContext, skillExtra: string): string {
+    const base = buildSystemPrompt(skillContext.familyContext || '', skillContext.intent as any);
+    return skillExtra ? `${base}\n\n${skillExtra}` : base;
+  }
 
-Nội dung giao dịch: "${description}"
+  // ─── Chat ──────────────────────────────────────────────────────────────────
 
-QUY TẮC PHÂN LOẠI:
-- Nếu có "LUONG", "SALARY", "THU NHAP", "BANK_TRANSFER_IN", "CHUYEN KHOAN DEN", "THANH TOAN LUONG" -> SALARY và INCOME.
-- Nếu có "THUONG", "BONUS" -> BONUS và INCOME.
-- Nếu có "AN", "UONG", "CAFE", "PHO", "COM", "TIEM", "NHÀ HÀNG" -> FOOD và EXPENSE.
-- Nếu có "GRAB", "BE", "TAXI", "XANG", "PETROL", "XE" -> TRANSPORT và EXPENSE.
-- Nếu có "SHOPPE", "LAZADA", "TIKI", "MUA", "SHOP" -> SHOPPING và EXPENSE.
-- Nếu có "TIEN DIEN", "TIEN NUOC", "WIFI", "INTERNET", "DIEN THOAI" -> UTILITIES và EXPENSE.
+  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string, sessionId?: string) {
+    const trace = createAiTrace('chat', modelSelection || 'groq');
 
-Trả về JSON duy nhất: {"category": "CATEGORY_NAME", "type": "INCOME" | "EXPENSE"}`;
+    await this.chatService.saveMessage(familyId, 'user', userMessage, sessionId);
 
+    const targetUserId = userIds[0] || '';
+    const intentRoute = classifyAiIntent(userMessage, !!image);
+    const routedModel = routeAiModel(modelSelection, intentRoute);
+
+    // Cache check
+    const cacheKey = isResponseCacheable(userMessage, !!image, intentRoute)
+      ? buildResponseCacheKey({ familyId, userId: targetUserId, model: routedModel.provider, userMessage, intent: intentRoute.intent })
+      : undefined;
+    const cached = cacheKey ? getCachedResponse(cacheKey) : undefined;
+    if (cached) {
+      await this.chatService.saveMessage(familyId, 'assistant', cached.content, sessionId);
+      return { ...cached, cached: true };
+    }
+
+    const skill = this.skillRegistry.getSkillForIntent(intentRoute.intent as any);
+    this.logger.debug(`Selected AI skill ${skill.name} for intent ${intentRoute.intent}`);
+    const skillContext = await this.getAiSkillContext(familyId, userMessage, targetUserId, intentRoute.intent, image, trace, sessionId);
+
+    // Direct answer
+    if (skill.tryDirectAnswer) {
+      const direct = await skill.tryDirectAnswer(skillContext);
+      if (direct) {
+        await this.chatService.saveMessage(familyId, 'assistant', direct.content, sessionId);
+        if (cacheKey) setCachedResponse(cacheKey, { content: direct.content, familyId }, getSkillTtl(intentRoute.intent));
+        return { content: direct.content, familyId, cached: false, direct: true };
+      }
+    }
+
+    const deps = this.getModelHandlerDeps(
+      routedModel.provider === 'groq'
+        ? { groqModel: routedModel.model }
+        : { geminiModel: routedModel.model }
+    );
+    if (skill.executeTool) {
+      const original = deps.executeTool;
+      deps.executeTool = async (name, args, fid, uid) => {
+        const res = await skill.executeTool!(name, args, skillContext);
+        return res !== undefined ? res : original(name, args, fid, uid);
+      };
+    }
+
+    // Redact PII before sending to external AI provider
+    const { redacted: safeMessage, hits } = redactSensitiveData(userMessage, intentRoute.intent);
+    if (hits.length > 0) this.logger.warn(`[chat] Redacted PII in message: ${hits.join(', ')}`);
+
+    const chatInput = {
+      familyId, history: skillContext.history || [], familyInfo: skillContext.familyContext || '',
+      finalUserMessage: safeMessage, userId: targetUserId, intentRoute, sessionId, trace,
+      image,
+      systemPromptOverride: this.composePrompt(skillContext, skill.getSystemPrompt(skillContext)),
+      toolsOverride: skill.getTools?.(),
+    };
+
+    const t0 = Date.now();
+    let aiError: string | undefined;
+    let result: any;
+    try {
+      result = await (routedModel.provider === 'gemini' ? handleGeminiChat(deps, chatInput) : handleGroqChat(deps, chatInput));
+    } catch (err: any) {
+      aiError = err?.message || 'Unknown error';
+      throw err;
+    } finally {
+      appendRequestLog({
+        type: 'chat',
+        intent: intentRoute.intent,
+        model: routedModel.provider,
+        latencyMs: Date.now() - t0,
+        cached: false,
+        redacted: hits.length > 0,
+        error: aiError,
+        tokenCount: result?.usage?.totalTokens,
+      });
+    }
+    if (cacheKey) setCachedResponse(cacheKey, result, getSkillTtl(intentRoute.intent));
+    return { ...result, cached: false };
+  }
+
+  // ─── Stream ────────────────────────────────────────────────────────────────
+
+  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
+    const trace = createAiTrace('stream', modelSelection || 'groq', res);
+
+
+    await this.chatService.saveMessage(familyId, 'user', userMessage, sessionId);
+
+    const targetUserId = userIds[0] || '';
+    const intentRoute = classifyAiIntent(userMessage, !!image);
+    const routedModel = routeAiModel(modelSelection, intentRoute);
+
+    // Cache check
+    const cacheKey = isResponseCacheable(userMessage, !!image, intentRoute)
+      ? buildResponseCacheKey({ familyId, userId: targetUserId, model: routedModel.provider, userMessage, intent: intentRoute.intent })
+      : undefined;
+    const cached = cacheKey ? getCachedResponse(cacheKey) : undefined;
+
+    res.write(`data: ${JSON.stringify({ type: 'status', status: image ? 'uploading_image' : 'generating_answer' })}\n\n`);
+
+    if (cached) {
+      res.write(`data: ${JSON.stringify({ type: 'cached', cached: true })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: cached.content })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      appendRequestLog({ type: 'stream', intent: intentRoute.intent, model: routedModel.provider, latencyMs: 0, cached: true, redacted: false });
+      return;
+    }
+
+    const skill = this.skillRegistry.getSkillForIntent(intentRoute.intent as any);
+    this.logger.debug(`Selected AI stream skill ${skill.name} for intent ${intentRoute.intent}`);
+    const skillContext = await this.getAiSkillContext(familyId, userMessage, targetUserId, intentRoute.intent, image, trace, sessionId);
+
+    // Direct answer
+    if (skill.tryDirectAnswer) {
+      const direct = await skill.tryDirectAnswer(skillContext);
+      if (direct) {
+        await this.chatService.saveMessage(familyId, 'assistant', direct.content, sessionId);
+        if (cacheKey) setCachedResponse(cacheKey, { content: direct.content, familyId }, getSkillTtl(intentRoute.intent));
+        res.write(`data: ${JSON.stringify({ content: direct.content })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+    }
+
+    const deps = this.getModelHandlerDeps(
+      routedModel.provider === 'groq'
+        ? { groqModel: routedModel.model }
+        : { geminiModel: routedModel.model }
+    );
+    if (skill.executeTool) {
+      const original = deps.executeTool;
+      deps.executeTool = async (name, args, fid, uid) => {
+        const r = await skill.executeTool!(name, args, skillContext);
+        return r !== undefined ? r : original(name, args, fid, uid);
+      };
+    }
+
+    // Redact PII before sending to external AI provider
+    const { redacted: safeStreamMessage, hits: streamHits } = redactSensitiveData(userMessage, intentRoute.intent);
+    if (streamHits.length > 0) this.logger.warn(`[stream] Redacted PII in message: ${streamHits.join(', ')}`);
+
+    const streamInput = {
+      familyId, history: skillContext.history || [], familyInfo: skillContext.familyContext || '',
+      finalUserMessage: safeStreamMessage, userId: targetUserId, intentRoute, sessionId, trace, res,
+      image,
+      systemPromptOverride: this.composePrompt(skillContext, skill.getSystemPrompt(skillContext)),
+      toolsOverride: skill.getTools?.(),
+    };
+
+    const t1 = Date.now();
+    let streamError: string | undefined;
+    try {
+      if (routedModel.provider === 'gemini') {
+        await handleGeminiStream(deps, streamInput);
+      } else {
+        await handleGroqStream(deps, streamInput);
+      }
+    } catch (err: any) {
+      streamError = err?.message || 'Unknown error';
+      throw err;
+    } finally {
+      appendRequestLog({
+        type: 'stream',
+        intent: intentRoute.intent,
+        model: routedModel.provider,
+        latencyMs: Date.now() - t1,
+        cached: false,
+        redacted: streamHits.length > 0,
+        error: streamError,
+      });
+    }
+  }
+
+  // ─── Legacy proxies for other modules ──────────────────────────────────────
+
+  async generateHoroscope(userName: string, birthday?: Date, context = ''): Promise<string> {
+    return this.horoscopeService.generateWeeklyHoroscope(userName, birthday, context);
+  }
+
+  async categorizeTransaction(description: string): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
+    const prompt = `Phân loại giao dịch ngân hàng Việt Nam. Danh mục: FOOD, TRANSPORT, SHOPPING, UTILITIES, RENT, ENTERTAINMENT, HEALTH, EDUCATION, SALARY, BONUS, INVESTMENT, OTHER.
+Nội dung: "${description}"
+JSON duy nhất: {"category": "...", "type": "INCOME"|"EXPENSE"}`;
     try {
       const model = this.gemini.getGenerativeModel({ model: 'gemini-flash-latest' });
-      const result = await model.generateContent(prompt);
-      const response = await result.response.text();
-      this.logger.debug(`Gemini Categorization Raw Response for "${description}": ${response}`);
-
-      const jsonMatch = response.match(/\{.*\}/s);
-      const jsonStr = jsonMatch ? jsonMatch[0] : response;
-      const parsed = JSON.parse(jsonStr);
-
-      return {
-        category: (parsed.category || 'OTHER').toUpperCase(),
-        type: (parsed.type || 'EXPENSE').toUpperCase() as any,
-      };
-    } catch (error) {
-      console.error('AI Categorization Error:', error);
+      const text = (await model.generateContent(prompt)).response.text();
+      const parts = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}');
+      return { category: (parts.category || 'OTHER').toUpperCase(), type: (parts.type || 'EXPENSE').toUpperCase() as any };
+    } catch {
       return { category: 'OTHER', type: 'EXPENSE' };
     }
+  }
+
+  getSystemStats() {
+    const { getRequestLogs, getLogStats } = require('../ai-request-log');
+    return {
+      cache: getCacheStats(),
+      logStats: getLogStats(),
+      recentLogs: getRequestLogs(20),
+      models: {
+        groq: this.groqModel,
+        gemini: this.geminiModel,
+        maxTokens: this.aiMaxTokens,
+        historyLimit: this.historyLimit,
+        groqContextWindow: this.groqContextWindow,
+        geminiContextWindow: this.geminiContextWindow,
+      },
+      uptime: Math.floor(process.uptime()),
+      memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      timestamp: new Date().toISOString(),
+    };
   }
 }

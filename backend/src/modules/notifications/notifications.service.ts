@@ -7,10 +7,20 @@ import { WebPushService } from './web-push.service';
 import { AiAgentService } from '../ai-agent/services/ai-agent.service';
 import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
+import { TelegramService } from '../telegram/telegram.service';
+
+type ProactiveAssistantSummary = {
+  usersScanned: number;
+  eventSuggestions: number;
+  financeSuggestions: number;
+  skippedDuplicates: number;
+  errors: number;
+};
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
+  private readonly proactiveLookaheadDays = 7;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -21,6 +31,7 @@ export class NotificationsService {
     private readonly aiAgentService: AiAgentService,
     @Inject(forwardRef(() => FinanceService))
     private readonly financeService: FinanceService,
+    private readonly telegramService: TelegramService,
   ) {}
 
   // --- In-App Notifications ---
@@ -44,11 +55,15 @@ export class NotificationsService {
         url: data.metadata?.path || '/'
       });
 
+      // Send Telegram
+      await this.telegramService.sendMessageToUser(userId, `<b>${data.title}</b>\n${data.message}`);
+
       return dbNotification;
     } catch (e) {
       this.logger.error(`Failed to create notification for user ${userId}`, e);
     }
   }
+
 
   async getForUser(userId: string) {
     return this.prisma.notification.findMany({
@@ -260,6 +275,51 @@ export class NotificationsService {
     }
   }
 
+  // 1.6. Cron Job: 7:30 AM every day - Proactive assistant suggestions
+  @Cron('30 7 * * *', {
+    name: 'proactive-assistant',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
+  async runProactiveAssistant(): Promise<ProactiveAssistantSummary> {
+    const summary: ProactiveAssistantSummary = {
+      usersScanned: 0,
+      eventSuggestions: 0,
+      financeSuggestions: 0,
+      skippedDuplicates: 0,
+      errors: 0,
+    };
+
+    const now = this.getIctNow();
+    this.logger.log('Starting proactive assistant cron job...');
+
+    const users = await this.prisma.user.findMany({
+      select: {
+        id: true,
+        notificationSettings: true,
+      },
+    });
+
+    for (const user of users) {
+      summary.usersScanned += 1;
+
+      try {
+        const eventResult = await this.sendUpcomingEventSuggestions(user, now);
+        summary.eventSuggestions += eventResult.sent;
+        summary.skippedDuplicates += eventResult.skippedDuplicates;
+
+        const financeResult = await this.sendFinanceSpendingInsight(user.id, now);
+        summary.financeSuggestions += financeResult.sent;
+        summary.skippedDuplicates += financeResult.skippedDuplicates;
+      } catch (error) {
+        summary.errors += 1;
+        this.logger.error(`Failed proactive assistant for user ${user.id}`, error);
+      }
+    }
+
+    this.logger.log(`Proactive assistant finished: ${JSON.stringify(summary)}`);
+    return summary;
+  }
+
   // 2. Cron Job: 6:00 AM every day
   @Cron('0 6 * * *', {
     name: 'daily-reminder',
@@ -355,6 +415,175 @@ export class NotificationsService {
 
       this.logger.log(`Sent private event reminder to user ${userId}`);
     }
+  }
+
+  private async sendUpcomingEventSuggestions(user: any, now: Date) {
+    const result = { sent: 0, skippedDuplicates: 0 };
+    const settings = (user.notificationSettings || {}) as Record<string, any>;
+    if (settings.proactiveAssistant === false) return result;
+
+    const upcomingEvents = await this.getUpcomingEventsForUser(user.id, now, this.proactiveLookaheadDays);
+    const actionableEvents = upcomingEvents
+      .filter((event) => event.type !== 'HOLIDAY')
+      .filter((event) => {
+        const daysUntil = this.getDaysUntil(now, new Date(event.date));
+        return daysUntil >= 1 && daysUntil <= this.proactiveLookaheadDays;
+      })
+      .slice(0, 3);
+
+    for (const event of actionableEvents) {
+      const eventDate = new Date(event.date);
+      const daysUntil = this.getDaysUntil(now, eventDate);
+      const isBirthday = event.type === 'BIRTHDAY';
+      const isAnniversary = event.type === 'ANNIVERSARY';
+      const eventLabel = isBirthday ? 'sinh nhat' : isAnniversary ? 'ky niem' : 'su kien';
+      const dateLabel = eventDate.toLocaleDateString('vi-VN');
+      const title = `Sap co ${eventLabel}: ${event.title}`;
+      const message = `Con ${daysUntil} ngay nua la ${event.title} (${dateLabel}). Ban co muon FamilyGPT goi y checklist, qua tang hoac viec can chuan bi khong?`;
+
+      const created = await this.createProactiveNotification(user.id, {
+        type: 'PROACTIVE_EVENT',
+        title,
+        message,
+        metadata: {
+          path: '/calendar',
+          eventId: event.id,
+          eventDate: eventDate.toISOString(),
+          daysUntil,
+          source: 'proactive-assistant',
+        },
+      }, 14);
+
+      if (created) result.sent += 1;
+      else result.skippedDuplicates += 1;
+    }
+
+    return result;
+  }
+
+  private async sendFinanceSpendingInsight(userId: string, now: Date) {
+    const result = { sent: 0, skippedDuplicates: 0 };
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const previous = this.getPreviousMonth(currentMonth, currentYear);
+
+    const [currentReport, previousReport] = await Promise.all([
+      this.financeService.getMonthlyReportData(userId, currentMonth, currentYear),
+      this.financeService.getMonthlyReportData(userId, previous.month, previous.year),
+    ]);
+
+    const currentFood = this.getCategoryAmount(currentReport, 'FOOD');
+    const previousFood = this.getCategoryAmount(previousReport, 'FOOD');
+    const minimumComparableAmount = 100000;
+
+    if (previousFood < minimumComparableAmount || currentFood < previousFood * 1.2) {
+      return result;
+    }
+
+    const increasePercent = Math.round(((currentFood - previousFood) / previousFood) * 100);
+    const title = `Chi tieu an uong thang ${currentMonth} tang`;
+    const message = `Chi tieu FOOD thang nay dang cao hon thang truoc ${increasePercent}%. Hien tai: ${currentFood.toLocaleString('vi-VN')}d, thang truoc: ${previousFood.toLocaleString('vi-VN')}d. Ban co muon xem chi tiet khong?`;
+
+    const created = await this.createProactiveNotification(userId, {
+      type: 'PROACTIVE_FINANCE',
+      title,
+      message,
+      metadata: {
+        path: '/finance',
+        category: 'FOOD',
+        currentAmount: currentFood,
+        previousAmount: previousFood,
+        increasePercent,
+        source: 'proactive-assistant',
+      },
+    }, 30);
+
+    if (created) result.sent += 1;
+    else result.skippedDuplicates += 1;
+
+    return result;
+  }
+
+  private async getUpcomingEventsForUser(userId: string, now: Date, lookaheadDays: number) {
+    const start = this.startOfDay(now);
+    const end = this.startOfDay(now);
+    end.setDate(end.getDate() + lookaheadDays);
+
+    const currentMonth = start.getMonth() + 1;
+    const currentYear = start.getFullYear();
+    const endMonth = end.getMonth() + 1;
+    const endYear = end.getFullYear();
+
+    const currentEvents = await this.eventsService.findAll('all', currentMonth, currentYear, userId);
+    let allEvents = [...currentEvents];
+
+    if (currentMonth !== endMonth || currentYear !== endYear) {
+      const nextEvents = await this.eventsService.findAll('all', endMonth, endYear, userId);
+      allEvents = [...allEvents, ...nextEvents];
+    }
+
+    const seen = new Set<string>();
+    return allEvents
+      .filter((event) => {
+        const eventDate = this.startOfDay(new Date(event.date));
+        return eventDate > start && eventDate <= end;
+      })
+      .filter((event) => {
+        const key = `${event.id}:${new Date(event.date).toISOString()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
+  private async createProactiveNotification(
+    userId: string,
+    data: { type: string; title: string; message: string; metadata?: any },
+    dedupeDays: number,
+  ) {
+    const since = this.getIctNow();
+    since.setDate(since.getDate() - dedupeDays);
+
+    const existing = await this.prisma.notification.findFirst({
+      where: {
+        userId,
+        type: data.type,
+        title: data.title,
+        createdAt: { gte: since },
+      },
+      select: { id: true },
+    });
+
+    if (existing) return false;
+
+    await this.createNotification(userId, data);
+    return true;
+  }
+
+  private getCategoryAmount(report: { categories?: Array<{ category: string; amount: number }> }, category: string) {
+    return report.categories?.find((item) => item.category === category)?.amount || 0;
+  }
+
+  private getPreviousMonth(month: number, year: number) {
+    if (month === 1) return { month: 12, year: year - 1 };
+    return { month: month - 1, year };
+  }
+
+  private getDaysUntil(from: Date, to: Date) {
+    const fromDay = this.startOfDay(from).getTime();
+    const toDay = this.startOfDay(to).getTime();
+    return Math.round((toDay - fromDay) / (24 * 60 * 60 * 1000));
+  }
+
+  private getIctNow() {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  }
+
+  private startOfDay(date: Date) {
+    const value = new Date(date);
+    value.setHours(0, 0, 0, 0);
+    return value;
   }
 
   private isValidEmail(email: string): boolean {

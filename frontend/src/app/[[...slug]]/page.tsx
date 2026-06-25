@@ -15,13 +15,18 @@ import NotificationDropdown from '@/components/NotificationDropdown';
 import Onboarding from '@/components/Onboarding';
 import Dashboard from '@/components/Dashboard';
 import Finance from '@/components/Finance';
+import AiMemorySettings from '@/components/AiMemorySettings';
+import FamilyNotes from '@/components/FamilyNotes';
+import VisionDrafts from '@/components/VisionDrafts';
+
 
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
-import { FiPlus,FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck } from 'react-icons/fi';
+import { FiPlus,FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage } from 'react-icons/fi';
 
-type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'admin' | 'settings' | 'notifications' | 'profile';
+type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory';
+
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
   const router = useRouter();
@@ -281,7 +286,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </div>
 
       {/* Content Area */}
-      <main className="max-w-6xl mx-auto px-3 md:px-8 pb-20 md:pb-32 min-h-[60vh] animate-in fade-in slide-in-from-bottom-6 duration-1000">
+      <main className="max-w-6xl mx-auto px-3 md:px-8 pb-20 md:pb-32 min-h-[60vh]">
         <NewMonthModal />
         <div className="glass rounded-[2.5rem] p-4 md:p-12 min-h-[500px] border-white/40 dark:border-slate-800/40 shadow-2xl">
           {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} />}
@@ -290,9 +295,12 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           {activeTab === 'family' && <FamilyMembers />}
           {activeTab === 'meals' && <MealPlanner />}
           {activeTab === 'finance' && <Finance />}
+          {activeTab === 'notes' && <FamilyNotes />}
+          {activeTab === 'vision-drafts' && <VisionDrafts />}
           {activeTab === 'admin' && <AdminDashboard />}
           {(activeTab === 'settings' || activeTab === 'profile') && <Settings onNavigate={setActiveTab} />}
           {activeTab === 'notifications' && <NotificationSettings onBack={() => setActiveTab('settings')} />}
+          {activeTab === 'ai-memory' && <AiMemorySettings onBack={() => setActiveTab('settings')} />}
         </div>
       </main>
 
@@ -300,7 +308,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       <footer className="py-10 md:py-20 border-t border-border/60 bg-card/40 backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-6 text-center">
           <p className="text-muted-foreground font-bold text-xs md:text-sm uppercase tracking-widest">
-            © 2026 Family Calendar. Made with ❤️ for your home.
+            © Family Calendar. Made with ❤️ for your home.
           </p>
         </div>
       </footer>
@@ -320,21 +328,31 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               </div>
             </button>
             <button
-              onClick={() => { setActiveTab('meals'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-amber-600 dark:text-amber-400 font-black text-xs uppercase tracking-widest"
-            >
-              <span>{language === 'vi' ? 'Bữa ăn' : 'Meal Plan'}</span>
-              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
-                <FiCoffee />
-              </div>
-            </button>
-            <button
               onClick={() => { setActiveTab('calendar'); setIsFabOpen(false); }}
               className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-primary font-black text-xs uppercase tracking-widest"
             >
               <span>{language === 'vi' ? 'Sự kiện' : 'New Event'}</span>
               <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
                 <FiCalendar />
+              </div>
+            </button>
+            <button
+              onClick={() => { setActiveTab('chat'); setIsFabOpen(false); }}
+              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest"
+            >
+              <span>AI Chat</span>
+              <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center relative">
+                <FiActivity />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse border-2 border-white dark:border-slate-900" />
+              </div>
+            </button>
+            <button
+              onClick={() => { setActiveTab('meals'); setIsFabOpen(false); }}
+              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-amber-600 dark:text-amber-400 font-black text-xs uppercase tracking-widest"
+            >
+              <span>{language === 'vi' ? 'Bữa ăn' : 'Meals'}</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                <FiCoffee />
               </div>
             </button>
           </div>
@@ -435,6 +453,18 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               icon={<FiTrendingUp />}
               label={t('nav.financeFull')}
             />
+            <SidebarItem
+              active={activeTab === 'notes'}
+              onClick={() => { setActiveTab('notes'); setIsSidebarOpen(false); }}
+              icon={<FiBookOpen />}
+              label={language === 'vi' ? 'Sổ tay gia đình' : 'Family Notes'}
+            />
+            <SidebarItem
+              active={activeTab === 'vision-drafts'}
+              onClick={() => { setActiveTab('vision-drafts'); setIsSidebarOpen(false); }}
+              icon={<FiImage />}
+              label={language === 'vi' ? 'Draft ảnh AI' : 'Vision Drafts'}
+            />
             {user?.globalRole === 'SUPER_ADMIN' && (
               <SidebarItem
                 active={activeTab === 'admin'}
@@ -488,4 +518,3 @@ function SidebarItem({
     </button>
   );
 }
-

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import { FiMonitor, FiActivity, FiCpu, FiArrowRight, FiCheck } from 'react-icons/fi';
+import { Button } from "@/components/ui/button";
 
 export default function Onboarding({ onComplete }: { readonly onComplete: () => void }) {
   const { user } = useAuth();
@@ -85,26 +86,27 @@ export default function Onboarding({ onComplete }: { readonly onComplete: () => 
         </div>
 
         <div className="flex w-full md:w-auto gap-6">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => complete()}
-            className="flex-1 md:flex-none py-4 px-8 rounded-xl font-black text-slate-500 hover:text-slate-300 transition-colors uppercase tracking-[0.3em] text-[10px]"
+            className="flex-1 md:flex-none h-14 px-8 text-slate-500 hover:text-slate-300 uppercase tracking-[0.3em] text-[10px] font-black"
           >
             {language === 'vi' ? 'BỎ QUA' : 'BYPASS'}
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={() => {
               if (currentSlide === slides.length - 1) complete();
               else setCurrentSlide(s => s + 1);
             }}
-            className="flex items-center justify-center gap-3 flex-1 md:w-56 py-4 px-10 rounded-xl font-black bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xl shadow-primary/20 transition-all hover:scale-105 active:scale-95 uppercase tracking-[0.2em] text-[10px] group"
+            className="h-14 flex-1 md:w-56 uppercase tracking-[0.2em] text-[10px] font-black group"
           >
             {currentSlide === slides.length - 1 ? (
               <>{language === 'vi' ? 'HOÀN TẤT' : 'INITIALIZE'} <FiCheck className="text-lg group-hover:scale-125 transition-transform" /></>
             ) : (
               <>{language === 'vi' ? 'TIẾP TỤC' : 'PROCEED'} <FiArrowRight className="text-lg group-hover:translate-x-1 transition-transform" /></>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

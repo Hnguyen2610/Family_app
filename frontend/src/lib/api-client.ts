@@ -2,6 +2,41 @@ import axios, { AxiosInstance } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+type ChatSendOptions = {
+  userId?: string;
+  sessionId?: string | null;
+  image?: string;
+  model?: string;
+  signal?: AbortSignal;
+};
+
+type VisionDraftKind = 'auto' | 'receipt' | 'medicine' | 'school_plan';
+type VisionDraftStatus = 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
+
+export type ChatUsage = {
+  provider: 'groq' | 'gemini';
+  model: string;
+  contextWindow: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  remainingTokens: number;
+  maxOutputTokens: number;
+  historyLimit: number;
+  source: 'api' | 'estimated';
+  quota: {
+    source: 'headers' | 'unavailable';
+    remainingRequests?: number;
+    remainingTokens?: number;
+    limitRequests?: number;
+    limitTokens?: number;
+    resetRequests?: string;
+    resetTokens?: string;
+    retryAfter?: string;
+    note?: string;
+  };
+};
+
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
   headers: {
@@ -75,22 +110,37 @@ export const mealsAPI = {
 
 // Chat API
 export const chatAPI = {
-  sendMessage: (familyId: string, content: string, userId?: string, image?: string, model?: string) =>
-    apiClient.post('/api/chat/message', {
+  sendMessage: (
+    familyId: string,
+    content: string,
+    userIdOrOptions?: string | ChatSendOptions,
+    image?: string,
+    model?: string
+  ) => {
+    const options =
+      typeof userIdOrOptions === 'object'
+        ? userIdOrOptions
+        : { userId: userIdOrOptions, image, model };
+    const bodyOptions = { ...options };
+    delete bodyOptions.signal;
+
+    return apiClient.post('/api/chat/message', {
       familyId,
       content,
-      userId,
-      image,
-      model,
-    }),
+      ...bodyOptions,
+    });
+  },
   sendMessageStream: async (
     familyId: string,
     content: string,
     onChunk: (text: string) => void,
     onSessionId: (id: string) => void,
-    options: { userId?: string; sessionId?: string | null; image?: string; model?: string } = {}
+    onUsage?: (usage: ChatUsage) => void,
+    onCached?: (cached: boolean) => void,
+    onStatus?: (status: string, data?: any) => void,
+    options: ChatSendOptions = {}
   ) => {
-    const { userId, sessionId, image, model } = options;
+    const { userId, sessionId, image, model, signal } = options;
     const token = typeof window !== 'undefined' ? localStorage.getItem('family_token') : null;
     const response = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
@@ -99,8 +149,13 @@ export const chatAPI = {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
       body: JSON.stringify({ familyId, content, userId, sessionId, image, model }),
+      signal,
     });
 
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Stream request failed: ${response.status}${errorText ? ` - ${errorText.slice(0, 160)}` : ''}`);
+    }
     if (!response.body) throw new Error('No readable stream');
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
@@ -120,6 +175,14 @@ export const chatAPI = {
               onChunk(parsed.content);
             } else if (parsed.type === 'session_id') {
               onSessionId(parsed.sessionId);
+            } else if (parsed.type === 'usage' && parsed.usage) {
+              onUsage?.(parsed.usage);
+            } else if (parsed.type === 'cached') {
+              onCached?.(!!parsed.cached);
+            } else if (parsed.type === 'status') {
+              onStatus?.(parsed.status, parsed);
+            } else if (parsed.type === 'memory_consent_request') {
+              onStatus?.('memory_consent_request', parsed);
             }
           } catch (e) {
             // ignore split JSON chunks
@@ -140,6 +203,33 @@ export const chatAPI = {
     apiClient.get('/api/chat/sessions', { params: { familyId } }),
   deleteSession: (id: string, familyId: string) =>
     apiClient.delete(`/api/chat/sessions/${id}`, { params: { familyId } }),
+  createKnowledgeDocument: (data: {
+    familyId: string;
+    title: string;
+    content: string;
+    userId?: string;
+    metadata?: Record<string, any>;
+  }) => apiClient.post('/api/chat/knowledge', data),
+  getKnowledgeDocuments: (familyId: string) =>
+    apiClient.get('/api/chat/knowledge', { params: { familyId } }),
+  deleteKnowledgeDocument: (id: string, familyId: string) =>
+    apiClient.delete(`/api/chat/knowledge/${id}`, { params: { familyId } }),
+  createVisionDraft: (data: {
+    familyId: string;
+    userId?: string;
+    image?: string;
+    imageUrl?: string;
+    kind?: VisionDraftKind;
+    note?: string;
+  }) => apiClient.post('/api/chat/vision/drafts', data),
+  getVisionDrafts: (familyId: string, status?: VisionDraftStatus | 'ALL') =>
+    apiClient.get('/api/chat/vision/drafts', {
+      params: { familyId, ...(status && status !== 'ALL' ? { status } : {}) },
+    }),
+  updateVisionDraftStatus: (id: string, familyId: string, status: VisionDraftStatus) =>
+    apiClient.patch(`/api/chat/vision/drafts/${id}/status`, { status }, { params: { familyId } }),
+  getAdminStats: (adminSecret: string) =>
+    apiClient.get('/api/chat/admin/stats', { headers: { 'x-admin-secret': adminSecret } }),
 };
 
 // Families API

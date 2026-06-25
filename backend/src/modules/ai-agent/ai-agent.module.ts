@@ -3,14 +3,36 @@ import { AiAgentController } from './ai-agent.controller';
 import { AiAgentService } from './services/ai-agent.service';
 import { ChatService } from './services/chat.service';
 import { HoroscopeService } from './services/horoscope.service';
+import { RagService } from './services/rag.service';
+import { VisionExtractionService } from './services/vision-extraction.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MealsModule } from '../meals/meals.module';
 import { EventsModule } from '../events/events.module';
+import { MarketSkill } from './skills/market.skill';
+import { GeneralChatSkill } from './skills/general-chat.skill';
+import { MealSkill } from './skills/meal.skill';
+import { CalendarSkill } from './skills/calendar.skill';
+import { HoroscopeSkill as HoroscopeAiSkill } from './skills/horoscope.skill';
+import { FamilyKnowledgeSkill } from './skills/family-knowledge.skill';
+import { AiSkillRegistry } from './skills/ai-skill-registry';
 
 @Module({
   imports: [PrismaModule, forwardRef(() => MealsModule), forwardRef(() => EventsModule)],
   controllers: [AiAgentController],
-  providers: [AiAgentService, ChatService, HoroscopeService],
-  exports: [AiAgentService, ChatService, HoroscopeService],
+  providers: [
+    AiAgentService,
+    ChatService,
+    HoroscopeService,
+    RagService,
+    VisionExtractionService,
+    MarketSkill,
+    GeneralChatSkill,
+    MealSkill,
+    CalendarSkill,
+    HoroscopeAiSkill,
+    FamilyKnowledgeSkill,
+    AiSkillRegistry,
+  ],
+  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiSkillRegistry],
 })
 export class AiAgentModule {}

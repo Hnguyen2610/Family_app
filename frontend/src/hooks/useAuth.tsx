@@ -20,6 +20,8 @@ export interface User {
     name: string;
   } | null;
   notificationSettings?: any;
+  telegramChatId?: string;
+  telegramUsername?: string;
 }
 
 interface AuthContextType {

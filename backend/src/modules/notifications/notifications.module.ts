@@ -7,11 +7,13 @@ import { EventsModule } from '../events/events.module';
 import { AiAgentModule } from '../ai-agent/ai-agent.module';
 import { FinanceModule } from '../finance/finance.module';
 import { WebPushService } from './web-push.service';
+import { TelegramModule } from '../telegram/telegram.module';
 
 @Module({
   imports: [
     MailModule, 
     PrismaModule, 
+    TelegramModule,
     forwardRef(() => EventsModule), 
     forwardRef(() => AiAgentModule),
     forwardRef(() => FinanceModule)

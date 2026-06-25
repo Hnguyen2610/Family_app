@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
+
 import { eventsAPI } from '@/lib/api-client';
 import { getCalendarDays, isToday } from '@/utils/date';
 import { useTranslation, TranslationKey } from '@/lib/i18n';
@@ -10,7 +12,6 @@ import {
   FiCalendar,
   FiClock,
   FiPlus,
-  FiX,
   FiCheck,
   FiTrash2,
   FiGift,
@@ -20,6 +21,23 @@ import {
 import toast from 'react-hot-toast';
 import { getLunarDate, formatLunarDate } from '@/utils/lunar';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function Calendar() {
   const { t, language } = useTranslation();
@@ -30,6 +48,7 @@ export default function Calendar() {
 
   // Manual Event Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
+
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const isDeletable = editingEvent &&
                       !editingEvent.id?.toString().startsWith('holiday-') &&
@@ -37,6 +56,7 @@ export default function Calendar() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    date: '',
     type: 'GENERAL',
     time: '09:00',
     scope: 'GLOBAL',
@@ -135,6 +155,7 @@ export default function Calendar() {
     setFormData({
       title: '',
       description: '',
+      date: format(new Date(year, month - 1, day), 'yyyy-MM-dd'),
       type: 'GENERAL',
       time: '09:00',
       scope: 'GLOBAL',
@@ -150,6 +171,7 @@ export default function Calendar() {
     setFormData({
       title: event.title,
       description: event.description || '',
+      date: event.date || format(new Date(), 'yyyy-MM-dd'),
       type: event.type,
       time: event.time || '09:00',
       scope: event.scope,
@@ -160,6 +182,7 @@ export default function Calendar() {
     setIsModalOpen(true);
   };
 
+
   const handleSaveEvent = async () => {
     if (!formData.title) {
       toast.error(language === 'vi' ? 'Vui lòng nhập tiêu đề' : 'Please enter a title');
@@ -167,10 +190,11 @@ export default function Calendar() {
     }
 
     const eventDate = new Date(year, month - 1, selectedDate!);
-    const targetFamilyId = editingEvent ? editingEvent.familyId : familyId;
+    const targetFamilyId = editingEvent ? editingEvent.familyId : (user?.familyId || currentFamilyId);
+    const creatorId = user?.id;
 
-    if (!targetFamilyId) {
-      toast.error(language === 'vi' ? 'Vui lòng chọn gia đình' : 'Please select a family');
+    if (!targetFamilyId || !creatorId) {
+      toast.error(language === 'vi' ? 'Vui lòng đăng nhập' : 'Please login');
       return;
     }
 
@@ -202,9 +226,14 @@ export default function Calendar() {
   };
 
   const handleDeleteEvent = async (id: string) => {
+    const creatorId = user?.id;
+    const targetFamilyId = user?.familyId || currentFamilyId;
+    
+    if (!creatorId || !targetFamilyId) return;
     if (!confirm(language === 'vi' ? 'Bạn có chắc chắn muốn xóa?' : 'Are you sure?')) return;
+    
     try {
-      await eventsAPI.delete(id, familyId, creatorId);
+      await eventsAPI.delete(id, targetFamilyId, creatorId);
       toast.success(t('common.success'));
       setIsModalOpen(false);
       setEditingEvent(null);
@@ -215,8 +244,246 @@ export default function Calendar() {
     }
   };
 
+  const renderModal = () => (
+    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader className="mb-2">
+          <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-2 w-fit">
+            {t('nav.protocol')}
+          </div>
+          <DialogTitle className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">
+            {editingEvent ? t('calendar.editEvent') : t('calendar.addEvent')}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* Title */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              {t('calendar.eventTitle')}
+            </Label>
+            <Input
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="..."
+            />
+          </div>
+
+          {/* Description */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              {t('calendar.eventDesc')}
+            </Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="..."
+              className="min-h-[80px] resize-none"
+            />
+          </div>
+
+          {/* Date */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              {t('calendar.eventDate')}
+            </Label>
+            <Input
+              type="date"
+              value={formData.date}
+              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            />
+          </div>
+
+          {/* Type & Recurring */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                {t('calendar.eventType')}
+              </Label>
+              <Select
+                value={formData.type}
+                onValueChange={(v) => setFormData({ ...formData, type: v as string })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GENERAL">{t('calendar.type.general')}</SelectItem>
+                  <SelectItem value="HOLIDAY">{t('calendar.type.holiday')}</SelectItem>
+                  <SelectItem value="BIRTHDAY">{t('calendar.type.birthday')}</SelectItem>
+                  <SelectItem value="ANNIVERSARY">{t('calendar.type.anniversary')}</SelectItem>
+                  <SelectItem value="APPOINTMENT">{t('calendar.type.appointment')}</SelectItem>
+                  <SelectItem value="TASK">{t('calendar.type.task')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                {t('calendar.recurring')}
+              </Label>
+              <Select
+                value={formData.recurring}
+                onValueChange={(v) => setFormData({ ...formData, recurring: v as string })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">{t('calendar.recurring.none')}</SelectItem>
+                  <SelectItem value="WEEKLY">{t('calendar.recurring.weekly')}</SelectItem>
+                  <SelectItem value="MONTHLY">{t('calendar.recurring.monthly')}</SelectItem>
+                  <SelectItem value="YEARLY">{t('calendar.recurring.yearly')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Lunar checkbox */}
+          {(formData.recurring === 'MONTHLY' || formData.recurring === 'YEARLY') && (
+            <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/10 dark:border-primary/20">
+              <input
+                type="checkbox"
+                id="useLunar"
+                checked={formData.useLunar}
+                onChange={(e) => setFormData({ ...formData, useLunar: e.target.checked })}
+                className="w-4 h-4 rounded border-black/10 dark:border-white/10 text-primary focus:ring-primary"
+              />
+              <label htmlFor="useLunar" className="text-[11px] font-black text-primary uppercase tracking-widest cursor-pointer">
+                {t('calendar.useLunar')}
+              </label>
+            </div>
+          )}
+
+          {/* Time Picker */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              {t('calendar.eventTime')}
+            </Label>
+            <div className="flex gap-3">
+              {/* Hour Select */}
+              <div className="flex-1">
+                <Select
+                  value={(() => {
+                    const h = parseInt(formData.time.split(':')[0]);
+                    const hour12 = h % 12 || 12;
+                    return hour12.toString().padStart(2, '0');
+                  })()}
+                  onValueChange={(val) => {
+                    const [h, m] = formData.time.split(':');
+                    const isPM = parseInt(h) >= 12;
+                    let newH = parseInt(val as string);
+                    if (isPM && newH < 12) newH += 12;
+                    if (!isPM && newH === 12) newH = 0;
+                    setFormData({ ...formData, time: `${newH.toString().padStart(2, '0')}:${m}` });
+                  }}
+                >
+                  <SelectTrigger className="h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
+                      <SelectItem key={h} value={h}>{h}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Minute Select */}
+              <div className="flex-1">
+                <Select
+                  value={formData.time.split(':')[1]}
+                  onValueChange={(val) => {
+                    const h = formData.time.split(':')[0];
+                    setFormData({ ...formData, time: `${h}:${val}` });
+                  }}
+                >
+                  <SelectTrigger className="h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['00', '15', '30', '45'].map(m => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* AM/PM Select */}
+              <div className="w-[80px]">
+                <Select
+                  value={parseInt(formData.time.split(':')[0]) >= 12 ? 'PM' : 'AM'}
+                  onValueChange={(val) => {
+                    const [h, m] = formData.time.split(':');
+                    let newH = parseInt(h);
+                    if (val === 'PM' && newH < 12) newH += 12;
+                    if (val === 'AM' && newH >= 12) newH -= 12;
+                    setFormData({ ...formData, time: `${newH.toString().padStart(2, '0')}:${m}` });
+                  }}
+                >
+                  <SelectTrigger className="h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AM">{language === 'vi' ? 'Sáng' : 'AM'}</SelectItem>
+                    <SelectItem value="PM">{language === 'vi' ? 'Chiều' : 'PM'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Scope toggle */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+              {t('calendar.eventScope')}
+            </Label>
+            <div className="flex p-1 bg-slate-100 dark:bg-slate-900 border border-black/5 dark:border-white/5 rounded-xl">
+              {['GLOBAL', 'FAMILY', 'PRIVATE'].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setFormData({ ...formData, scope: s })}
+                  className={`flex-1 py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                    formData.scope === s
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-4 flex gap-3">
+            {isDeletable && (
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => handleDeleteEvent(editingEvent.id)}
+                className="h-12 w-12 rounded-xl"
+              >
+                <FiTrash2 size={18} />
+              </Button>
+            )}
+            <Button
+              onClick={handleSaveEvent}
+              className="flex-1 h-12 rounded-xl text-sm font-bold gap-2"
+            >
+              <FiCheck />
+              {language === 'vi' ? 'Xác nhận thay đổi' : 'Commit Changes'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
+    <div className="space-y-10">
+      <div className="animate-in fade-in duration-700 space-y-10">
+
       {/* Calendar Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-white/5 pb-10">
         <div className="flex items-center gap-6">
@@ -356,7 +623,6 @@ export default function Calendar() {
           <div className="absolute top-0 right-0 p-8 opacity-5 text-slate-900 dark:text-white">
              <FiClock size={120} />
           </div>
-
           <div className="relative z-10">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
               <div>
@@ -427,153 +693,10 @@ export default function Calendar() {
           </div>
         </div>
       )}
+      </div>
 
-      {/* Event Form Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/80 backdrop-blur-sm"
-            onClick={() => setIsModalOpen(false)}
-          />
-          <div className="relative w-full max-w-xl glass bg-white/95 dark:bg-slate-900/95 border border-black/10 dark:border-white/10 p-10 md:p-12 rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300 backdrop-blur-2xl">
-            <div className="flex justify-between items-start mb-10">
-              <div>
-                <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-3">
-                   {t('nav.protocol')}
-                </div>
-                <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">
-                  {editingEvent ? t('calendar.editEvent') : t('calendar.addEvent')}
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 text-slate-500 hover:text-rose-500 transition-all bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-lg"
-              >
-                <FiX />
-              </button>
-            </div>
-
-            <div className="space-y-8">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{t('calendar.eventTitle')}</label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="..."
-                  className="input-field"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{t('calendar.eventDesc')}</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="..."
-                  className="input-field min-h-[80px] py-4"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{t('calendar.eventType')}</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                    className="input-field appearance-none"
-                  >
-                    <option value="GENERAL">{t('calendar.type.general')}</option>
-                    <option value="HOLIDAY">{t('calendar.type.holiday')}</option>
-                    <option value="BIRTHDAY">{t('calendar.type.birthday')}</option>
-                    <option value="ANNIVERSARY">{t('calendar.type.anniversary')}</option>
-                    <option value="APPOINTMENT">{t('calendar.type.appointment')}</option>
-                    <option value="TASK">{t('calendar.type.task')}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{t('calendar.recurring')}</label>
-                  <select
-                    value={formData.recurring}
-                    onChange={(e) => setFormData({ ...formData, recurring: e.target.value })}
-                    className="input-field appearance-none"
-                  >
-                    <option value="NONE">{t('calendar.recurring.none')}</option>
-                    <option value="WEEKLY">{t('calendar.recurring.weekly')}</option>
-                    <option value="MONTHLY">{t('calendar.recurring.monthly')}</option>
-                    <option value="YEARLY">{t('calendar.recurring.yearly')}</option>
-                  </select>
-                </div>
-              </div>
-
-              {(formData.recurring === 'MONTHLY' || formData.recurring === 'YEARLY') && (
-                <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/10 dark:border-primary/20">
-                  <input
-                    type="checkbox"
-                    id="useLunar"
-                    checked={formData.useLunar}
-                    onChange={(e) => setFormData({ ...formData, useLunar: e.target.checked })}
-                    className="w-4 h-4 rounded bg-white dark:bg-slate-900 border-black/10 dark:border-white/10 text-primary focus:ring-primary"
-                  />
-                  <label htmlFor="useLunar" className="text-[11px] font-black text-primary uppercase tracking-widest cursor-pointer">
-                    {t('calendar.useLunar')}
-                  </label>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{t('calendar.eventTime')}</label>
-                <input
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className="input-field shrink-white shadow-none"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{t('calendar.eventScope')}</label>
-                <div className="flex p-1 bg-slate-100 dark:bg-slate-900 border border-black/5 dark:border-white/5 rounded-xl">
-                {['GLOBAL', 'FAMILY', 'PRIVATE'].map((s) => {
-                  const isSelectedScope = formData.scope === s;
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => setFormData({ ...formData, scope: s })}
-                      className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                        isSelectedScope
-                          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  );
-                })}
-                </div>
-              </div>
-
-              <div className="pt-10 flex gap-4">
-                {isDeletable && (
-                  <button
-                    onClick={() => handleDeleteEvent(editingEvent.id)}
-                    className="p-4 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-500/20 transition-all"
-                  >
-                    <FiTrash2 size={20} />
-                  </button>
-                )}
-                <button
-                  onClick={handleSaveEvent}
-                  className="btn-primary flex-1 flex items-center justify-center gap-3 py-4"
-                >
-                  <FiCheck /> {language === 'vi' ? 'Xác nhận thay đổi' : 'Commit Changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Portal Container */}
+      {renderModal()}
     </div>
   );
 }
