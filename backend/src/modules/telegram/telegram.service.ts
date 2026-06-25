@@ -42,30 +42,35 @@ export class TelegramService implements OnModuleInit {
 
   async onModuleInit() {
     if (this.bot) {
-      this.setupHandlers();
-      await this.bot.telegram.setMyCommands(TELEGRAM_COMMANDS).catch((error) => {
-        this.logger.warn(`Unable to set Telegram commands: ${error?.message || error}`);
-      });
-      const webhookUrl = this.configService.get<string>('TELEGRAM_WEBHOOK_URL');
-      const webhookSecret = this.configService.get<string>('TELEGRAM_WEBHOOK_SECRET');
-      const usePolling = this.configService.get<string>('TELEGRAM_USE_POLLING') === 'true';
-      const isProduction = this.configService.get<string>('NODE_ENV') === 'production' || !!process.env.VERCEL;
+      try {
+        this.setupHandlers();
+        // Do not await these calls in Serverless startup to avoid blocking or 429 crashes
+        this.bot.telegram.setMyCommands(TELEGRAM_COMMANDS).catch(() => {});
 
-      if (webhookUrl) {
-        await this.bot.telegram.setWebhook(webhookUrl, webhookSecret ? { secret_token: webhookSecret } : undefined);
-        this.logger.log(`Telegram bot webhook configured: ${webhookUrl}`);
-        return;
+        const webhookUrl = this.configService.get<string>('TELEGRAM_WEBHOOK_URL');
+        const webhookSecret = this.configService.get<string>('TELEGRAM_WEBHOOK_SECRET');
+        const usePolling = this.configService.get<string>('TELEGRAM_USE_POLLING') === 'true';
+        const isProduction = this.configService.get<string>('NODE_ENV') === 'production' || !!process.env.VERCEL;
+
+        if (webhookUrl) {
+          this.bot.telegram.setWebhook(webhookUrl, webhookSecret ? { secret_token: webhookSecret } : undefined)
+            .catch(err => this.logger.warn(`setWebhook failed (expected on serverless): ${err.message}`));
+          this.logger.log(`Telegram bot webhook configured: ${webhookUrl}`);
+          return;
+        }
+
+        if (!isProduction || usePolling) {
+          this.bot.launch().catch(err => {
+            this.logger.error('Failed to launch Telegram bot', err);
+          });
+          this.logger.log('Telegram bot initialized with polling and AI capabilities');
+          return;
+        }
+
+        this.logger.warn('Telegram bot token found, but TELEGRAM_WEBHOOK_URL is missing. Polling is disabled in production.');
+      } catch (error) {
+        this.logger.error('Telegram bot init failed, but continuing to prevent app crash', error);
       }
-
-      if (!isProduction || usePolling) {
-        this.bot.launch().catch(err => {
-          this.logger.error('Failed to launch Telegram bot', err);
-        });
-        this.logger.log('Telegram bot initialized with polling and AI capabilities');
-        return;
-      }
-
-      this.logger.warn('Telegram bot token found, but TELEGRAM_WEBHOOK_URL is missing. Polling is disabled in production.');
     }
   }
 
