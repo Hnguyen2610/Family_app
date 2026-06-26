@@ -113,6 +113,24 @@ export class AiAgentController {
     return this.ragService.listKnowledgeDocuments(familyId);
   }
 
+  @SkipThrottle()
+  @Get('knowledge/:id')
+  async getKnowledgeDocument(
+    @Param('id') id: string,
+    @Query('familyId') familyId: string,
+  ) {
+    return this.ragService.getKnowledgeDocument(familyId, id);
+  }
+
+  @Patch('knowledge/:id')
+  async updateKnowledgeDocument(
+    @Param('id') id: string,
+    @Query('familyId') familyId: string,
+    @Body() dto: { title: string; content: string; metadata?: Record<string, any> },
+  ) {
+    return this.ragService.updateKnowledgeDocument(familyId, id, dto);
+  }
+
   @Delete('knowledge/:id')
   async deleteKnowledgeDocument(
     @Param('id') id: string,

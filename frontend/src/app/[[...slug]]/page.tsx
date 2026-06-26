@@ -110,7 +110,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
 
       {/* Main static header area */}
       <div className={`transition-opacity duration-300 min-h-[280px] md:min-h-[350px] ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        <div className="absolute top-3 left-2 md:top-8 md:left-8 z-50">
+        <div className="hidden md:block absolute top-3 left-2 md:top-8 md:left-8 z-50">
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="w-10 h-10 md:w-13 md:h-13 glass rounded-xl md:rounded-2xl flex items-center justify-center text-lg md:text-2xl hover:bg-white/10 active:scale-90 transition-all shadow-xl shadow-primary/10 border-white/20"
@@ -120,7 +120,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
         </div>
 
         <header className="pt-16 md:pt-16 pb-4 md:pb-8 relative z-10 text-center">
-          <div className="absolute top-3 right-3 md:top-8 md:right-8 flex items-center gap-2 md:gap-4">
+          <div className="hidden md:flex absolute top-3 right-3 md:top-8 md:right-8 items-center gap-2 md:gap-4">
              {/* Family Selection (Optional if multiple) */}
             {families.length > 1 && (
               <div ref={familyDropdownRef} className="relative">
@@ -198,7 +198,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </div>
 
       {/* Sticky Bar */}
-      <div className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 border-b border-border/60 ${isScrolled ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'}`}>
+      <div className={`fixed top-0 left-0 right-0 z-[100] translate-y-0 opacity-100 transition-all duration-300 border-b border-border/60 ${isScrolled ? 'md:translate-y-0 md:opacity-100' : 'md:-translate-y-full md:opacity-0 md:pointer-events-none'}`}>
         <header className="bg-background/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-2 md:px-8 py-2 md:py-2.5 flex justify-between items-center gap-2 md:gap-4">
             {/* Menu Left (Sticky) */}
@@ -398,12 +398,6 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
 
           {/* User Profile Summary */}
           <div className="px-8 py-6 border-b border-black/5 dark:border-white/5">
-            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary border border-primary/20 group-hover:bg-primary transition-all group-hover:text-white">
-                <FiHome size={16} />
-              </div>
-              <span className="font-extrabold text-lg md:text-xl tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">Family Hub</span>
-            </div>
             <div className="flex items-center gap-3 mt-4">
               <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 rounded-lg flex items-center justify-center text-xl text-primary shadow-lg">
                 <FiUser />

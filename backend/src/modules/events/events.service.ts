@@ -15,18 +15,20 @@ export class EventsService {
   ) {}
 
   async create(familyId: string, userId: string, dto: CreateEventDto) {
+    const normalizedDate = this.normalizeCalendarDate(dto.date);
     // Auto-calculate lunar date if not provided
     let lunarDate = dto.lunarDate;
-    if (!lunarDate && dto.date) {
-      lunarDate = calculateLunarDate(new Date(dto.date));
+    if (!lunarDate && normalizedDate) {
+      lunarDate = calculateLunarDate(normalizedDate);
     }
 
     // Extract extra fields that shouldn't be spread directly into Prisma data
-    const { creatorId: _c, familyId: _f, ...eventData } = dto as any;
+    const { creatorId: _c, familyId: _f, useLunar: _u, ...eventData } = dto as any;
 
     const event = await this.prisma.event.create({
       data: {
         ...eventData,
+        date: normalizedDate,
         lunarDate,
         familyId,
         createdBy: userId,
@@ -124,23 +126,16 @@ export class EventsService {
       const family = await this.prisma.family.findUnique({ where: { id: familyId } });
       const familyName = family?.name || 'Gia đình';
 
-      const where: any = {
-        AND: [
-          {
-            OR: [
-              { scope: 'GLOBAL' },
-              { familyId, scope: 'FAMILY' },
-              { familyId, scope: 'PRIVATE' },
-            ],
-          }
-        ]
-      };
+      const scopeFilters: any[] = [
+        { scope: 'GLOBAL' },
+        { familyId, scope: 'FAMILY' },
+      ];
 
-      // Add conditional filters to where.AND[0].OR
-      // If private, ensure user owns it
       if (userId) {
-        // userId is provided, we can filter correctly
+        scopeFilters.push({ createdBy: userId, scope: 'PRIVATE' });
       }
+
+      const where: any = { OR: scopeFilters };
 
       const eventsResult = await this.prisma.event.findMany({
         where,
@@ -156,7 +151,7 @@ export class EventsService {
       events = eventsResult
         .filter(e => {
           if (e.scope === 'PRIVATE' && e.createdBy !== userId) return false;
-          if (e.familyId !== familyId && e.scope !== 'GLOBAL') return false;
+          if (e.scope === 'FAMILY' && e.familyId !== familyId) return false;
           return true;
         })
         .map((e) => ({ ...e, familyName: e.scope === 'GLOBAL' ? 'Hệ thống' : familyName }));
@@ -192,8 +187,8 @@ export class EventsService {
 
   private expandRecurringEvents(events: any[], month: number, year: number): any[] {
     const expanded: any[] = [];
-    const startOfMonth = new Date(year, month - 1, 1);
-    const endOfMonth = new Date(year, month, 0, 23, 59, 59);
+    const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
+    const endOfMonth = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
     for (const event of events) {
       if (!event.isRecurring) {
@@ -214,7 +209,7 @@ export class EventsService {
       if (type === 'WEEKLY') {
         const current = new Date(startDate);
         while (current < startOfMonth) {
-          current.setDate(current.getDate() + 7);
+          current.setUTCDate(current.getUTCDate() + 7);
         }
         while (current <= endOfMonth) {
           expanded.push({
@@ -224,12 +219,12 @@ export class EventsService {
             isInstance: true,
             originalId: event.id
           });
-          current.setDate(current.getDate() + 7);
+          current.setUTCDate(current.getUTCDate() + 7);
         }
       } else if (type === 'MONTHLY') {
-        const dayOfMonth = startDate.getDate();
-        const instanceDate = new Date(year, month - 1, dayOfMonth);
-        if (instanceDate.getDate() === dayOfMonth && instanceDate >= startDate && instanceDate <= endOfMonth) {
+        const dayOfMonth = startDate.getUTCDate();
+        const instanceDate = new Date(Date.UTC(year, month - 1, dayOfMonth));
+        if (instanceDate.getUTCDate() === dayOfMonth && instanceDate >= startDate && instanceDate <= endOfMonth) {
            expanded.push({
             ...event,
             id: `${event.id}_${instanceDate.getTime()}`,
@@ -243,7 +238,7 @@ export class EventsService {
         const originalLunarDay = event.lunarDate?.split('/')[0];
         if (originalLunarDay) {
           const lDay = parseInt(originalLunarDay, 10);
-          for (let d = new Date(startOfMonth); d <= endOfMonth; d.setDate(d.getDate() + 1)) {
+          for (let d = new Date(startOfMonth); d <= endOfMonth; d.setUTCDate(d.getUTCDate() + 1)) {
             const lDate = getLunarDateObject(d);
             if (lDate.day === lDay && d >= startDate) {
               expanded.push({
@@ -258,8 +253,8 @@ export class EventsService {
           }
         }
       } else if (type === 'YEARLY') {
-        if (startDate.getMonth() === month - 1) {
-          const instanceDate = new Date(year, month - 1, startDate.getDate());
+        if (startDate.getUTCMonth() === month - 1) {
+          const instanceDate = new Date(Date.UTC(year, month - 1, startDate.getUTCDate()));
           if (instanceDate >= startDate && instanceDate <= endOfMonth) {
             expanded.push({
               ...event,
@@ -322,12 +317,16 @@ export class EventsService {
 
   async update(id: string, familyId: string, userId: string, dto: UpdateEventDto) {
     const baseId = id.split('_')[0];
+    const normalizedDate = dto.date ? this.normalizeCalendarDate(dto.date) : undefined;
     let lunarDate = dto.lunarDate;
-    if (!lunarDate && dto.date) {
-      lunarDate = calculateLunarDate(new Date(dto.date));
+    if (!lunarDate && normalizedDate) {
+      lunarDate = calculateLunarDate(normalizedDate);
     }
 
     const { creatorId: _c, familyId: _f, useLunar: _u, ...updateData } = dto as any;
+    if (normalizedDate) {
+      updateData.date = normalizedDate;
+    }
 
     // Check if user has permission (is creator or is admin)
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -369,6 +368,18 @@ export class EventsService {
     return result;
   }
 
+  private normalizeCalendarDate(value: Date | string): Date {
+    if (typeof value === 'string') {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+      }
+    }
+
+    const date = new Date(value);
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  }
+
   async delete(id: string, familyId: string, userId: string) {
     const baseId = id.split('_')[0];
     // Check if user has permission (is creator or is admin)
@@ -401,12 +412,19 @@ export class EventsService {
   private async findAllForUserFamilies(userId: string, month?: number, year?: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { families: { select: { id: true, name: true } } },
+      include: {
+        family: { select: { id: true, name: true } },
+        families: { select: { id: true, name: true } },
+      },
     });
 
     const familiesMap: Record<string, string> = {};
-    const familyIds = user?.families.map((f) => f.id) || [];
-    user?.families.forEach((f) => (familiesMap[f.id] = f.name));
+    const families = [...(user?.families || [])];
+    if (user?.family && !families.some((family) => family.id === user.family?.id)) {
+      families.unshift(user.family);
+    }
+    const familyIds = families.map((f) => f.id);
+    families.forEach((f) => (familiesMap[f.id] = f.name));
 
     const where: any = {
       OR: [
@@ -471,7 +489,7 @@ export class EventsService {
         id: `birthday-${user.id}`,
         title: `🎂 Sinh nhật ${user.name}`,
         description: `Chúc mừng sinh nhật ${user.name}!`,
-        date: new Date(year, user.birthday!.getUTCMonth(), user.birthday!.getUTCDate()),
+        date: new Date(Date.UTC(year, user.birthday!.getUTCMonth(), user.birthday!.getUTCDate())),
         type: 'BIRTHDAY',
         familyId: user.families[0]?.id,
         familyName: user.families[0]?.name || 'Gia đình',
@@ -528,7 +546,7 @@ export class EventsService {
           id: `holiday-solar-${h.month}-${h.day}`,
           title: h.title,
           description: 'Ngày lễ Dương lịch',
-          date: new Date(year, month - 1, h.day),
+          date: new Date(Date.UTC(year, month - 1, h.day)),
           type: 'HOLIDAY',
           familyId,
           familyName: 'Hệ thống',
@@ -539,9 +557,9 @@ export class EventsService {
     });
 
     // Lunar holidays
-    const lastDay = new Date(year, month, 0).getDate();
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     for (let d = 1; d <= lastDay; d++) {
-      const solarDate = new Date(year, month - 1, d);
+      const solarDate = new Date(Date.UTC(year, month - 1, d));
       const lunar = calculateLunarDate(solarDate);
       lunarHolidays.forEach(lh => {
         if (lunar === `${lh.day}/${lh.month}`) {

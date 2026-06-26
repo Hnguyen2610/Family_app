@@ -79,8 +79,7 @@ export function buildSystemPrompt(
   const common = `You are a helpful family assistant AI. Today's date is ${today} (${dayName}).
 Answer in the same language as the user.
 Be concise, natural, and practical.
-CRITICAL: When performing actions (creating events, expenses, etc.), you MUST execute the corresponding tool.
-If native tool calling is unavailable, you MUST output the command in this format: <function:toolName arg1="val1" arg2="val2">.
+When performing actions, always use the appropriate tools.
 When creating or reading dates, pay attention to the day of week and avoid date calculation errors.`;
 
   const familyAwareIntents: AiIntent[] = [
@@ -110,7 +109,17 @@ When creating or reading dates, pay attention to the day of week and avoid date 
   }
 
   sections.push(
-    'CRITICAL:\n- If a relevant tool is available for the current intent, use it instead of claiming you cannot access the data.\n- After calling a tool, present the result clearly and naturally.'
+    'CRITICAL RULES FOR ACTIONS & MEMORY:\n' +
+    '- When the user asks to save, create, update, or delete information, you MUST call the provided tools using native function calling — never write <function=...> tags in text.\n' +
+    '- For calendar-related tasks, use CalendarSkill tools (createEvent, updateEvent, deleteEvent).\n' +
+    '- For saving family knowledge or "long memory", use createWikiEntry.\n' +
+    '- For football/soccer queries (matches, results, standings), use FootballSkill tools.\n' +
+    '- For any real-time information, news, or deep research outside family knowledge, use internetSearch via SearchSkill.\n' +
+    '- DISAMBIGUATION RULE: If context says "USER IS VIEWING ALL FAMILIES", ask the user ONCE which family to use. After they answer, immediately call the tool with that family\'s id. Do NOT ask again.\n' +
+    '- If context says "RESOLVED FAMILY: ...", use that family\'s id directly in all tool calls without asking.\n' +
+    '- NEVER write pseudo-function calls like <function=name(...)> in your response. Use native tool calling only.\n' +
+    '- CRITICAL: NEVER merge the tool name with its JSON arguments (e.g., do NOT output "name{...}"). Always provide them as separate fields in the tool call response.\n' +
+    '- NEVER loop: if you already asked which family and the user answered, proceed with execution immediately.'
   );
 
   return sections.join('\n\n');

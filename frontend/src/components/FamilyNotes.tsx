@@ -1,23 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { FiArrowLeft, FiBookOpen, FiFileText, FiPlus, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiArrowLeft, FiBookOpen, FiEdit2, FiFileText, FiPlus, FiRefreshCw, FiSave, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import { chatAPI } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 type KnowledgeDocument = {
   id: string;
   title: string;
+  content?: string;
   sourceType: string;
   createdBy?: string;
   metadata?: any;
   createdAt: string;
   updatedAt: string;
   _count?: { chunks: number };
+  chunks?: Array<{ id: string; content: string; chunkIndex: number }>;
 };
 
 export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }) {
@@ -29,6 +32,13 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
   const [category, setCategory] = useState('family');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false);
+  const [isUpdatingDocument, setIsUpdatingDocument] = useState(false);
+  const [editingDocument, setEditingDocument] = useState<KnowledgeDocument | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editCategory, setEditCategory] = useState('family');
 
   const familyId = currentFamilyId && currentFamilyId !== 'all' ? currentFamilyId : '';
   const selectedFamily = useMemo(
@@ -111,6 +121,55 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
     } catch (error) {
       console.error('Failed to delete family note:', error);
       toast.error(language === 'vi' ? 'Không xóa được ghi chú' : 'Unable to delete note');
+    }
+  };
+
+  const handleOpenEditor = async (id: string) => {
+    if (!familyId) return;
+    setIsEditorOpen(true);
+    setIsLoadingDocument(true);
+    setEditingDocument(null);
+    try {
+      const response = await chatAPI.getKnowledgeDocument(id, familyId);
+      const document = response.data as KnowledgeDocument;
+      setEditingDocument(document);
+      setEditTitle(document.title || '');
+      setEditContent(document.content || '');
+      setEditCategory(document.metadata?.category || 'family');
+    } catch (error) {
+      console.error('Failed to load note detail:', error);
+      toast.error(language === 'vi' ? 'Không mở được ghi chú' : 'Unable to open note');
+      setIsEditorOpen(false);
+    } finally {
+      setIsLoadingDocument(false);
+    }
+  };
+
+  const handleUpdateDocument = async () => {
+    if (!familyId || !editingDocument) return;
+    if (!editTitle.trim() || !editContent.trim()) {
+      toast.error(language === 'vi' ? 'Cần nhập tiêu đề và nội dung' : 'Title and content are required');
+      return;
+    }
+
+    setIsUpdatingDocument(true);
+    try {
+      await chatAPI.updateKnowledgeDocument(editingDocument.id, familyId, {
+        title: editTitle.trim(),
+        content: editContent.trim(),
+        metadata: {
+          ...(editingDocument.metadata || {}),
+          category: editCategory,
+        },
+      });
+      await loadDocuments();
+      setIsEditorOpen(false);
+      toast.success(language === 'vi' ? 'Đã cập nhật ghi chú RAG' : 'RAG note updated');
+    } catch (error) {
+      console.error('Failed to update family note:', error);
+      toast.error(language === 'vi' ? 'Không cập nhật được ghi chú' : 'Unable to update note');
+    } finally {
+      setIsUpdatingDocument(false);
     }
   };
 
@@ -234,7 +293,11 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                 className="group glass rounded-2xl border border-black/5 dark:border-white/5 p-5 hover:border-primary/30 transition-all"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditor(document.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <p className="font-black text-sm text-slate-900 dark:text-slate-100 line-clamp-2">{document.title}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-3">
                       <span className="px-2 py-1 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-[9px] font-black uppercase tracking-widest">
@@ -247,21 +310,104 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                         {new Date(document.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
                       </span>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(document.id)}
+                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditor(document.id)}
+                      className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-900 text-slate-400 hover:bg-primary/10 hover:text-primary transition-all flex items-center justify-center border border-black/5 dark:border-white/5"
+                      title={language === 'vi' ? 'Xem/sửa' : 'View/Edit'}
+                    >
+                      <FiEdit2 />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(document.id)}
                     className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-900 text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all flex items-center justify-center border border-black/5 dark:border-white/5"
                     title={language === 'vi' ? 'Xóa' : 'Delete'}
                   >
-                    <FiTrash2 />
-                  </button>
+                      <FiTrash2 />
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
           </div>
         </section>
       </div>
+
+      <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl md:text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+              {language === 'vi' ? 'Xem và sửa ghi chú' : 'View And Edit Note'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {isLoadingDocument ? (
+            <div className="py-16 text-center text-sm font-bold text-slate-500">
+              {language === 'vi' ? 'Đang mở ghi chú...' : 'Opening note...'}
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <Input
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
+                disabled={isUpdatingDocument}
+                placeholder={language === 'vi' ? 'Tiêu đề ghi chú' : 'Note title'}
+                className="h-12"
+              />
+
+              <div className="flex flex-wrap gap-2">
+                {categories.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setEditCategory(item.id)}
+                    disabled={isUpdatingDocument}
+                    className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
+                      editCategory === item.id
+                        ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20'
+                        : 'bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 border-black/5 dark:border-white/5 hover:text-primary hover:border-primary/30'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                value={editContent}
+                onChange={(event) => setEditContent(event.target.value)}
+                disabled={isUpdatingDocument}
+                placeholder={language === 'vi' ? 'Nội dung ghi chú' : 'Note content'}
+                className="w-full min-h-[320px] resize-y rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-slate-950/50 px-4 py-4 text-sm leading-relaxed outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all"
+              />
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditorOpen(false)}
+                  disabled={isUpdatingDocument}
+                  className="h-11"
+                >
+                  {language === 'vi' ? 'Đóng' : 'Close'}
+                </Button>
+                <Button
+                  onClick={handleUpdateDocument}
+                  disabled={isUpdatingDocument}
+                  className="h-11 flex items-center gap-2"
+                >
+                  <FiSave />
+                  {isUpdatingDocument
+                    ? (language === 'vi' ? 'Đang lưu...' : 'Saving...')
+                    : (language === 'vi' ? 'Lưu thay đổi' : 'Save changes')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

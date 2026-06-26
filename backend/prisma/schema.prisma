@@ -28,6 +28,8 @@ model User {
   notificationSettings Json?     @default("{}")
   telegramChatId       String?   @unique
   telegramUsername     String?
+  refreshTokenHash     String?
+  refreshTokenExpiresAt DateTime?
 
   createdEvents   Event[]
   mealPreferences MealPreference[]

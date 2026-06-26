@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { formatCalendarDayMonth, getCalendarDateKey } from '@/utils/date';
 
 interface DashboardProps {
   readonly onNavigate: (tab: 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' | 'notifications') => void;
@@ -39,14 +40,17 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         const eventsRes = await eventsAPI.getAll(currentFamilyId, now.getMonth() + 1, now.getFullYear(), user?.id);
         const allEvents = eventsRes.data || [];
 
-        const todayStr = format(now, 'yyyy-MM-dd');
-        const today = allEvents.filter((e: any) => e.date.startsWith(todayStr));
+        const todayStr = getCalendarDateKey(now);
+        const today = allEvents.filter((e: any) => getCalendarDateKey(e.date) === todayStr);
         // Sort by time
         today.sort((a: any, b: any) => (a.time || '24:00').localeCompare(b.time || '24:00'));
         setTodayEvents(today);
         
         // Sort all month events by date
-        const sortedMonth = [...allEvents].sort((a: any, b: any) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+        const sortedMonth = [...allEvents].sort((a: any, b: any) =>
+          getCalendarDateKey(a.date).localeCompare(getCalendarDateKey(b.date)) ||
+          (a.time || '').localeCompare(b.time || '')
+        );
         setMonthEvents(sortedMonth);
 
 
@@ -156,7 +160,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   <div key={ev.id || idx} className="relative flex items-start gap-6 p-6 rounded-xl bg-slate-100/40 dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all group">
                     <div className="w-16 shrink-0 pt-1">
                       <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 block mb-1">
-                        {scheduleView === 'month' ? format(new Date(ev.date), 'dd/MM') : (ev.time ? ev.time.substring(0, 5) : '00:00')}
+                        {scheduleView === 'month' ? formatCalendarDayMonth(ev.date) : (ev.time ? ev.time.substring(0, 5) : '00:00')}
                       </span>
                       {scheduleView === 'month' && (
                         <span className="text-[10px] font-bold text-primary block">

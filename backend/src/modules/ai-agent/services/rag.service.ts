@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { normalizeSearchText } from '../ai-intent-router';
 
@@ -8,6 +8,12 @@ type CreateKnowledgeDocumentInput = {
   content: string;
   sourceType?: string;
   createdBy?: string;
+  metadata?: Record<string, any>;
+};
+
+type UpdateKnowledgeDocumentInput = {
+  title: string;
+  content: string;
   metadata?: Record<string, any>;
 };
 
@@ -97,6 +103,72 @@ export class RagService {
         _count: { select: { chunks: true } },
       },
     });
+  }
+
+  async getKnowledgeDocument(familyId: string, documentId: string) {
+    const document = await this.prisma.aiDocument.findFirst({
+      where: { id: documentId, familyId },
+      include: {
+        chunks: {
+          orderBy: { chunkIndex: 'asc' },
+        },
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Knowledge document not found');
+    }
+
+    return document;
+  }
+
+  async updateKnowledgeDocument(familyId: string, documentId: string, input: UpdateKnowledgeDocumentInput) {
+    const existing = await this.prisma.aiDocument.findFirst({
+      where: { id: documentId, familyId },
+      select: { id: true, metadata: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Knowledge document not found');
+    }
+
+    const content = input.content.trim();
+    const chunks = this.chunkText(content);
+
+    const metadata = input.metadata ?? existing.metadata ?? undefined;
+    const updateData: any = {
+      title: input.title.trim(),
+      content,
+    };
+    if (metadata !== undefined) {
+      updateData.metadata = metadata;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.aiDocumentChunk.deleteMany({
+        where: { documentId, familyId },
+      });
+
+      await tx.aiDocument.update({
+        where: { id: documentId },
+        data: updateData,
+      });
+
+      await tx.aiDocumentChunk.createMany({
+        data: chunks.map((chunk, index) => ({
+          documentId,
+          familyId,
+          content: chunk,
+          chunkIndex: index,
+          tokenHint: this.estimateTokens(chunk),
+          metadata: { retrieval: 'hybrid', embeddingReady: false },
+        })),
+      });
+    });
+
+    const document = await this.getKnowledgeDocument(familyId, documentId);
+    await this.embedDocumentChunks(document.chunks.map((chunk) => ({ id: chunk.id, content: chunk.content })));
+    return this.getKnowledgeDocument(familyId, documentId);
   }
 
   async deleteKnowledgeDocument(familyId: string, documentId: string) {

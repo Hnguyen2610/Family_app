@@ -4,6 +4,7 @@ import { AiTrace } from '../ai-observability';
 export interface AiSkillContext {
   userId: string;
   familyId: string;
+  resolvedFamilyId?: string; // Always the real DB family ID (not 'all')
   userMessage: string;
   intent: string;
   image?: string;

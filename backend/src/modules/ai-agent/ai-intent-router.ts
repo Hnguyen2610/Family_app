@@ -6,7 +6,9 @@ export type AiIntent =
   | 'meal_suggestion'
   | 'horoscope'
   | 'family_knowledge'
-  | 'image_vision';
+  | 'image_vision'
+  | 'football'
+  | 'web_search';
 
 export type AiIntentRoute = {
   intent: AiIntent;
@@ -39,6 +41,20 @@ export function classifyAiIntent(userMessage: string, hasImage: boolean = false)
   }
 
   const text = normalizeSearchText(userMessage || '');
+
+  const footballTerms = ['bong da', 'football', 'soccer', 'world cup', 'fifa', 'ngoai hang anh', 'premier league', 'la liga', 'bundesliga', 'serie a', 'champions league', 'c1', 'tran'];
+  const footballDataActions = ['lich thi dau', 'tran dau', 'ket qua', 'ti so', 'ty so', 'bang xep hang', 'standings', 'matches', 'fixtures', 'da'];
+
+  const isFactualQuestion = hasAny(text, ['bao nhieu', 'la gi', 'tai sao', 'the nao', 'how many', 'what is', 'why']);
+
+  if (hasAny(text, footballTerms) && (hasAny(text, footballDataActions) || text.includes('tran')) && !isFactualQuestion) {
+    return {
+      intent: 'football',
+      requiresTools: true,
+      confidence: 0.96,
+      reason: 'football_data_request',
+    };
+  }
 
   if (hasAny(text, ['gia vang', 'vang', 'gold', 'xauusd', 'sjc', 'doji', 'pnj'])) {
     return {
@@ -135,7 +151,10 @@ export function classifyAiIntent(userMessage: string, hasImage: boolean = false)
     };
   }
 
+  const isFootballTerm = hasAny(text, ['tran', 'da bong', 'kickoff', 'ti so', 'bong da', 'fixture', 'match']);
+
   if (
+    !isFootballTerm &&
     hasAny(text, [
       'hom nay an gi',
       'an gi',
@@ -174,6 +193,19 @@ export function classifyAiIntent(userMessage: string, hasImage: boolean = false)
       requiresTools: false,
       confidence: 0.8,
       reason: 'family_knowledge_keyword',
+    };
+  }
+
+  if (
+    isFactualQuestion ||
+    hasAny(text, footballTerms) ||
+    hasAny(text, ['hom nay', 'nam nay', 'moi nhat', 'latest', 'news', 'tin tuc', 'current', 'real-time', 'gia', 'ban co biet', 'tim giup', 'search'])
+  ) {
+    return {
+      intent: 'web_search',
+      requiresTools: true,
+      confidence: isFactualQuestion ? 0.95 : 0.85,
+      reason: isFactualQuestion ? 'factual_question_detected' : 'realtime_search_keyword',
     };
   }
 

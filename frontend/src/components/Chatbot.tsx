@@ -436,6 +436,13 @@ export default function Chatbot() {
                setMemoryConsent(data.memory);
             } else if (status === 'rag_consent_request' && data?.note) {
                setRagConsent(data.note);
+            } else if (status === 'replace_content') {
+               assistantResponse = data?.content || assistantResponse;
+               if (pendingFrame !== null) {
+                 window.cancelAnimationFrame(pendingFrame);
+                 pendingFrame = null;
+               }
+               flushAssistantResponse();
             } else {
                setStreamStatus(getStatusLabel(status));
             }
@@ -503,7 +510,7 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="flex h-[600px] md:h-[750px] glass rounded-2xl overflow-hidden relative border border-black/5 dark:border-white/5 transition-all">
+    <div className="flex h-[min(680px,calc(100dvh-120px))] min-h-[540px] md:h-[750px] glass rounded-2xl overflow-hidden relative border border-black/5 dark:border-white/5 transition-all">
 
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
@@ -568,19 +575,19 @@ export default function Chatbot() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col relative bg-white dark:bg-slate-900/40">
         {/* Header */}
-        <header className="px-4 md:px-8 py-4 md:py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/[0.02] backdrop-blur-md sticky top-0 z-20">
-          <div className="flex items-center gap-5">
+        <header className="px-4 py-3 md:px-8 md:py-6 border-b border-white/5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 bg-white/[0.02] backdrop-blur-md sticky top-0 z-20">
+          <div className="flex items-center gap-3 md:gap-5 min-w-0">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 border border-black/5 dark:border-white/5 rounded-lg text-slate-600 dark:text-slate-500 hover:text-primary transition-all bg-slate-100 dark:bg-white/5"
+              className="p-2 border border-black/5 dark:border-white/5 rounded-lg text-slate-600 dark:text-slate-500 hover:text-primary transition-all bg-slate-100 dark:bg-white/5 shrink-0"
             >
-              <FiMessageCircle size={20} />
+              <FiMessageCircle className="w-4 h-4 md:w-5 md:h-5" />
             </button>
-            <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-2xl">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-xl md:text-2xl shrink-0">
               <FiActivity />
             </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic">Family <span className="text-primary not-italic">GPT</span></h2>
+            <div className="min-w-0">
+              <h2 className="text-lg md:text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic truncate">Family <span className="text-primary not-italic">GPT</span></h2>
               <p className="text-[9px] text-primary font-black uppercase tracking-widest flex items-center gap-1">
                 <span className="w-1 h-1 bg-primary rounded-full animate-ping" />
                 {language === 'vi' ? 'Đang hoạt động' : 'Processing Active'}
@@ -588,8 +595,8 @@ export default function Chatbot() {
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3 w-full sm:w-auto">
-            <div className="flex flex-col gap-2 min-w-[220px]">
+          <div className="grid grid-cols-[minmax(0,1fr)_132px] md:flex md:flex-row items-end md:items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-col gap-2 min-w-0 md:min-w-[220px]">
               <div className="group relative">
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
@@ -642,16 +649,16 @@ export default function Chatbot() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 min-w-0">
               <div className="px-1 text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500">
                 Model <span className="text-primary">{model}</span>
               </div>
-              <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg border border-black/5 dark:border-white/5">
+              <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg border border-black/5 dark:border-white/5 w-full">
                 {['gemini', 'groq'].map((m) => (
                   <button
                     key={m}
                     onClick={() => setModel(m as any)}
-                    className={`px-4 py-1.5 rounded text-[9px] font-black uppercase tracking-widest transition-all ${model === m ? 'bg-primary text-primary-foreground shadow-lg' : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
+                    className={`flex-1 px-2 md:px-4 py-1.5 rounded text-[9px] font-black uppercase tracking-widest transition-all ${model === m ? 'bg-primary text-primary-foreground shadow-lg' : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
                   >
                     {m}
                   </button>
@@ -664,23 +671,23 @@ export default function Chatbot() {
         {/* Messages */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto p-8 space-y-10 no-scrollbar"
+          className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-10 no-scrollbar"
         >
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center space-y-8">
-              <div className="w-24 h-24 bg-primary/5 rounded-3xl flex items-center justify-center border border-primary/10 relative">
+            <div className="h-full flex flex-col items-center justify-start md:justify-center text-center space-y-5 md:space-y-8 pt-3 md:pt-0">
+              <div className="hidden sm:flex w-16 h-16 md:w-24 md:h-24 bg-primary/5 rounded-2xl md:rounded-3xl items-center justify-center border border-primary/10 relative">
                  <div className="absolute inset-0 bg-primary/10 blur-2xl rounded-full" />
-                 <FiActivity size={48} className="text-primary relative z-10 animate-soft-float" />
+                 <FiActivity className="w-8 h-8 md:w-12 md:h-12 text-primary relative z-10 animate-soft-float" />
               </div>
-              <div className="max-w-md space-y-4">
-                <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">
+              <div className="max-w-md space-y-3 md:space-y-4">
+                <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">
                   {language === 'vi' ? 'Hệ thống đã sẵn sàng.' : 'System Initialized.'}
                 </h3>
-                <p className="text-slate-500 dark:text-slate-500 font-medium text-sm leading-relaxed">
+                <p className="text-slate-500 dark:text-slate-500 font-medium text-xs md:text-sm leading-relaxed">
                   {language === 'vi' ? 'Truy cập vào cơ sở dữ liệu gia đình thông qua giao thức ngôn ngữ tự nhiên. I/O đang hoạt động.' : 'Accessing family datalake via Natural Language Protocol. Primary I/O link established.'}
                 </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-lg px-4 pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 w-full max-w-lg px-1 md:px-4 pt-1 md:pt-4">
                 {[
                   { text: language === 'vi' ? 'Kiểm tra lịch trình tuần tới' : 'Audit next week schedule', icon: <FiCalendar /> },
                   { text: language === 'vi' ? 'Đề xuất  tối nay ăn gì' : 'Nutrition plan analysis', icon: <FiTrendingUp /> }
@@ -688,7 +695,7 @@ export default function Chatbot() {
                   <button
                     key={i}
                     onClick={() => setInput(hint.text)}
-                    className="p-5 text-left rounded-xl bg-white dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/20 transition-all text-[11px] font-bold text-slate-600 dark:text-slate-400 group flex items-center gap-3 shadow-sm"
+                    className="p-3 md:p-5 text-left rounded-xl bg-white dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/20 transition-all text-[11px] font-bold text-slate-600 dark:text-slate-400 group flex items-center gap-3 shadow-sm"
                   >
                     <span className="text-primary group-hover:scale-110 transition-transform">{hint.icon}</span>
                     {hint.text}
@@ -704,14 +711,14 @@ export default function Chatbot() {
                     key={`${m.role}-${i}`}
                     className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-500`}
                   >
-                    <div className={`flex gap-5 max-w-[85%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border ${
+                    <div className={`flex gap-3 md:gap-5 max-w-[94%] md:max-w-[85%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl shrink-0 flex items-center justify-center border ${
                         m.role === 'user' ? 'bg-primary border-primary/20 text-primary-foreground' : 'bg-slate-200 dark:bg-slate-800 border-black/5 dark:border-white/5 text-primary'
                       }`}>
                         {m.role === 'user' ? <FiUser size={16} /> : <FiActivity size={16} />}
                       </div>
                       <div
-                        className={`p-6 rounded-2xl text-sm leading-relaxed border ${
+                        className={`p-4 md:p-6 rounded-2xl text-sm leading-relaxed border ${
                           m.role === 'user'
                             ? 'bg-primary/20 border-primary/20 text-slate-950 dark:text-slate-100'
                             : 'bg-white dark:bg-slate-900/60 border-black/5 dark:border-white/5 text-slate-900 dark:text-slate-300'
@@ -734,11 +741,11 @@ export default function Chatbot() {
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="flex gap-5">
-                    <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 border-black/5 dark:border-white/5 text-primary flex items-center justify-center animate-pulse">
+                  <div className="flex gap-3 md:gap-5">
+                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-200 dark:bg-slate-800 border-black/5 dark:border-white/5 text-primary flex items-center justify-center animate-pulse">
                       <FiActivity />
                     </div>
-                    <div className="bg-white dark:bg-slate-900/40 p-6 rounded-2xl border border-black/5 dark:border-white/5">
+                    <div className="bg-white dark:bg-slate-900/40 p-4 md:p-6 rounded-2xl border border-black/5 dark:border-white/5">
                       <div className="mb-3 text-[9px] font-black uppercase tracking-widest text-primary">
                         {streamStatus || getStatusLabel('')}
                       </div>
@@ -835,10 +842,10 @@ export default function Chatbot() {
 
 
         {/* Input */}
-        <div className="p-8 border-t border-black/5 dark:border-white/5 bg-white/80 dark:bg-slate-950/40 backdrop-blur-xl relative z-10">
+        <div className="p-4 md:p-8 border-t border-black/5 dark:border-white/5 bg-white/80 dark:bg-slate-950/40 backdrop-blur-xl relative z-10">
           {selectedImage && (
-            <div className="max-w-4xl mx-auto mb-4 flex items-center gap-4 animate-in slide-in-from-bottom-2 duration-300">
-               <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-primary group">
+            <div className="max-w-4xl mx-auto mb-3 md:mb-4 flex items-center gap-3 md:gap-4 animate-in slide-in-from-bottom-2 duration-300">
+               <div className="relative w-14 h-14 md:w-20 md:h-20 rounded-xl overflow-hidden border-2 border-primary group">
                   <img src={selectedImage} alt="selected" className="w-full h-full object-cover" />
                   <button
                     onClick={() => setSelectedImage(null)}
@@ -852,8 +859,8 @@ export default function Chatbot() {
                </p>
             </div>
           )}
-          <form onSubmit={handleSubmit} className="flex gap-4 max-w-4xl mx-auto">
-            <div className="flex-1 relative group flex items-center gap-2">
+          <form onSubmit={handleSubmit} className="flex gap-3 md:gap-4 max-w-4xl mx-auto">
+            <div className="flex-1 relative group flex items-center gap-2 min-w-0">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -866,11 +873,11 @@ export default function Chatbot() {
                 variant="ghost"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
-                className="w-12 h-12 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-primary transition-all shrink-0 hover:scale-105"
+                className="w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-primary transition-all shrink-0 hover:scale-105"
               >
                 <FiImage size={20} />
               </Button>
-              <div className="flex-1 relative">
+              <div className="flex-1 relative min-w-0">
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -905,7 +912,7 @@ export default function Chatbot() {
               </div>
             </div>
           </form>
-          <p className="text-center mt-5 text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">
+          <p className="hidden sm:block text-center mt-5 text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">
              Build by NHN
           </p>
         </div>

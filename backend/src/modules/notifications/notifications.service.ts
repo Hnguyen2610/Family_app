@@ -436,10 +436,10 @@ export class NotificationsService {
       const daysUntil = this.getDaysUntil(now, eventDate);
       const isBirthday = event.type === 'BIRTHDAY';
       const isAnniversary = event.type === 'ANNIVERSARY';
-      const eventLabel = isBirthday ? 'sinh nhat' : isAnniversary ? 'ky niem' : 'su kien';
-      const dateLabel = eventDate.toLocaleDateString('vi-VN');
-      const title = `Sap co ${eventLabel}: ${event.title}`;
-      const message = `Con ${daysUntil} ngay nua la ${event.title} (${dateLabel}). Ban co muon FamilyGPT goi y checklist, qua tang hoac viec can chuan bi khong?`;
+      const eventLabel = isBirthday ? 'sinh nhật' : isAnniversary ? 'kỷ niệm' : 'sự kiện';
+      const dateLabel = this.formatIctDate(eventDate);
+      const title = `Sắp có ${eventLabel}: ${event.title}`;
+      const message = `Còn ${daysUntil} ngày nữa là ${event.title} (${dateLabel}). Bạn có muốn FamilyGPT gợi ý checklist, quà tặng hoặc việc cần chuẩn bị không?`;
 
       const created = await this.createProactiveNotification(user.id, {
         type: 'PROACTIVE_EVENT',
@@ -481,8 +481,8 @@ export class NotificationsService {
     }
 
     const increasePercent = Math.round(((currentFood - previousFood) / previousFood) * 100);
-    const title = `Chi tieu an uong thang ${currentMonth} tang`;
-    const message = `Chi tieu FOOD thang nay dang cao hon thang truoc ${increasePercent}%. Hien tai: ${currentFood.toLocaleString('vi-VN')}d, thang truoc: ${previousFood.toLocaleString('vi-VN')}d. Ban co muon xem chi tiet khong?`;
+    const title = `Chi tiêu ăn uống tháng ${currentMonth} tăng`;
+    const message = `Chi tiêu FOOD tháng này đang cao hơn tháng trước ${increasePercent}%. Hiện tại: ${currentFood.toLocaleString('vi-VN')}d, tháng trước: ${previousFood.toLocaleString('vi-VN')}d. ạn có muốn xem chi tiết không?`;
 
     const created = await this.createProactiveNotification(userId, {
       type: 'PROACTIVE_FINANCE',
@@ -581,9 +581,21 @@ export class NotificationsService {
   }
 
   private startOfDay(date: Date) {
-    const value = new Date(date);
-    value.setHours(0, 0, 0, 0);
-    return value;
+    const [year, month, day] = this.getIctDateKey(date).split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  private getIctDateKey(date: Date) {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+
+  private formatIctDate(date: Date) {
+    return date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
   }
 
   private isValidEmail(email: string): boolean {

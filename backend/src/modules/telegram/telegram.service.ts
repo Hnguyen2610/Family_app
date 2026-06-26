@@ -53,14 +53,12 @@ export class TelegramService implements OnModuleInit {
         const isProduction = this.configService.get<string>('NODE_ENV') === 'production' || !!process.env.VERCEL;
 
         if (webhookUrl) {
-          this.bot.telegram.setWebhook(webhookUrl, webhookSecret ? { secret_token: webhookSecret } : undefined)
-            .catch(err => this.logger.warn(`setWebhook failed (expected on serverless): ${err.message}`));
-          this.logger.log(`Telegram bot webhook configured: ${webhookUrl}`);
+          void this.ensureWebhookConfigured(webhookUrl, webhookSecret);
           return;
         }
 
         if (!isProduction || usePolling) {
-          this.bot.launch().catch(err => {
+          this.launchPolling().catch(err => {
             this.logger.error('Failed to launch Telegram bot', err);
           });
           this.logger.log('Telegram bot initialized with polling and AI capabilities');
@@ -72,6 +70,36 @@ export class TelegramService implements OnModuleInit {
         this.logger.error('Telegram bot init failed, but continuing to prevent app crash', error);
       }
     }
+  }
+
+  private async ensureWebhookConfigured(webhookUrl: string, webhookSecret?: string) {
+    try {
+      const current = await this.bot.telegram.getWebhookInfo();
+      if (current.url === webhookUrl) {
+        this.logger.log('Telegram bot webhook already configured');
+        return;
+      }
+
+      await this.bot.telegram.setWebhook(
+        webhookUrl,
+        webhookSecret ? { secret_token: webhookSecret } : undefined,
+      );
+      this.logger.log(`Telegram bot webhook configured: ${webhookUrl}`);
+    } catch (err: any) {
+      const message = err?.message || String(err);
+      const retryAfter = err?.parameters?.retry_after || err?.response?.parameters?.retry_after;
+      const retrySuffix = retryAfter ? `; retry after ${retryAfter}s` : '';
+      this.logger.warn(`Telegram webhook check/update skipped: ${message}${retrySuffix}`);
+    }
+  }
+
+  private async launchPolling() {
+    try {
+      await this.bot.telegram.deleteWebhook();
+    } catch (err: any) {
+      this.logger.warn(`Telegram deleteWebhook before polling skipped: ${err?.message || err}`);
+    }
+    await this.bot.launch();
   }
 
   private setupHandlers() {
@@ -204,7 +232,7 @@ export class TelegramService implements OnModuleInit {
       const title = user
         ? `Xin chào ${user.name}. Bạn có thể điều khiển FamilyGPT bằng các lệnh sau:`
         : 'Bạn có thể điều khiển FamilyGPT bằng các lệnh sau:';
-      await ctx.reply(buildHelpMessage(title));
+      await ctx.reply(buildHelpMessage(title) + '\n\n⚽ /football <giải đấu>\n🔍 /search <từ khóa>');
     });
 
     this.bot.command('gold', async (ctx) => {
@@ -220,10 +248,43 @@ export class TelegramService implements OnModuleInit {
           undefined,
           'groq',
         );
-        await ctx.reply(response.content);
-      } catch (error) {
-        this.logger.error('Telegram gold command error', error);
-        await ctx.reply('Không lấy được giá vàng lúc này. Hãy thử lại sau.');
+        await ctx.reply(response.content, { parse_mode: 'Markdown' });
+      } catch (err) {
+        await ctx.reply('❌ Có lỗi khi lấy giá vàng.');
+      }
+    });
+
+    this.bot.command('football', async (ctx) => {
+      const user = await this.getLinkedUser(ctx.chat.id.toString());
+      const familyId = getActiveFamily(user)?.id || user?.familyId || 'all';
+      const userText = (ctx.message as any).text.split(' ').slice(1).join(' ').trim();
+      const query = userText || 'lịch thi đấu bóng đá hôm nay';
+
+      try {
+        await ctx.sendChatAction('typing');
+        const response = await this.aiAgentService.chat(familyId, query, user?.id ? [user.id] : undefined, undefined, 'groq');
+        await ctx.reply(response.content, { parse_mode: 'Markdown' });
+      } catch (err) {
+        await ctx.reply('❌ Có lỗi khi lấy dữ liệu bóng đá.');
+      }
+    });
+
+    this.bot.command('search', async (ctx) => {
+      const user = await this.getLinkedUser(ctx.chat.id.toString());
+      const familyId = getActiveFamily(user)?.id || user?.familyId || 'all';
+      const query = (ctx.message as any).text.split(' ').slice(1).join(' ').trim();
+
+      if (!query) {
+        await ctx.reply('Hãy nhập từ khóa tìm kiếm. Ví dụ: /search giá iPhone 15');
+        return;
+      }
+
+      try {
+        await ctx.sendChatAction('typing');
+        const response = await this.aiAgentService.chat(familyId, query, user?.id ? [user.id] : undefined, undefined, 'gemini');
+        await ctx.reply(response.content, { parse_mode: 'Markdown' });
+      } catch (err) {
+        await ctx.reply('❌ Có lỗi khi tra cứu Internet.');
       }
     });
 
@@ -524,6 +585,10 @@ function buildHelpMessage(title: string) {
     '/families - xem các family có thể chọn',
     '/use_family <số|familyId> - chọn family cho các câu hỏi tiếp theo',
     '/gold - lấy giá vàng mới nhất',
+    '',
+    'Tiện ích AI',
+    '/football [giải đấu] - ⚽ Tra cứu bóng đá ',
+    '/search <từ khóa> - 🔍 Tìm kiếm thông tin mới nhất Internet (tin tức, giá cả...)',
     '',
     '/menu - gợi ý thực đơn hôm nay',
     '/events [tháng] - xem lịch, ví dụ /events, /events thang sau, /events thang 7',

@@ -14,6 +14,8 @@ import { MealSkill } from './skills/meal.skill';
 import { CalendarSkill } from './skills/calendar.skill';
 import { HoroscopeSkill as HoroscopeAiSkill } from './skills/horoscope.skill';
 import { FamilyKnowledgeSkill } from './skills/family-knowledge.skill';
+import { FootballSkill } from './skills/football.skill';
+import { SearchSkill } from './skills/search.skill';
 import { AiSkillRegistry } from './skills/ai-skill-registry';
 
 @Module({
@@ -31,8 +33,10 @@ import { AiSkillRegistry } from './skills/ai-skill-registry';
     CalendarSkill,
     HoroscopeAiSkill,
     FamilyKnowledgeSkill,
+    FootballSkill,
+    SearchSkill,
     AiSkillRegistry,
   ],
-  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiSkillRegistry],
+  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiSkillRegistry, FootballSkill, SearchSkill],
 })
 export class AiAgentModule {}

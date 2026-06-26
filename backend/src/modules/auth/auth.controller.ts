@@ -14,6 +14,16 @@ export class AuthController {
     return this.authService.authenticateGoogle(token);
   }
 
+  @Post('refresh')
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    return this.authService.refresh(refreshToken);
+  }
+
+  @Post('logout')
+  async logout(@Body('refreshToken') refreshToken?: string) {
+    return this.authService.logout(refreshToken);
+  }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   getProfile(@Request() req: any) {

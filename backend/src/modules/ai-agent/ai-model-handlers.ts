@@ -50,6 +50,84 @@ function buildUsageSnapshot(data: any) {
   };
 }
 
+function stripPseudoFunctionTags(content: string) {
+  return content
+    .replace(/<function[=:][\s\S]*?<\/function>/g, '')
+    .replace(/<function[=:][^>]*>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function parseAttributeArgs(text: string) {
+  const args: Record<string, any> = {};
+  const argPattern = /(\w+)=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = argPattern.exec(text)) !== null) {
+    args[match[1]] = match[2] ?? match[3] ?? match[4] ?? '';
+  }
+  return args;
+}
+
+function parsePseudoFunctionCalls(content: string) {
+  const calls: Array<{ name: string; args: any }> = [];
+  const tagPattern = /<function([=:][^>]*)>/g;
+  let tag: RegExpExecArray | null;
+
+  while ((tag = tagPattern.exec(content)) !== null) {
+    const raw = tag[1].trim().replace(/\/$/, '').trim();
+    let name = '';
+    let argsText = '';
+    let args: any = {};
+
+    if (raw.startsWith('=')) {
+      const expression = raw.slice(1).trim();
+      const call = expression.match(/^(\w+)\s*\(([\s\S]*)\)$/);
+      if (call) {
+        name = call[1];
+        argsText = call[2].trim();
+      }
+    } else if (raw.startsWith(':')) {
+      const rest = raw.slice(1).trim();
+      const named = rest.match(/^(\w+)\b([\s\S]*)$/);
+      if (named) {
+        name = named[1];
+        argsText = named[2].trim();
+      }
+
+      const closeIndex = content.indexOf('</function>', tagPattern.lastIndex);
+      if (closeIndex >= 0) {
+        const body = content.slice(tagPattern.lastIndex, closeIndex).trim();
+        if (body) argsText = body;
+        tagPattern.lastIndex = closeIndex + '</function>'.length;
+      }
+    }
+
+    if (!name) continue;
+
+    if (argsText.startsWith('{')) {
+      try {
+        args = JSON.parse(argsText);
+      } catch {
+        args = {};
+      }
+    } else {
+      args = parseAttributeArgs(argsText);
+    }
+
+    calls.push({ name, args });
+  }
+
+  return calls;
+}
+
+async function executePseudoFunctionCalls(content: string, deps: ModelHandlerDeps, input: ChatHandlerInput) {
+  const calls = parsePseudoFunctionCalls(content);
+  for (const call of calls) {
+    await deps.executeTool(call.name, call.args, input.familyId, input.userId, input.trace);
+  }
+  return calls.length;
+}
+
 function unavailableQuota(note: string) {
   return { source: 'unavailable', note };
 }
@@ -141,6 +219,7 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
   let assistantContent = '';
   let loopCount = 0;
   let apiUsage: any;
+  const calledCalls = new Set<string>();
 
   while (loopCount < 5) {
     let result: any;
@@ -163,8 +242,14 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
 
     if (part?.functionCall) {
       loopCount++;
-      const res = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
-      currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
+      const callCheck = `${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}`;
+      if (calledCalls.has(callCheck)) {
+        currentInput = [{ functionResponse: { name: part.functionCall.name, response: { error: 'Already searched. Use previous info.' } } }];
+      } else {
+        calledCalls.add(callCheck);
+        const res = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
+        currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
+      }
     } else {
       apiUsage = result.response.usageMetadata;
       assistantContent = result.response.text();
@@ -191,7 +276,12 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
   const toolsEnabled = intentRoute.requiresTools || !!toolsOverride;
   const tools = toolsOverride || getTools();
 
-  const initialResult = await measureAiStep(logger, 'model_call', trace, { provider: 'groq', phase: 'initial' }, () => openai.chat.completions.create({ model: groqModel, messages, max_tokens: aiMaxTokens, ...(toolsEnabled ? { tools: tools as any } : {}) }).withResponse());
+  const initialResult = await measureAiStep(logger, 'model_call', trace, { provider: 'groq', phase: 'initial' }, () => openai.chat.completions.create({
+    model: groqModel,
+    messages,
+    max_tokens: aiMaxTokens,
+    ...(toolsEnabled ? { tools: tools as any, tool_choice: 'auto', parallel_tool_calls: false } : {}),
+  }).withResponse());
   const response = initialResult.data;
   let quota = parseGroqRateLimitQuota(initialResult.response.headers);
   let assistantContent = '';
@@ -200,7 +290,11 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
   if (response.choices[0].message.tool_calls) {
     messages.push(response.choices[0].message as any);
     for (const tc of response.choices[0].message.tool_calls) {
-      const res = await executeTool(tc.function.name, JSON.parse(tc.function.arguments), familyId, userId, trace);
+      let toolName = tc.function.name;
+      if (toolName.includes('{')) {
+        toolName = toolName.substring(0, toolName.indexOf('{')).trim();
+      }
+      const res = await executeTool(toolName, JSON.parse(tc.function.arguments), familyId, userId, trace);
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
     }
     const finalResult = await measureAiStep(logger, 'model_call', trace, { provider: 'groq', phase: 'final' }, () => openai.chat.completions.create({ model: groqModel, messages, max_tokens: aiMaxTokens }).withResponse());
@@ -208,6 +302,13 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
     quota = parseGroqRateLimitQuota(finalResult.response.headers);
   } else {
     assistantContent = response.choices[0].message.content || '';
+  }
+
+  if (assistantContent.includes('<function')) {
+    const pseudoCount = await executePseudoFunctionCalls(assistantContent, deps, input);
+    if (pseudoCount > 0) {
+      assistantContent = stripPseudoFunctionTags(assistantContent);
+    }
   }
 
   const usage = buildUsageSnapshot({
@@ -255,6 +356,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
   let loopCount = 0;
   let apiUsage: any;
 
+  const calledCalls = new Set<string>();
   while (loopCount < 5) {
     let result: any;
     try {
@@ -279,8 +381,15 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
       const part = chunk.candidates?.[0]?.content?.parts?.[0];
       if (part?.functionCall) {
         isTool = true;
-        const toolRes = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
-        currentInput = [{ functionResponse: { name: part.functionCall.name, response: toolRes } }];
+        const callCheck = `${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}`;
+        if (calledCalls.has(callCheck)) {
+          deps.logger.warn(`[LoopGuard] AI is repeating tool call: ${callCheck}. Forcing response.`);
+          currentInput = [{ functionResponse: { name: part.functionCall.name, response: { error: 'You have already performed this exact search. Use the previous results to answer the user now.' } } }];
+        } else {
+          calledCalls.add(callCheck);
+          const toolRes = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
+          currentInput = [{ functionResponse: { name: part.functionCall.name, response: toolRes } }];
+        }
         break;
       }
       try {
@@ -295,6 +404,14 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
     }
     if (!isTool) break;
     loopCount++;
+  }
+
+  if (assistantContent.includes('<function')) {
+    const pseudoCount = await executePseudoFunctionCalls(assistantContent, deps, input);
+    if (pseudoCount > 0) {
+      assistantContent = stripPseudoFunctionTags(assistantContent);
+      res.write(`data: ${JSON.stringify({ type: 'replace_content', content: assistantContent })}\n\n`);
+    }
   }
 
   const usage = buildUsageSnapshot({
@@ -322,7 +439,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
   const streamResponse = await openai.chat.completions.create({
     model: groqModel, messages, max_tokens: aiMaxTokens, stream: true,
     stream_options: { include_usage: true },
-    ...(toolsEnabled ? { tools: tools as any } : {})
+    ...(toolsEnabled ? { tools: tools as any, tool_choice: 'auto', parallel_tool_calls: false } : {})
   }).withResponse();
 
   const stream = streamResponse.data;
@@ -359,25 +476,37 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
     messages.push({
       role: 'assistant',
       content: assistantContent || null,
-      tool_calls: normalizedToolCalls.map((toolCall) => ({
-        id: toolCall.id,
-        type: 'function',
-        function: {
-          name: toolCall.name || '',
-          arguments: toolCall.arguments || '{}',
-        },
-      })),
+      tool_calls: normalizedToolCalls.map((toolCall) => {
+        let cleanName = toolCall.name || '';
+        if (cleanName.includes('{')) {
+          cleanName = cleanName.substring(0, cleanName.indexOf('{')).trim();
+        }
+        return {
+          id: toolCall.id,
+          type: 'function',
+          function: {
+            name: cleanName,
+            arguments: toolCall.arguments || '{}',
+          },
+        };
+      }),
     } as any);
 
     for (const toolCall of normalizedToolCalls) {
-      if (!toolCall.name) continue;
+      let toolName = toolCall.name || '';
+      // Clean tool name if it contains JSON clutter
+      if (toolName.includes('{')) {
+        toolName = toolName.substring(0, toolName.indexOf('{')).trim();
+      }
+
+      if (!toolName) continue;
       let args: any = {};
       try {
         args = toolCall.arguments ? JSON.parse(toolCall.arguments) : {};
       } catch {
         args = {};
       }
-      const toolResult = await executeTool(toolCall.name, args, familyId, userId, trace);
+      const toolResult = await executeTool(toolName, args, familyId, userId, trace);
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -399,6 +528,14 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
       const text = chunk.choices[0]?.delta?.content || '';
       assistantContent += text;
       if (text) res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+    }
+  }
+
+  if (assistantContent.includes('<function')) {
+    const pseudoCount = await executePseudoFunctionCalls(assistantContent, deps, input);
+    if (pseudoCount > 0) {
+      assistantContent = stripPseudoFunctionTags(assistantContent);
+      res.write(`data: ${JSON.stringify({ type: 'replace_content', content: assistantContent })}\n\n`);
     }
   }
 

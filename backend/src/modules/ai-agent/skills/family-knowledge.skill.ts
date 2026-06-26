@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { AiIntent } from '../ai-intent-router';
-import { AiSkill, AiSkillContext, AiSkillResponse } from '../interfaces/ai-skill.interface';
+import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
+import { RagService } from '../services/rag.service';
+import { toolSuccess, toolError } from '../ai-tool-results';
 
 @Injectable()
 export class FamilyKnowledgeSkill implements AiSkill {
   name = 'FamilyKnowledgeSkill';
+
+  constructor(private readonly ragService: RagService) {}
 
   canHandle(intent: AiIntent): boolean {
     return intent === 'family_knowledge';
@@ -14,20 +18,90 @@ export class FamilyKnowledgeSkill implements AiSkill {
     const ragContext = context.ragContext || 'No retrieved family knowledge snippets.';
 
     return `FAMILY KNOWLEDGE RAG RULES:
-- Answer using the retrieved family knowledge snippets below.
-- If the snippets are not enough, say that the family wiki does not have this information yet.
-- Do not invent private family details that are not present in the snippets.
-- Keep the answer concise and include source titles when useful.
+- Use retrieved snippets to answer questions about the family (wiki/long memory).
+- Use createWikiEntry to save new important information about the family for the long term (e.g., anniversaries, birthdays not in calendar, family rules, preferences).
+- If information is not in snippets and not in history, say you don't know it yet but the user can ask you to save it.
 
 RETRIEVED FAMILY KNOWLEDGE:
 ${ragContext}`;
+  }
+
+  getTools(): AiSkillTool[] {
+    return [
+      {
+        type: 'function',
+        function: {
+          name: 'createWikiEntry',
+          description: 'Save new information to the family long-term memory (wiki).',
+          parameters: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Brief title for this knowledge' },
+              content: { type: 'string', description: 'Detailed information to save' },
+              familyId: { type: 'string' },
+            },
+            required: ['title', 'content'],
+          },
+        },
+      },
+    ];
+  }
+
+  private extractExplicitTitle(userMessage: string) {
+    const marker = userMessage.match(/(?:v[oớ]i\s+title|title|ti[eê]u\s*[dđ][eề])\s*[:：]?\s*/i);
+    if (!marker || marker.index === undefined) return '';
+
+    const start = marker.index + marker[0].length;
+    const rest = userMessage.slice(start);
+    const stop = rest.search(/(?:\.\s*)?(?:sau\s*[dđ][oó]|r[oồ]i|v[aà]\s+sau\s*[dđ][oó]|sau\s+[dđ][oó]\s+gi[uú]p)/i);
+    const title = (stop >= 0 ? rest.slice(0, stop) : rest)
+      .replace(/^[\s"']+|[\s"'.]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return title.slice(0, 120);
+  }
+
+  private buildStableTitle(args: any, context: AiSkillContext) {
+    const explicitTitle = this.extractExplicitTitle(context.userMessage || '');
+    if (explicitTitle) return explicitTitle;
+
+    const rawTitle = String(args?.title || '').replace(/\s+/g, ' ').trim();
+    const content = String(args?.content || '').replace(/\s+/g, ' ').trim();
+    return rawTitle || content.slice(0, 80).trim() || 'Ghi chú gia đình';
+  }
+
+  async executeTool(toolName: string, args: any, context: AiSkillContext): Promise<any> {
+    if (toolName === 'createWikiEntry') {
+      try {
+        // Always use resolvedFamilyId — never trust args.familyId from AI
+        const saveFamilyId = context.resolvedFamilyId;
+        if (!saveFamilyId) {
+          // User is in 'all families' mode with multiple families — ask for clarification
+          return { needsClarification: true, message: 'TOOL_NEEDS_CLARIFICATION: Please ask the user which specific family they want to save this information to before calling this tool again.' };
+        }
+        const title = this.buildStableTitle(args, context);
+        console.log(`[FamilyKnowledgeSkill] createWikiEntry: familyId=${saveFamilyId}, title=${title}`);
+        const result = await this.ragService.createKnowledgeDocument({
+          familyId: saveFamilyId,
+          title,
+          content: args.content,
+          sourceType: 'ai_chat_saved',
+          createdBy: context.userId,
+        });
+        return toolSuccess(toolName, { success: true, documentId: result?.id });
+      } catch (err: any) {
+        return toolError(toolName, err.message);
+      }
+    }
+    return undefined;
   }
 
   async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
     if (context.ragContext) return undefined;
 
     return {
-      content: 'Minh chua tim thay thong tin phu hop trong family wiki. Ban co the them ghi chu/tai lieu gia dinh truoc, roi minh se dung phan do de tra loi chinh xac hon.',
+      content: 'Minh chua tim thay thong tin phu hop trong hệ thống bộ nhớ (Family Wiki). Ban co the bao minh lưu thông tin này vào bộ nhớ, mình sẽ nhớ mãi về sau!',
       direct: true,
     };
   }

@@ -8,6 +8,8 @@ import { MealSkill } from './meal.skill';
 import { CalendarSkill } from './calendar.skill';
 import { HoroscopeSkill } from './horoscope.skill';
 import { FamilyKnowledgeSkill } from './family-knowledge.skill';
+import { FootballSkill } from './football.skill';
+import { SearchSkill } from './search.skill';
 
 @Injectable()
 export class AiSkillRegistry implements OnModuleInit {
@@ -23,6 +25,8 @@ export class AiSkillRegistry implements OnModuleInit {
       this.moduleRef.get(CalendarSkill),
       this.moduleRef.get(HoroscopeSkill),
       this.moduleRef.get(FamilyKnowledgeSkill),
+      this.moduleRef.get(FootballSkill),
+      this.moduleRef.get(SearchSkill),
       this.moduleRef.get(GeneralChatSkill),
     ];
     this.logger.log(`Registered ${this.skills.length} AI skills`);

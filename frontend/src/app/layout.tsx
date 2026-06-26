@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/Providers';
-import { Toaster } from 'react-hot-toast';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin', 'vietnamese'],
@@ -33,7 +32,6 @@ export default function RootLayout({
           <main className="min-h-screen transition-colors duration-500">
             {children}
           </main>
-          <Toaster position="top-center" />
         </Providers>
       </body>
     </html>

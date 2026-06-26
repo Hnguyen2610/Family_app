@@ -1,7 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { authAPI } from '@/lib/api-client';
+import toast from 'react-hot-toast';
+import { AUTH_EXPIRED_EVENT, authAPI } from '@/lib/api-client';
 
 export interface User {
   id: string;
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   const login = useCallback(async (token: string) => {
     try {
       const response = await authAPI.loginWithGoogle(token);
-      const { user: userData, accessToken } = response.data;
+      const { user: userData, accessToken, refreshToken } = response.data;
 
       setUser(userData);
       localStorage.setItem('family_user', JSON.stringify(userData));
@@ -69,6 +70,9 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       setCurrentFamilyId(targetFamilyId);
 
       localStorage.setItem('family_token', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('family_refresh_token', refreshToken);
+      }
 
       return userData;
     } catch (error) {
@@ -78,11 +82,15 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   }, [setCurrentFamilyId]);
 
   const logout = useCallback(() => {
+    const refreshToken = localStorage.getItem('family_refresh_token') || undefined;
+    authAPI.logout(refreshToken).catch(() => {});
+
     setUser(null);
     setCurrentFamilyId(null);
     localStorage.removeItem('family_user');
     localStorage.removeItem('family_id');
     localStorage.removeItem('family_token');
+    localStorage.removeItem('family_refresh_token');
   }, [setCurrentFamilyId]);
 
   const refreshUser = useCallback(async () => {
@@ -135,6 +143,21 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       refreshUser();
     }
   }, [setCurrentFamilyId, refreshUser]);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setUser(null);
+      setCurrentFamilyIdState(null);
+      localStorage.removeItem('family_user');
+      localStorage.removeItem('family_id');
+      localStorage.removeItem('family_token');
+      localStorage.removeItem('family_refresh_token');
+      toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, []);
 
   const contextValue = React.useMemo(() => ({
     user,

@@ -41,6 +41,25 @@ export class AiAgentService {
   private readonly historyLimit = Number.parseInt(process.env.AI_HISTORY_LIMIT || '6', 10);
   private readonly groqContextWindow = Number.parseInt(process.env.GROQ_CONTEXT_WINDOW || '131072', 10);
   private readonly geminiContextWindow = Number.parseInt(process.env.GEMINI_CONTEXT_WINDOW || '1048576', 10);
+  private readonly genericFamilyNames = new Set([
+    'gia dinh',
+    'family',
+    'default family',
+    'tat ca gia dinh',
+    'all families',
+  ]);
+  private readonly genericFamilyWords = new Set([
+    'gia',
+    'dinh',
+    'family',
+    'families',
+    'nha',
+    'home',
+    'default',
+    'tat',
+    'ca',
+    'all',
+  ]);
 
   constructor(
     private readonly chatService: ChatService,
@@ -118,6 +137,18 @@ export class AiAgentService {
     });
   }
 
+  private getFamilyMatchTerms(familyName: string) {
+    const normalized = normalizeSearchText(familyName || '').trim();
+    const words = normalized.split(/\s+/).filter(Boolean);
+    const meaningfulWords = words.filter((word) => word.length > 2 && !this.genericFamilyWords.has(word));
+
+    return {
+      normalized,
+      meaningfulWords,
+      isGeneric: !normalized || this.genericFamilyNames.has(normalized) || meaningfulWords.length === 0,
+    };
+  }
+
 
   /**
    * Build skill context. Only fetches memory once, composes familyContext.
@@ -131,22 +162,94 @@ export class AiAgentService {
     trace?: any,
     sessionId?: string,
   ): Promise<AiSkillContext> {
-    const isFamilyAware = ['general_chat', 'calendar_query', 'event_mutation', 'meal_suggestion', 'horoscope', 'family_knowledge'].includes(intent);
-    const shouldRetrieveRag = this.shouldRetrieveRag(intent, userMessage);
+    const isFamilyAware = ['general_chat', 'calendar_query', 'event_mutation', 'meal_suggestion', 'horoscope', 'family_knowledge', 'football', 'web_search'].includes(intent);
 
-    const [memoryContext, familyRaw, history, ragResults] = await Promise.all([
+    // When familyId is 'all', fetch all user's families to determine if clarification is needed
+    const userFamiliesPromise = familyId === 'all'
+      ? this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            familyId: true,
+            family: { select: { id: true, name: true } },
+            families: { select: { id: true, name: true } },
+          },
+        }).then(u => {
+          const all: { id: string; name: string }[] = [];
+          if (u?.family) all.push(u.family);
+          for (const f of (u?.families || [])) {
+            if (!all.some(x => x.id === f.id)) all.push(f);
+          }
+          return all;
+        })
+      : Promise.resolve<{ id: string; name: string }[]>([]);
+
+    const userFamilies = await userFamiliesPromise;
+
+    // Smart resolve: try to match family name from current message + recent history
+    let resolvedFamilyId: string | undefined;
+    if (familyId !== 'all') {
+      resolvedFamilyId = familyId;
+    } else if (userFamilies.length === 1) {
+      resolvedFamilyId = userFamilies[0].id;
+    } else if (userFamilies.length > 1) {
+      // Try to detect which family the user mentioned in their message or recent history
+      const historyMessages = await this.chatService.getHistory(familyId, sessionId, 6);
+      const searchText = normalizeSearchText([
+        userMessage,
+        ...historyMessages.map((m: any) => m.content || ''),
+      ].join(' '));
+
+      const matchCandidates = userFamilies
+        .map((family) => ({
+          family,
+          ...this.getFamilyMatchTerms(family.name),
+        }))
+        .filter((candidate) => !candidate.isGeneric)
+        .sort((a, b) => b.normalized.length - a.normalized.length);
+
+      for (const { family: f, normalized, meaningfulWords } of matchCandidates) {
+        // Match exact specific family name first, then meaningful words.
+        if (normalized.length >= 4 && searchText.includes(normalized)) {
+          resolvedFamilyId = f.id;
+          this.logger.debug(`[FamilyResolve] Matched specific family "${f.name}" from message text`);
+          break;
+        }
+        if (meaningfulWords.length > 0 && meaningfulWords.every((word) => searchText.includes(word))) {
+          resolvedFamilyId = f.id;
+          this.logger.debug(`[FamilyResolve] Matched specific family "${f.name}" from word matching`);
+          break;
+        }
+      }
+    }
+
+    const ragFamilyId = resolvedFamilyId || familyId;
+
+    const [memoryContext, familyRaw, history] = await Promise.all([
       this.getMemoryContext(userId),
       isFamilyAware ? this.getFamilyContext(userId) : Promise.resolve(''),
       this.chatService.getHistory(familyId, sessionId, this.historyLimit),
-      shouldRetrieveRag ? this.ragService.searchFamilyKnowledge(familyId, userMessage, 3) : Promise.resolve([]),
     ]);
+    const ragQuery = this.buildRagQuery(userMessage, history, Boolean(resolvedFamilyId));
+    const shouldRetrieveRag = this.shouldRetrieveRag(intent, ragQuery);
+    const ragResults = shouldRetrieveRag
+      ? await this.ragService.searchFamilyKnowledge(ragFamilyId, ragQuery, 3)
+      : [];
+
+    // Only show disambiguation if we couldn't auto-resolve family from message
+    const disambiguationNotice = (familyId === 'all' && userFamilies.length > 1 && !resolvedFamilyId)
+      ? `USER IS VIEWING ALL FAMILIES. Their families:\n${userFamilies.map((f, i) => `${i + 1}. ${f.name} (id: ${f.id})`).join('\n')}\nINSTRUCTION: Ask the user ONCE which family to use. When they answer with a family name, call the tool immediately with that family's id — do NOT ask again.`
+      : resolvedFamilyId
+        ? `RESOLVED FAMILY: Using "${userFamilies.find(f => f.id === resolvedFamilyId)?.name || resolvedFamilyId}" (id: ${resolvedFamilyId}) for all write operations.`
+        : '';
 
     const ragContext = this.ragService.formatRagContext(ragResults);
     const ragFamilyContext = ragContext ? `FAMILY WIKI RETRIEVED CONTEXT:\n${ragContext}` : '';
-    const familyContext = [memoryContext, familyRaw, ragFamilyContext].filter(Boolean).join('\n\n');
+    const familyContext = [memoryContext, familyRaw, disambiguationNotice, ragFamilyContext].filter(Boolean).join('\n\n');
+
     return {
       userId,
       familyId,
+      resolvedFamilyId,
       userMessage,
       intent,
       image,
@@ -162,6 +265,20 @@ export class AiAgentService {
       history,
       trace,
     };
+  }
+
+  private buildRagQuery(userMessage: string, history: any[], hasResolvedFamily: boolean) {
+    const normalized = normalizeSearchText(userMessage || '').trim();
+    const words = normalized.split(/\s+/).filter(Boolean);
+    const isLikelyFamilySelection = hasResolvedFamily && words.length > 0 && words.length <= 4 && !/[?？]/.test(userMessage);
+    if (!isLikelyFamilySelection) return userMessage;
+
+    const previousUserQuestion = (history || [])
+      .filter((message: any) => message?.role === 'user')
+      .map((message: any) => String(message.content || '').trim())
+      .find((content: string) => content && normalizeSearchText(content) !== normalized);
+
+    return previousUserQuestion ? `${previousUserQuestion}\n${userMessage}` : userMessage;
   }
 
   private shouldRetrieveRag(intent: string, userMessage: string) {
@@ -180,6 +297,24 @@ export class AiAgentService {
       'thong tin gia dinh',
       'theo nha minh',
       'theo ghi chu',
+      'luu ',
+      'nho ',
+      'long memory',
+      'ky niem',
+      'save ',
+      'remember',
+    ];
+    const familyFactQuestionSignals = [
+      'bao nhieu',
+      'la gi',
+      'la ngay nao',
+      'ngay nao',
+      'ngay dau tien',
+      'dau tien',
+      'yeu nhau',
+      'thich gi',
+      'so thich',
+      'khong thich',
     ];
     const suggestionSignals = [
       'goi y',
@@ -195,11 +330,29 @@ export class AiAgentService {
     ];
 
     if (familySignals.some((signal) => normalized.includes(signal))) return true;
+    if (familyFactQuestionSignals.some((signal) => normalized.includes(signal))) return true;
     if (['meal_suggestion', 'calendar_query', 'event_mutation', 'horoscope'].includes(intent)) {
       return suggestionSignals.some((signal) => normalized.includes(signal));
     }
 
     return false;
+  }
+
+  private shouldAllowKnowledgeWriteTool(context: AiSkillContext) {
+    const normalized = normalizeSearchText(context.userMessage || '');
+    return /\b(luu|nho|ghi nho|long memory|so tay|rag|save|remember)\b/.test(normalized);
+  }
+
+  private shouldAllowGeneralMemoryTools(context: AiSkillContext) {
+    const normalized = normalizeSearchText(context.userMessage || '');
+    return /\b(luu|nho|ghi nho|so tay|long memory|rag|save|remember|toi thich|minh thich|khong thich|di ung|so thich|ghi chu)\b/.test(normalized);
+  }
+
+  private getSkillToolsForContext(skill: any, context: AiSkillContext) {
+    if (!skill.getTools) return [];
+    if (skill.name === 'FamilyKnowledgeSkill' && !this.shouldAllowKnowledgeWriteTool(context)) return [];
+    if (skill.name === 'GeneralChatSkill' && !this.shouldAllowGeneralMemoryTools(context)) return [];
+    return skill.getTools();
   }
 
   // ─── Model deps ────────────────────────────────────────────────────────────
@@ -255,6 +408,13 @@ export class AiAgentService {
     const skill = this.skillRegistry.getSkillForIntent(intentRoute.intent as any);
     this.logger.debug(`Selected AI skill ${skill.name} for intent ${intentRoute.intent}`);
     const skillContext = await this.getAiSkillContext(familyId, userMessage, targetUserId, intentRoute.intent, image, trace, sessionId);
+    const knowledgeSkill = this.skillRegistry.getAllSkills().find(s => s.name === 'FamilyKnowledgeSkill');
+
+    const directStructuredAction = await this.tryHandleStructuredMemoryEvent(skill, knowledgeSkill, skillContext);
+    if (directStructuredAction) {
+      await this.chatService.saveMessage(familyId, 'assistant', directStructuredAction, sessionId);
+      return { content: directStructuredAction, familyId, cached: false, direct: true };
+    }
 
     // Direct answer
     if (skill.tryDirectAnswer) {
@@ -272,23 +432,54 @@ export class AiAgentService {
         : { geminiModel: routedModel.model }
     );
     if (skill.executeTool) {
-      const original = deps.executeTool;
-      deps.executeTool = async (name, args, fid, uid) => {
-        const res = await skill.executeTool!(name, args, skillContext);
-        return res !== undefined ? res : original(name, args, fid, uid);
-      };
+      // Intentionally skip — unified dispatcher below handles this
     }
 
     // Redact PII before sending to external AI provider
     const { redacted: safeMessage, hits } = redactSensitiveData(userMessage, intentRoute.intent);
     if (hits.length > 0) this.logger.warn(`[chat] Redacted PII in message: ${hits.join(', ')}`);
 
+    const allowKnowledgeWrite = this.shouldAllowKnowledgeWriteTool(skillContext);
+    const skillTools = this.getSkillToolsForContext(skill, skillContext);
+    const knowledgeTools = knowledgeSkill?.getTools && allowKnowledgeWrite ? knowledgeSkill.getTools() : [];
+    const combinedTools = [...skillTools];
+    for (const kt of knowledgeTools) {
+      if (!combinedTools.some(st => st.function.name === kt.function.name)) {
+        combinedTools.push(kt);
+      }
+    }
+
+    // Unified tool dispatcher
+    const baseExecuteToolChat = deps.executeTool;
+    deps.executeTool = async (name: string, args: any, fid: string, uid: string) => {
+      this.logger.debug(`[ToolDispatch/chat] Executing tool: ${name}`);
+      if (name === 'createWikiEntry' && !this.shouldAllowKnowledgeWriteTool(skillContext)) {
+        return toolError(name, 'Knowledge write is disabled because the user is asking a question, not asking to save memory.');
+      }
+      if (skill.executeTool) {
+        const r = await skill.executeTool(name, args, skillContext);
+        if (r !== undefined) {
+          this.logger.debug(`[ToolDispatch/chat] ${name} handled by ${skill.name}`);
+          return r;
+        }
+      }
+      if (knowledgeSkill?.executeTool) {
+        const r = await knowledgeSkill.executeTool(name, args, skillContext);
+        if (r !== undefined) {
+          this.logger.debug(`[ToolDispatch/chat] ${name} handled by FamilyKnowledgeSkill`);
+          return r;
+        }
+      }
+      this.logger.warn(`[ToolDispatch/chat] No skill handled tool: ${name}, using baseExecuteTool`);
+      return baseExecuteToolChat(name, args, fid, uid);
+    };
+
     const chatInput = {
       familyId, history: skillContext.history || [], familyInfo: skillContext.familyContext || '',
       finalUserMessage: safeMessage, userId: targetUserId, intentRoute, sessionId, trace,
       image,
       systemPromptOverride: this.composePrompt(skillContext, skill.getSystemPrompt(skillContext)),
-      toolsOverride: skill.getTools?.(),
+      toolsOverride: combinedTools.length > 0 ? combinedTools : undefined,
     };
 
     const t0 = Date.now();
@@ -311,14 +502,28 @@ export class AiAgentService {
         tokenCount: result?.usage?.totalTokens,
       });
     }
-    if (cacheKey) setCachedResponse(cacheKey, result, getSkillTtl(intentRoute.intent));
-
     // Handle pseudo-function calls (hallucinations or text-based tools)
     if (result.content && result.content.includes('<function:')) {
       await this.interceptAndExecuteMutations(result.content, familyId, targetUserId, skill, skillContext);
+      result = {
+        ...result,
+        content: this.stripPseudoFunctionTags(result.content),
+      };
     }
 
+    if (cacheKey) setCachedResponse(cacheKey, result, getSkillTtl(intentRoute.intent));
+
     return { ...result, cached: false };
+  }
+
+  private stripPseudoFunctionTags(content: string) {
+    const stripped = content
+      .replace(/<function:\w+\b[^>]*>[\s\S]*?<\/function>/g, '')
+      .replace(/<function:\w+\b[^>]*\/?>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return stripped || 'Mình đã ghi nhận yêu cầu, nhưng cần bạn xác nhận trong app trước khi lưu thông tin này.';
   }
 
   /**
@@ -352,6 +557,77 @@ export class AiAgentService {
 
   // ─── Stream ────────────────────────────────────────────────────────────────
 
+  private extractExplicitTitleFromMessage(userMessage: string) {
+    const marker = userMessage.match(/(?:v[oớ]i\s+title|title|ti[eê]u\s*[dđ][eề])\s*[:：]?\s*/i);
+    if (!marker || marker.index === undefined) return '';
+
+    const start = marker.index + marker[0].length;
+    const rest = userMessage.slice(start);
+    const stop = rest.search(/(?:\.\s*)?(?:sau\s*[dđ][oó]|r[oồ]i|v[aà]\s+sau\s*[dđ][oó]|sau\s+[dđ][oó]\s+gi[uú]p)/i);
+
+    return (stop >= 0 ? rest.slice(0, stop) : rest)
+      .replace(/^[\s"']+|[\s"'.]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private getFullDateFromMessage(userMessage: string) {
+    const match = userMessage.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+    if (!match) return undefined;
+
+    return {
+      display: `${match[1].padStart(2, '0')}/${match[2].padStart(2, '0')}/${match[3]}`,
+      iso: `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`,
+    };
+  }
+
+  private buildEventTitleFromMemoryTitle(memoryTitle: string) {
+    return memoryTitle
+      .replace(/^\d{1,2}\/\d{1,2}\/\d{4}\s*(?:l[aà]\s*)?/i, '')
+      .trim() || memoryTitle || 'Kỷ niệm gia đình';
+  }
+
+  private async tryHandleStructuredMemoryEvent(skill: any, knowledgeSkill: any, context: AiSkillContext) {
+    const message = context.userMessage || '';
+    const normalized = normalizeSearchText(message);
+    const date = this.getFullDateFromMessage(message);
+    const wantsMemory = /\b(luu|nho|long memory|bo nho|so tay|rag)\b/.test(normalized);
+    const wantsEvent = /\b(tao su kien|them su kien|lich|calendar|anniversary|ky niem)\b/.test(normalized);
+    const wantsYearly = /\b(hang nam|moi nam|yearly|anniversary)\b/.test(normalized);
+
+    if (!date || !wantsMemory || !wantsEvent || !wantsYearly || !context.resolvedFamilyId) {
+      return undefined;
+    }
+
+    const calendarSkill = skill?.name === 'CalendarSkill'
+      ? skill
+      : this.skillRegistry.getAllSkills().find((candidate) => candidate.name === 'CalendarSkill');
+    if (!calendarSkill?.executeTool || !knowledgeSkill?.executeTool) return undefined;
+
+    const memoryTitle = this.extractExplicitTitleFromMessage(message) || `${date.display} là kỷ niệm gia đình`;
+    const eventTitle = this.buildEventTitleFromMemoryTitle(memoryTitle);
+
+    const memoryResult = await knowledgeSkill.executeTool('createWikiEntry', {
+      title: memoryTitle,
+      content: memoryTitle,
+      familyId: context.resolvedFamilyId,
+    }, context);
+
+    const eventResult = await calendarSkill.executeTool('createEvent', {
+      title: eventTitle,
+      description: memoryTitle,
+      date: date.iso,
+      scope: 'FAMILY',
+      type: 'ANNIVERSARY',
+      isRecurring: true,
+      recurring: 'YEARLY',
+      familyId: context.resolvedFamilyId,
+    }, context);
+
+    this.logger.debug(`[DirectStructuredAction] memory=${JSON.stringify(memoryResult)} event=${JSON.stringify(eventResult)}`);
+    return `Đã lưu vào sổ tay gia đình: ${memoryTitle}\nĐã tạo sự kiện kỷ niệm hằng năm: ${eventTitle} (${date.display}).`;
+  }
+
   async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
     const trace = createAiTrace('stream', modelSelection || 'groq', res);
 
@@ -382,6 +658,17 @@ export class AiAgentService {
     const skill = this.skillRegistry.getSkillForIntent(intentRoute.intent as any);
     this.logger.debug(`Selected AI stream skill ${skill.name} for intent ${intentRoute.intent}`);
     const skillContext = await this.getAiSkillContext(familyId, userMessage, targetUserId, intentRoute.intent, image, trace, sessionId);
+    const knowledgeSkill = this.skillRegistry.getAllSkills().find(s => s.name === 'FamilyKnowledgeSkill');
+
+    const directStructuredAction = await this.tryHandleStructuredMemoryEvent(skill, knowledgeSkill, skillContext);
+    if (directStructuredAction) {
+      await this.chatService.saveMessage(familyId, 'assistant', directStructuredAction, sessionId);
+      res.write(`data: ${JSON.stringify({ content: directStructuredAction })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      appendRequestLog({ type: 'stream', intent: intentRoute.intent, model: 'direct', latencyMs: 0, cached: false, redacted: false });
+      return;
+    }
 
     // Direct answer
     if (skill.tryDirectAnswer) {
@@ -401,24 +688,51 @@ export class AiAgentService {
         ? { groqModel: routedModel.model }
         : { geminiModel: routedModel.model }
     );
-    if (skill.executeTool) {
-      const original = deps.executeTool;
-      deps.executeTool = async (name, args, fid, uid) => {
-        const r = await skill.executeTool!(name, args, skillContext);
-        return r !== undefined ? r : original(name, args, fid, uid);
-      };
-    }
-
     // Redact PII before sending to external AI provider
     const { redacted: safeStreamMessage, hits: streamHits } = redactSensitiveData(userMessage, intentRoute.intent);
     if (streamHits.length > 0) this.logger.warn(`[stream] Redacted PII in message: ${streamHits.join(', ')}`);
+
+    const allowKnowledgeWrite = this.shouldAllowKnowledgeWriteTool(skillContext);
+    const skillTools = this.getSkillToolsForContext(skill, skillContext);
+    const knowledgeTools = knowledgeSkill?.getTools && allowKnowledgeWrite ? knowledgeSkill.getTools() : [];
+    const combinedTools = [...skillTools];
+    for (const kt of knowledgeTools) {
+      if (!combinedTools.some(st => st.function.name === kt.function.name)) {
+        combinedTools.push(kt);
+      }
+    }
+
+    // Build unified tool dispatcher - try CalendarSkill first, then FamilyKnowledgeSkill, then fallback
+    const baseExecuteTool = deps.executeTool;
+    deps.executeTool = async (name: string, args: any, fid: string, uid: string) => {
+      this.logger.debug(`[ToolDispatch] Executing tool: ${name}`);
+      if (name === 'createWikiEntry' && !this.shouldAllowKnowledgeWriteTool(skillContext)) {
+        return toolError(name, 'Knowledge write is disabled because the user is asking a question, not asking to save memory.');
+      }
+      if (skill.executeTool) {
+        const r = await skill.executeTool(name, args, skillContext);
+        if (r !== undefined) {
+          this.logger.debug(`[ToolDispatch] ${name} handled by ${skill.name}`);
+          return r;
+        }
+      }
+      if (knowledgeSkill?.executeTool) {
+        const r = await knowledgeSkill.executeTool(name, args, skillContext);
+        if (r !== undefined) {
+          this.logger.debug(`[ToolDispatch] ${name} handled by FamilyKnowledgeSkill`);
+          return r;
+        }
+      }
+      this.logger.warn(`[ToolDispatch] No skill handled tool: ${name}, using baseExecuteTool`);
+      return baseExecuteTool(name, args, fid, uid);
+    };
 
     const streamInput = {
       familyId, history: skillContext.history || [], familyInfo: skillContext.familyContext || '',
       finalUserMessage: safeStreamMessage, userId: targetUserId, intentRoute, sessionId, trace, res,
       image,
       systemPromptOverride: this.composePrompt(skillContext, skill.getSystemPrompt(skillContext)),
-      toolsOverride: skill.getTools?.(),
+      toolsOverride: combinedTools.length > 0 ? combinedTools : undefined,
     };
 
     const t1 = Date.now();
@@ -431,7 +745,19 @@ export class AiAgentService {
       }
     } catch (err: any) {
       streamError = err?.message || 'Unknown error';
-      throw err;
+      const errorMessage = streamError || 'Unknown error';
+      const fallbackMessage = /failed to call a function/i.test(errorMessage)
+        ? 'AI đang gặp chút khó khăn khi xử lý yêu cầu phức tạp này. Bạn thử đặt câu hỏi đơn giản hơn hoặc gửi lại sau vài giây nhé.'
+        : 'Kết nối AI đang gặp lỗi tạm thời (Timeout hoặc Quá tải). Bạn thử lại sau ít phút nhé.';
+      this.logger.error(`[chatStream] ${errorMessage}`);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ content: fallbackMessage })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
+      await this.chatService.saveMessage(familyId, 'assistant', fallbackMessage, sessionId);
+      return;
     } finally {
       appendRequestLog({
         type: 'stream',

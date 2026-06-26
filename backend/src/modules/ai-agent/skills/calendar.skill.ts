@@ -169,6 +169,28 @@ export class CalendarSkill implements AiSkill {
         }
 
         case 'createEvent': {
+          // ALWAYS use resolvedFamilyId from context — never trust AI-provided familyId
+          const createFamilyId = context.resolvedFamilyId;
+
+          if (!createFamilyId) {
+            // User is in 'all families' mode with multiple families — ask for clarification
+            return { needsClarification: true, message: 'TOOL_NEEDS_CLARIFICATION: Please ask the user which specific family they want to create this event in before calling this tool again.' };
+          }
+
+          const fullDateMatch = (context.userMessage || '').match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+          if (fullDateMatch) {
+            args.date = `${fullDateMatch[3]}-${fullDateMatch[2].padStart(2, '0')}-${fullDateMatch[1].padStart(2, '0')}`;
+          }
+
+          const normalizedMessage = normalizeSearchText(context.userMessage || '');
+          const yearlySignal = /\b(hang nam|moi nam|yearly|anniversary)\b/i.test(normalizedMessage);
+          if (yearlySignal && !args.recurring) {
+            args.recurring = 'YEARLY';
+            args.isRecurring = true;
+          }
+
+          console.log(`[CalendarSkill] createEvent: familyId=${createFamilyId}, date=${args.date}, title=${args.title}, recurring=${args.recurring}`);
+
           let eventDate = new Date(args.date);
           if (args.time) {
             const [hours, minutes] = args.time.split(':').map(Number);
@@ -176,14 +198,16 @@ export class CalendarSkill implements AiSkill {
               eventDate.setHours(hours, minutes, 0, 0);
             }
           }
-          const event = await this.eventsService.create(args.familyId || context.familyId, context.userId, {
+          const event = await this.eventsService.create(createFamilyId, context.userId, {
             ...args,
+            familyId: createFamilyId,
             date: eventDate,
             time: args.time || '09:00',
             recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
               ? `LUNAR_${args.recurring}`
               : args.recurring,
           });
+          console.log(`[CalendarSkill] Event created: id=${(event as any)?.id}`);
           return toolSuccess(toolName, event);
         }
 

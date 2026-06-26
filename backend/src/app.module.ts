@@ -27,12 +27,12 @@ import { TelegramModule } from './modules/telegram/telegram.module';
       {
         name: 'default',
         ttl: 60000,  // 1 minute window
-        limit: 60,   // 60 req/min for general endpoints
+        limit: 200,  // 200 req/min for general endpoints
       },
       {
         name: 'ai',
         ttl: 60000,  // 1 minute window
-        limit: 20,   // 20 req/min for AI endpoints
+        limit: 60,   // 60 req/min for AI endpoints
       },
     ]),
     PrismaModule,

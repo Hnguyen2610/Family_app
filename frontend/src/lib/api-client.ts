@@ -1,6 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const ACCESS_TOKEN_KEY = 'family_token';
+const REFRESH_TOKEN_KEY = 'family_refresh_token';
+export const AUTH_EXPIRED_EVENT = 'family_auth_expired';
 
 type ChatSendOptions = {
   userId?: string;
@@ -44,16 +47,90 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+let refreshPromise: Promise<string | null> | null = null;
+let authExpiredDispatched = false;
+
+function clearAuthCache() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem('family_user');
+  localStorage.removeItem('family_id');
+}
+
+function dispatchAuthExpired() {
+  if (authExpiredDispatched) return;
+  authExpiredDispatched = true;
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+}
+
+async function refreshAccessToken() {
+  if (typeof window === 'undefined') return null;
+
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!refreshToken) return null;
+
+  refreshPromise ??= axios
+    .post(`${API_URL}/api/auth/refresh`, { refreshToken })
+    .then((response) => {
+      const { accessToken, refreshToken: nextRefreshToken, user } = response.data;
+      if (!accessToken || !nextRefreshToken) return null;
+
+      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
+      if (user) localStorage.setItem('family_user', JSON.stringify(user));
+      authExpiredDispatched = false;
+      return accessToken as string;
+    })
+    .catch(() => {
+      clearAuthCache();
+      dispatchAuthExpired();
+      return null;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+}
+
 // Add a request interceptor to include the JWT token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('family_token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config as any;
+    const status = error.response?.status;
+    const url = originalRequest?.url || '';
+    const isAuthRefreshRequest = url.includes('/api/auth/google') || url.includes('/api/auth/refresh');
+
+    if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRefreshRequest) {
+      originalRequest._retry = true;
+      const accessToken = await refreshAccessToken();
+      if (accessToken) {
+        originalRequest.headers = {
+          ...originalRequest.headers,
+          Authorization: `Bearer ${accessToken}`,
+        };
+        return apiClient(originalRequest);
+      }
+      if (typeof window !== 'undefined') {
+        clearAuthCache();
+        dispatchAuthExpired();
+      }
+    }
+
     return Promise.reject(error);
   }
 );
@@ -141,8 +218,7 @@ export const chatAPI = {
     options: ChatSendOptions = {}
   ) => {
     const { userId, sessionId, image, model, signal } = options;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('family_token') : null;
-    const response = await fetch(`${API_URL}/api/chat/stream`, {
+    const buildRequest = (token: string | null) => fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -151,6 +227,16 @@ export const chatAPI = {
       body: JSON.stringify({ familyId, content, userId, sessionId, image, model }),
       signal,
     });
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
+    let response = await buildRequest(token);
+
+    if (response.status === 401) {
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) {
+        response = await buildRequest(refreshedToken);
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
@@ -181,6 +267,8 @@ export const chatAPI = {
               onCached?.(!!parsed.cached);
             } else if (parsed.type === 'status') {
               onStatus?.(parsed.status, parsed);
+            } else if (parsed.type === 'replace_content') {
+              onStatus?.('replace_content', parsed);
             } else if (parsed.type === 'memory_consent_request') {
               onStatus?.('memory_consent_request', parsed);
             }
@@ -212,6 +300,13 @@ export const chatAPI = {
   }) => apiClient.post('/api/chat/knowledge', data),
   getKnowledgeDocuments: (familyId: string) =>
     apiClient.get('/api/chat/knowledge', { params: { familyId } }),
+  getKnowledgeDocument: (id: string, familyId: string) =>
+    apiClient.get(`/api/chat/knowledge/${id}`, { params: { familyId } }),
+  updateKnowledgeDocument: (id: string, familyId: string, data: {
+    title: string;
+    content: string;
+    metadata?: Record<string, any>;
+  }) => apiClient.patch(`/api/chat/knowledge/${id}`, data, { params: { familyId } }),
   deleteKnowledgeDocument: (id: string, familyId: string) =>
     apiClient.delete(`/api/chat/knowledge/${id}`, { params: { familyId } }),
   createVisionDraft: (data: {
@@ -254,6 +349,10 @@ export const usersAPI = {
 export const authAPI = {
   loginWithGoogle: (token: string) =>
     apiClient.post('/api/auth/google', { token }),
+  refresh: (refreshToken: string) =>
+    apiClient.post('/api/auth/refresh', { refreshToken }),
+  logout: (refreshToken?: string) =>
+    apiClient.post('/api/auth/logout', { refreshToken }),
   getProfile: () => apiClient.get('/api/auth/profile'),
 };
 

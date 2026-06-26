@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 
 import { eventsAPI } from '@/lib/api-client';
-import { getCalendarDays, isToday } from '@/utils/date';
+import { getCalendarDateKey, getCalendarDays, isSameCalendarDate, isToday } from '@/utils/date';
 import { useTranslation, TranslationKey } from '@/lib/i18n';
 import {
   FiChevronLeft,
@@ -95,13 +95,13 @@ export default function Calendar() {
     } else {
       fetchEvents();
     }
-  }, [month, year, familyId, eventsCache]);
+  }, [month, year, familyId]);
 
   // Background polling for events every 15 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchEvents(true); // forceRefresh=true to bypass cache
-    }, 15000);
+    }, 60000); // Poll every 60 seconds
     return () => clearInterval(interval);
   }, [month, year, familyId, creatorId]);
 
@@ -145,6 +145,12 @@ export default function Calendar() {
     }
   };
 
+  const getMobileEventLabel = (event: any) => {
+    const title = String(event.title || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+    if (!title) return event.time || 'Event';
+    return title.length > 10 ? `${title.slice(0, 10)}...` : title;
+  };
+
   const handleDayClick = (day: number) => {
     setSelectedDate(day);
   };
@@ -171,7 +177,7 @@ export default function Calendar() {
     setFormData({
       title: event.title,
       description: event.description || '',
-      date: event.date || format(new Date(), 'yyyy-MM-dd'),
+      date: event.date ? getCalendarDateKey(event.date) : format(new Date(), 'yyyy-MM-dd'),
       type: event.type,
       time: event.time || '09:00',
       scope: event.scope,
@@ -189,12 +195,19 @@ export default function Calendar() {
       return;
     }
 
-    const eventDate = new Date(year, month - 1, selectedDate!);
-    const targetFamilyId = editingEvent ? editingEvent.familyId : (user?.familyId || currentFamilyId);
+    const targetFamilyId = editingEvent
+      ? editingEvent.familyId
+      : formData.scope === 'GLOBAL'
+        ? 'system'
+        : (currentFamilyId === 'all' ? user?.familyId : (currentFamilyId || user?.familyId));
     const creatorId = user?.id;
 
     if (!targetFamilyId || !creatorId) {
       toast.error(language === 'vi' ? 'Vui lòng đăng nhập' : 'Please login');
+      return;
+    }
+    if (formData.scope === 'FAMILY' && currentFamilyId === 'all') {
+      toast.error(language === 'vi' ? 'Hãy chọn một gia đình cụ thể trước khi tạo lịch gia đình' : 'Choose a specific family before creating a family event');
       return;
     }
 
@@ -204,7 +217,7 @@ export default function Calendar() {
 
     const payload = {
       ...formData,
-      date: eventDate.toISOString(),
+      date: formData.date,
       isRecurring: formData.recurring !== 'NONE',
       recurring: finalRecurring,
     };
@@ -221,13 +234,17 @@ export default function Calendar() {
       fetchEvents(true);
     } catch (error) {
       console.error('Failed to save event:', error);
-      toast.error(t('common.error'));
+      const message = (error as any)?.response?.data?.message;
+      toast.error(Array.isArray(message) ? message.join(', ') : message || t('common.error'));
     }
   };
 
   const handleDeleteEvent = async (id: string) => {
     const creatorId = user?.id;
-    const targetFamilyId = user?.familyId || currentFamilyId;
+    const targetFamilyId =
+      editingEvent?.familyId ||
+      (currentFamilyId === 'all' ? user?.familyId : currentFamilyId) ||
+      user?.familyId;
     
     if (!creatorId || !targetFamilyId) return;
     if (!confirm(language === 'vi' ? 'Bạn có chắc chắn muốn xóa?' : 'Are you sure?')) return;
@@ -240,7 +257,8 @@ export default function Calendar() {
       fetchEvents(true);
     } catch (error) {
       console.error('Failed to delete event:', error);
-      toast.error(t('common.error'));
+      const message = (error as any)?.response?.data?.message;
+      toast.error(Array.isArray(message) ? message.join(', ') : message || t('common.error'));
     }
   };
 
@@ -481,63 +499,60 @@ export default function Calendar() {
   );
 
   return (
-    <div className="space-y-10">
-      <div className="animate-in fade-in duration-700 space-y-10">
+    <div className="space-y-6 md:space-y-10">
+      <div className="animate-in fade-in duration-700 space-y-6 md:space-y-10">
 
       {/* Calendar Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-white/5 pb-10">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-3xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-8 border-b border-white/5 pb-4 md:pb-10">
+        <div className="flex items-center gap-4 md:gap-6">
+          <div className="hidden sm:flex w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-primary/10 border border-primary/20 text-primary items-center justify-center text-2xl md:text-3xl">
             <FiCalendar />
           </div>
           <div>
-            <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-2">
+            <div className="hidden sm:inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-2">
               {t('nav.calendarFull')}
             </div>
-            <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tighter capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
+            <h2 className="text-2xl md:text-5xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tighter capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-1 md:pb-4 leading-[1.1]">
               {t(monthKeys[month - 1])} <span className="text-primary">{year}</span>
             </h2>
          </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex bg-white dark:bg-slate-900 border border-black/5 dark:border-white/5 p-1.5 rounded-xl">
+          <div className="flex w-full sm:w-auto bg-white dark:bg-slate-900 border border-black/5 dark:border-white/5 p-1 rounded-xl shadow-sm">
             <button
               onClick={() => setCurrentDate(new Date(year, month - 2, 1))}
-              className="p-3 bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-lg transition-all text-slate-600 dark:text-slate-500 hover:text-primary hover:border-primary/30"
+              className="p-2.5 md:p-3 bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-lg transition-all text-slate-600 dark:text-slate-500 hover:text-primary hover:border-primary/30"
             >
-              <FiChevronLeft size={20} />
+              <FiChevronLeft size={18} />
             </button>
             <button
               onClick={() => setCurrentDate(new Date())}
-              className="px-6 py-2 text-[10px] font-black text-slate-500 dark:text-slate-400 hover:text-primary transition-all uppercase tracking-widest"
+              className="flex-1 sm:flex-none px-5 md:px-6 py-2 text-[10px] font-black text-slate-500 dark:text-slate-400 hover:text-primary transition-all uppercase tracking-widest"
             >
                {t('calendar.today')}
             </button>
             <button
               onClick={() => setCurrentDate(new Date(year, month, 1))}
-              className="p-3 bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-lg transition-all text-slate-600 dark:text-slate-500 hover:text-primary hover:border-primary/30"
+              className="p-2.5 md:p-3 bg-slate-100 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-lg transition-all text-slate-600 dark:text-slate-500 hover:text-primary hover:border-primary/30"
             >
-              <FiChevronRight size={20} />
+              <FiChevronRight size={18} />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="relative group">
-        <div className="grid grid-cols-7 gap-1 md:gap-4">
+      <div className="relative group rounded-3xl bg-white/60 dark:bg-slate-950/20 p-3 md:p-0 shadow-sm md:shadow-none border border-black/5 md:border-0">
+        <div className="grid grid-cols-7 gap-1.5 md:gap-4">
           {dayKeys.map((dayKey) => (
-            <div key={dayKey} className="pb-2 md:pb-4 text-center text-[7px] md:text-[9px] font-black text-slate-500 uppercase tracking-tighter md:tracking-[0.2em]">
+            <div key={dayKey} className="pb-1.5 md:pb-4 text-center text-[6.5px] md:text-[9px] font-black text-slate-500 uppercase tracking-tighter md:tracking-[0.2em]">
               {t(dayKey)}
             </div>
           ))}
 
           {days.map((day, index) => {
             const dayKey = day ? `day-${year}-${month}-${day}` : `padding-${index}`;
-            const dayEvents = day ? events.filter(e => {
-              const d = new Date(e.date);
-              return d.getDate() === day && d.getMonth() === month - 1 && d.getFullYear() === year;
-            }) : [];
+            const dayEvents = day ? events.filter(e => isSameCalendarDate(e.date, year, month, day)) : [];
             const isTodayDate = day && isToday(new Date(year, month - 1, day));
             const isSelected = selectedDate === day;
 
@@ -546,7 +561,7 @@ export default function Calendar() {
 
               let styles = 'cursor-pointer ';
               if (isSelected) {
-                styles += 'bg-primary/10 dark:bg-slate-800 border-primary shadow-xl z-10 scale-[1.02] shadow-primary/5';
+                styles += 'bg-primary/10 dark:bg-slate-800 border-primary shadow-lg md:shadow-xl z-10 md:scale-[1.02] shadow-primary/5';
               } else if (isTodayDate) {
                 styles += 'bg-primary/5 border-primary/20 bg-white/40 dark:bg-primary/5';
               } else {
@@ -559,17 +574,17 @@ export default function Calendar() {
               <div
                 key={dayKey}
                 onClick={() => day && handleDayClick(day)}
-                className={`min-h-[100px] md:min-h-[160px] p-4 rounded-xl border transition-all duration-500 relative group/day ${getDayStyles()}`}
+                className={`min-h-[88px] md:min-h-[160px] p-2 md:p-4 rounded-2xl md:rounded-xl border transition-all duration-300 md:duration-500 relative group/day ${getDayStyles()}`}
               >
                 {day && (
                   <>
                     <div className="flex justify-between items-start">
-                      <div className="flex flex-col">
-                        <span className={`text-xl font-black ${isTodayDate ? 'text-primary' : 'text-slate-700 dark:text-slate-300'}`}>
+                      <div className="flex flex-col min-w-0">
+                        <span className={`text-base md:text-xl font-black leading-none ${isTodayDate ? 'text-primary' : 'text-slate-700 dark:text-slate-300'}`}>
                           {day}
                         </span>
                         {language === 'vi' && (
-                          <span className="text-[9px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-tighter">
+                          <span className="mt-1 text-[7px] md:text-[9px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-tighter">
                             {formatLunarDate(getLunarDate(day, month, year))}
                           </span>
                         )}
@@ -577,13 +592,13 @@ export default function Calendar() {
 
                       <button
                         onClick={(e) => { e.stopPropagation(); openAddModal(day); }}
-                        className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-500 flex items-center justify-center opacity-0 group-hover/day:opacity-100 transition-all hover:bg-primary hover:text-primary-foreground border border-black/5 dark:border-white/5"
+                        className="hidden md:flex w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-500 items-center justify-center opacity-0 group-hover/day:opacity-100 transition-all hover:bg-primary hover:text-primary-foreground border border-black/5 dark:border-white/5"
                       >
                         <FiPlus size={14} />
                       </button>
                     </div>
 
-                    <div className="mt-4 space-y-2 overflow-hidden">
+                    <div className="mt-2 md:mt-4 space-y-1 md:space-y-2 overflow-hidden">
                       {dayEvents.slice(0, 2).map((event) => {
                         const getEventStyles = () => {
                           if (event.type === 'BIRTHDAY') return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
@@ -594,9 +609,13 @@ export default function Calendar() {
                           <div
                             key={event.id}
                             onClick={(e) => { e.stopPropagation(); openEditModal(event); }}
-                            className={`px-2 py-1.5 rounded-lg text-[9px] font-black truncate border transition-all hover:scale-105 ${getEventStyles()}`}
+                            className={`min-h-[16px] md:h-auto px-1 md:px-2 py-0.5 md:py-1.5 rounded-md md:rounded-lg text-[7px] md:text-[9px] font-black truncate border transition-all hover:scale-105 ${getEventStyles()}`}
+                            title={event.title}
                           >
-                            <span className="flex items-center gap-1.5 uppercase tracking-tighter">
+                            <span className="md:hidden block leading-none truncate">
+                              {getMobileEventLabel(event)}
+                            </span>
+                            <span className="hidden md:flex items-center gap-1.5 uppercase tracking-tighter">
                               {getEventIcon(event.type)}
                               {event.title}
                             </span>
@@ -604,7 +623,7 @@ export default function Calendar() {
                         );
                       })}
                       {dayEvents.length > 2 && (
-                        <p className="text-[8px] font-black text-slate-500 dark:text-slate-600 text-center uppercase tracking-widest pt-1">
+                        <p className="text-[7px] md:text-[8px] font-black text-slate-500 dark:text-slate-600 text-center uppercase tracking-widest pt-0.5 md:pt-1">
                           + {dayEvents.length - 2} {language === 'vi' ? 'Sự kiện' : 'Ledger Entries'}
                         </p>
                       )}
@@ -647,20 +666,14 @@ export default function Calendar() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {events.filter(e => {
-                const d = new Date(e.date);
-                return d.getDate() === selectedDate && d.getMonth() === month - 1 && d.getFullYear() === year;
-              }).length === 0 ? (
+              {events.filter(e => isSameCalendarDate(e.date, year, month, selectedDate)).length === 0 ? (
                 <div className="col-span-full py-20 text-center glass-dark rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
                   <FiClock className="text-slate-400 dark:text-slate-800 text-4xl mx-auto mb-4" />
                   <p className="text-[10px] text-slate-500 dark:text-slate-600 font-black uppercase tracking-widest">{t('calendar.noEvents')}</p>
                 </div>
               ) : (
                 events
-                  .filter(e => {
-                    const d = new Date(e.date);
-                    return d.getDate() === selectedDate && d.getMonth() === month - 1 && d.getFullYear() === year;
-                  })
+                  .filter(e => isSameCalendarDate(e.date, year, month, selectedDate))
                   .map((event) => (
                     <div
                       key={event.id}
