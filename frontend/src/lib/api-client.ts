@@ -15,6 +15,7 @@ type ChatSendOptions = {
 
 type VisionDraftKind = 'auto' | 'receipt' | 'medicine' | 'school_plan';
 type VisionDraftStatus = 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
+export type AiFeedbackValue = 'correct' | 'wrong' | 'missing_context' | 'wrong_family' | 'wrong_datetime';
 
 export type ChatUsage = {
   provider: 'groq' | 'gemini';
@@ -267,6 +268,8 @@ export const chatAPI = {
               onCached?.(!!parsed.cached);
             } else if (parsed.type === 'status') {
               onStatus?.(parsed.status, parsed);
+            } else if (parsed.type === 'request_log_id') {
+              onStatus?.('request_log_id', parsed);
             } else if (parsed.type === 'replace_content') {
               onStatus?.('replace_content', parsed);
             } else if (parsed.type === 'memory_consent_request') {
@@ -323,8 +326,18 @@ export const chatAPI = {
     }),
   updateVisionDraftStatus: (id: string, familyId: string, status: VisionDraftStatus) =>
     apiClient.patch(`/api/chat/vision/drafts/${id}/status`, { status }, { params: { familyId } }),
-  getAdminStats: (adminSecret: string) =>
-    apiClient.get('/api/chat/admin/stats', { headers: { 'x-admin-secret': adminSecret } }),
+  sendFeedback: (data: {
+    requestLogId: string;
+    value: AiFeedbackValue;
+    source?: 'web' | 'telegram' | 'admin';
+    userId?: string;
+    comment?: string;
+  }) => apiClient.post('/api/chat/feedback', data),
+  getAdminStats: (adminSecret: string, filters?: { model?: string; skill?: string; status?: string; familyId?: string; hasRag?: string }) =>
+    apiClient.get('/api/chat/admin/stats', {
+      headers: { 'x-admin-secret': adminSecret },
+      params: filters,
+    }),
 };
 
 // Families API
@@ -354,6 +367,34 @@ export const authAPI = {
   logout: (refreshToken?: string) =>
     apiClient.post('/api/auth/logout', { refreshToken }),
   getProfile: () => apiClient.get('/api/auth/profile'),
+};
+
+export type WeatherSummary = {
+  available: boolean;
+  provider: string;
+  location: string;
+  current?: {
+    tempC: number;
+    feelsLikeC: number;
+    condition: string;
+    humidity: number;
+    windKph: number;
+    icon?: string;
+    updatedAt?: string;
+  };
+  tomorrow?: {
+    location: string;
+    date: string;
+    condition: string;
+    chanceOfRain: number;
+    totalPrecipMm: number;
+    maxTempC: number;
+    minTempC: number;
+  };
+};
+
+export const weatherAPI = {
+  getSummary: () => apiClient.get<WeatherSummary>('/api/weather/summary'),
 };
 
 export const notificationsAPI = {

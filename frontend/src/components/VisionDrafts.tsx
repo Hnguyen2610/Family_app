@@ -286,6 +286,36 @@ export default function VisionDrafts() {
     }
   };
 
+  const handleSaveKnowledge = async (draft: VisionDraft) => {
+    const content = draft.rawText || draft.structuredData?.rawText || draft.summary || '';
+    if (!familyId || !content.trim()) {
+      toast.error(language === 'vi' ? 'Draft khÃ´ng cÃ³ ná»™i dung RAG há»£p lá»‡' : 'Draft has no valid knowledge content');
+      return;
+    }
+
+    setBusyDraftId(draft.id);
+    try {
+      await chatAPI.createKnowledgeDocument({
+        familyId,
+        title: draft.summary || draft.structuredData?.summary || 'Vision draft note',
+        content,
+        userId: user?.id,
+        metadata: {
+          category: draft.draftType || 'vision',
+          source: 'vision_draft',
+          draftId: draft.id,
+        },
+      });
+      await markDraft(draft.id, 'CONFIRMED');
+      toast.success(language === 'vi' ? 'ÄÃ£ lÆ°u vÃ o sá»• tay gia Ä‘Ã¬nh' : 'Saved to family knowledge');
+    } catch (error) {
+      console.error('Failed to save vision draft to knowledge:', error);
+      toast.error(language === 'vi' ? 'KhÃ´ng lÆ°u Ä‘Æ°á»£c vÃ o sá»• tay' : 'Unable to save to family knowledge');
+    } finally {
+      setBusyDraftId(null);
+    }
+  };
+
   const markDraft = async (id: string, nextStatus: Exclude<VisionDraftStatus, 'ALL'>) => {
     if (!familyId) return;
     await chatAPI.updateVisionDraftStatus(id, familyId, nextStatus);
@@ -428,6 +458,7 @@ export default function VisionDrafts() {
               language={language}
               onSaveTransaction={() => handleSaveTransaction(draft)}
               onSaveEvents={() => handleSaveEvents(draft)}
+              onSaveKnowledge={() => handleSaveKnowledge(draft)}
               onDismiss={() => handleDismiss(draft)}
               labels={copy}
               t={t}
@@ -446,6 +477,7 @@ function DraftCard({
   labels,
   onSaveTransaction,
   onSaveEvents,
+  onSaveKnowledge,
   onDismiss,
   t,
 }: {
@@ -455,6 +487,7 @@ function DraftCard({
   labels: Record<string, string>;
   onSaveTransaction: () => void;
   onSaveEvents: () => void;
+  onSaveKnowledge: () => void;
   onDismiss: () => void;
   t: (key: any) => string;
 }) {
@@ -462,6 +495,7 @@ function DraftCard({
   const transaction = data.transactionDraft;
   const events = data.eventDrafts || [];
   const warnings = data.warnings || data.medicineDraft?.warnings || [];
+  const hasKnowledgeContent = Boolean(draft.rawText || data.rawText || draft.summary || data.summary);
   const canAct = draft.status === 'DRAFT' && !busy;
 
   const typeLabel = t(`vision.type.${draft.draftType.toLowerCase()}` as any);
@@ -562,6 +596,12 @@ function DraftCard({
           <Button onClick={onSaveEvents} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
             <FiCalendar />
             {busy ? 'Saving...' : labels.saveEvents}
+          </Button>
+        )}
+        {hasKnowledgeContent && (
+          <Button onClick={onSaveKnowledge} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
+            <FiFileText />
+            {busy ? 'Saving...' : 'Save note'}
           </Button>
         )}
         {draft.status === 'DRAFT' && (

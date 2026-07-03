@@ -1,0 +1,135 @@
+[
+  {
+    "id": "image.attached",
+    "group": "image",
+    "input": "noi dung anh la gi",
+    "hasImage": true,
+    "expectedIntent": "image_vision",
+    "expectedSkill": "VisionSkill",
+    "expectedRequiresTools": false,
+    "expectedReason": "image_attached"
+  },
+  {
+    "id": "gold.today",
+    "group": "gold_search",
+    "input": "gia vang hom nay bao nhieu",
+    "expectedIntent": "gold_price",
+    "expectedSkill": "MarketSkill",
+    "expectedTool": "getGoldPrice",
+    "expectedRequiresTools": true,
+    "expectedReason": "gold_price_keyword"
+  },
+  {
+    "id": "horoscope.today",
+    "group": "horoscope",
+    "input": "tu vi hom nay cua toi the nao",
+    "expectedIntent": "horoscope",
+    "expectedSkill": "HoroscopeSkill",
+    "expectedRequiresTools": false,
+    "expectedReason": "horoscope_keyword"
+  },
+  {
+    "id": "calendar.month",
+    "group": "calendar_query",
+    "input": "lich thang nay co gi",
+    "expectedIntent": "calendar_query",
+    "expectedSkill": "CalendarSkill",
+    "expectedTool": "getEventsByMonth",
+    "expectedRequiresTools": true,
+    "expectedReason": "calendar_keyword"
+  },
+  {
+    "id": "calendar.events.today",
+    "group": "calendar_query",
+    "input": "hom nay co su kien gi",
+    "expectedIntent": "calendar_query",
+    "expectedSkill": "CalendarSkill",
+    "expectedTool": "getEventsByMonth",
+    "expectedRequiresTools": true,
+    "expectedReason": "calendar_keyword"
+  },
+  {
+    "id": "event.create",
+    "group": "event_mutation",
+    "input": "tao lich da bong ngay mai luc 9 gio toi",
+    "expectedIntent": "event_mutation",
+    "expectedSkill": "CalendarSkill",
+    "expectedTool": "createEvent",
+    "expectedRequiresTools": true,
+    "expectedReason": "event_mutation_keyword"
+  },
+  {
+    "id": "football.worldcup.today",
+    "group": "football_broad_schedule",
+    "input": "lich thi dau world cup hom nay",
+    "expectedIntent": "football",
+    "expectedSkill": "FootballSkill",
+    "expectedTool": "get_matches",
+    "expectedRequiresTools": true,
+    "expectedReason": "broad_football_request"
+  },
+  {
+    "id": "football.team.next",
+    "group": "football_specific_team_schedule",
+    "input": "lich thi dau tiep theo cua argentina la hom nao",
+    "expectedIntent": "general_chat",
+    "expectedSkill": "IntentClassifier",
+    "expectedRequiresTools": false,
+    "expectedReasonPrefix": "needs_intent_classifier:"
+  },
+  {
+    "id": "football.team.worldcup",
+    "group": "football_specific_team_schedule",
+    "input": "lich thi dau tiep theo cua argentina o world cup la hom nao",
+    "expectedIntent": "web_search",
+    "expectedSkill": "IntentClassifier",
+    "expectedRequiresTools": true,
+    "expectedReasonPrefix": "needs_intent_classifier:"
+  },
+  {
+    "id": "family.food.preference",
+    "group": "family_knowledge",
+    "input": "yen thich an gi",
+    "expectedIntent": "family_knowledge",
+    "expectedSkill": "FamilyKnowledgeSkill",
+    "expectedRequiresTools": false,
+    "expectedReason": "family_food_preference_question"
+  },
+  {
+    "id": "meal.suggestion",
+    "group": "meal",
+    "input": "hom nay an gi",
+    "expectedIntent": "meal_suggestion",
+    "expectedSkill": "MealSkill",
+    "expectedTool": "generateFamilyMenu",
+    "expectedRequiresTools": true,
+    "expectedReason": "meal_keyword"
+  },
+  {
+    "id": "weather.today.hanoi",
+    "group": "weather",
+    "input": "thoi tiet hom nay ha noi nhu the nao",
+    "expectedIntent": "weather",
+    "expectedSkill": "WeatherSkill",
+    "expectedRequiresTools": false,
+    "expectedReason": "weather_keyword"
+  },
+  {
+    "id": "weather.tomorrow.rain",
+    "group": "weather",
+    "input": "ngay mai ha noi co mua khong",
+    "expectedIntent": "weather",
+    "expectedSkill": "WeatherSkill",
+    "expectedRequiresTools": false,
+    "expectedReason": "weather_keyword"
+  },
+  {
+    "id": "factual.realtime",
+    "group": "gold_search",
+    "input": "world cup nam nay co bao nhieu doi",
+    "expectedIntent": "web_search",
+    "expectedSkill": "IntentClassifier",
+    "expectedRequiresTools": true,
+    "expectedReasonPrefix": "needs_intent_classifier:"
+  }
+]

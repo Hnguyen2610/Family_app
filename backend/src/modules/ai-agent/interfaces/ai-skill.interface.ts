@@ -11,7 +11,19 @@ export interface AiSkillContext {
   familyContext?: string;
   memoryContext?: string;
   ragContext?: string;
-  ragSources?: Array<{ documentId: string; title: string; chunkIndex: number; score: number }>;
+  ragQuery?: string;
+  ragMiss?: boolean;
+  ragSources?: Array<{
+    documentId: string;
+    title: string;
+    chunkIndex: number;
+    score: number;
+    familyId?: string;
+    sourceType?: string;
+    category?: string;
+    retrieval?: string;
+    snippet?: string;
+  }>;
   history?: any[];
   trace?: AiTrace;
 }

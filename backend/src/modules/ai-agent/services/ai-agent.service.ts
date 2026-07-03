@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatService } from './chat.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { HoroscopeService } from './horoscope.service';
-import { classifyAiIntent, normalizeSearchText } from '../ai-intent-router';
+import { AiIntentRoute, classifyAiIntent, normalizeSearchText } from '../ai-intent-router';
 import { createAiTrace } from '../ai-observability';
 import {
   handleGeminiChat,
@@ -28,7 +28,21 @@ import { AiSkillContext } from '../interfaces/ai-skill.interface';
 import { buildSystemPrompt } from '../ai-agent-prompt';
 import { RagService } from './rag.service';
 import { redactSensitiveData } from '../ai-redact';
-import { appendRequestLog } from '../ai-request-log';
+import {
+  addRequestFeedback,
+  appendRequestLog,
+  configureAiRequestLogPersistence,
+  getFeedbackStats,
+  getFilteredRequestLogs,
+  getLogStats,
+  getTopRetrievedRagSources,
+  updateRequestLog,
+  type AiFeedbackValue,
+} from '../ai-request-log';
+import { parseCalendarMutation, parseCalendarDate } from '../ai-calendar-mutation-parser';
+import { AiIntentClassifier } from '../ai-intent-classifier';
+import { appendConfusionCase } from '../ai-confusion-log';
+import { createSkillToolDispatcher, mergeUniqueTools } from '../ai-tool-dispatcher';
 
 @Injectable()
 export class AiAgentService {
@@ -60,6 +74,7 @@ export class AiAgentService {
     'ca',
     'all',
   ]);
+  private readonly intentClassifier: AiIntentClassifier;
 
   constructor(
     private readonly chatService: ChatService,
@@ -70,6 +85,11 @@ export class AiAgentService {
   ) {
     this.openai = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
     this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+    this.intentClassifier = new AiIntentClassifier(
+      this.openai,
+      process.env.AI_INTENT_CLASSIFIER_MODEL || 'llama-3.1-8b-instant',
+    );
+    configureAiRequestLogPersistence(this.prisma);
   }
 
   // ─── Context Helpers ───────────────────────────────────────────────────────
@@ -235,6 +255,14 @@ export class AiAgentService {
       ? await this.ragService.searchFamilyKnowledge(ragFamilyId, ragQuery, 3)
       : [];
 
+    if (ragResults.length > 0) {
+      this.logger.debug(`[RAG Retrieval] Matched ${ragResults.length} snippets for query "${ragQuery}":\n` +
+        ragResults.map((r, i) => `  [#${i + 1}] Title: "${r.title}", Chunk: ${r.chunkIndex}, Score: ${r.score.toFixed(3)}, Method: ${r.retrieval}\n      Snippet: ${r.content.substring(0, 150)}...`).join('\n')
+      );
+    } else if (shouldRetrieveRag) {
+      this.logger.debug(`[RAG Retrieval] No snippets matched query "${ragQuery}" for family "${ragFamilyId}"`);
+    }
+
     // Only show disambiguation if we couldn't auto-resolve family from message
     const disambiguationNotice = (familyId === 'all' && userFamilies.length > 1 && !resolvedFamilyId)
       ? `USER IS VIEWING ALL FAMILIES. Their families:\n${userFamilies.map((f, i) => `${i + 1}. ${f.name} (id: ${f.id})`).join('\n')}\nINSTRUCTION: Ask the user ONCE which family to use. When they answer with a family name, call the tool immediately with that family's id — do NOT ask again.`
@@ -256,15 +284,36 @@ export class AiAgentService {
       familyContext,
       memoryContext,
       ragContext,
-      ragSources: ragResults.map((result) => ({
-        documentId: result.documentId,
-        title: result.title,
-        chunkIndex: result.chunkIndex,
-        score: result.score,
-      })),
+      ragQuery: shouldRetrieveRag ? ragQuery : undefined,
+      ragMiss: shouldRetrieveRag && ragResults.length === 0,
+      ragSources: this.toRagLogSources(ragResults),
       history,
       trace,
     };
+  }
+
+  private toRagLogSources(results: Array<{
+    documentId: string;
+    title: string;
+    chunkIndex: number;
+    score: number;
+    familyId?: string;
+    sourceType?: string;
+    category?: string;
+    retrieval?: string;
+    content?: string;
+  }>) {
+    return results.map((result) => ({
+      documentId: result.documentId,
+      title: result.title,
+      chunkIndex: result.chunkIndex,
+      score: Number(result.score || 0),
+      familyId: result.familyId,
+      sourceType: result.sourceType,
+      category: result.category,
+      retrieval: result.retrieval,
+      snippet: String(result.content || '').slice(0, 500),
+    }));
   }
 
   private buildRagQuery(userMessage: string, history: any[], hasResolvedFamily: boolean) {
@@ -283,7 +332,7 @@ export class AiAgentService {
 
   private shouldRetrieveRag(intent: string, userMessage: string) {
     if (intent === 'family_knowledge') return true;
-    if (intent === 'image_vision' || intent === 'gold_price') return false;
+    if (intent === 'image_vision' || intent === 'gold_price' || intent === 'football' || intent === 'weather') return false;
 
     const normalized = normalizeSearchText(userMessage);
 
@@ -304,6 +353,17 @@ export class AiAgentService {
       'save ',
       'remember',
     ];
+
+    // Core family members combined with personal query check
+    const familyPronouns = ['vo', 'chong', 'bo', 'me', 'con', 'anh', 'em', 'ong', 'ba', 'thanh vien', 'nha', 'gia dinh'];
+    const hasFamilyPronoun = familyPronouns.some((p) => {
+      const regex = new RegExp(`\\b${p}\\b`);
+      return regex.test(normalized);
+    });
+
+    if (hasFamilyPronoun) return true;
+    if (familySignals.some((signal) => normalized.includes(signal))) return true;
+
     const familyFactQuestionSignals = [
       'bao nhieu',
       'la gi',
@@ -315,7 +375,11 @@ export class AiAgentService {
       'thich gi',
       'so thich',
       'khong thich',
+      'di ung',
+      'ghet',
     ];
+    if (familyFactQuestionSignals.some((signal) => normalized.includes(signal))) return true;
+
     const suggestionSignals = [
       'goi y',
       'nen',
@@ -328,9 +392,6 @@ export class AiAgentService {
       'lich hoc',
       'don thuoc',
     ];
-
-    if (familySignals.some((signal) => normalized.includes(signal))) return true;
-    if (familyFactQuestionSignals.some((signal) => normalized.includes(signal))) return true;
     if (['meal_suggestion', 'calendar_query', 'event_mutation', 'horoscope'].includes(intent)) {
       return suggestionSignals.some((signal) => normalized.includes(signal));
     }
@@ -364,6 +425,21 @@ export class AiAgentService {
     };
   }
 
+  private isSideEffectTool(toolName: string) {
+    return ['createEvent', 'updateEvent', 'deleteEvent', 'createWikiEntry'].includes(toolName);
+  }
+
+  private shouldAllowSideEffectTool(toolName: string, context: AiSkillContext) {
+    if (!this.isSideEffectTool(toolName)) return true;
+    if (toolName === 'createWikiEntry') return this.shouldAllowKnowledgeWriteTool(context);
+
+    const normalized = normalizeSearchText(context.userMessage || '');
+    if (toolName === 'createEvent') return /\b(tao|them|len lich|dat lich|nhac|create|add|schedule)\b/.test(normalized);
+    if (toolName === 'updateEvent') return /\b(sua|cap nhat|doi|update|edit)\b/.test(normalized);
+    if (toolName === 'deleteEvent') return /\b(xoa|huy|delete|remove|cancel)\b/.test(normalized);
+    return false;
+  }
+
   private getModelHandlerDeps(modelOverride?: { groqModel?: string; geminiModel?: string }) {
     return {
       logger: this.logger, openai: this.openai, gemini: this.gemini, chatService: this.chatService,
@@ -384,6 +460,64 @@ export class AiAgentService {
     return skillExtra ? `${base}\n\n${skillExtra}` : base;
   }
 
+  private async classifyIntentWithFallback(userMessage: string, hasImage: boolean): Promise<AiIntentRoute> {
+    const ruleRoute = classifyAiIntent(userMessage, hasImage);
+    if (!this.intentClassifier.shouldUseLlmFallback(ruleRoute, userMessage, hasImage)) {
+      return ruleRoute;
+    }
+    return this.intentClassifier.classify(userMessage, ruleRoute);
+  }
+
+  /**
+   * If after all classification, the intent is still very uncertain, return a special
+   * clarification route so the chat layer can ask the user to rephrase.
+   */
+  private buildClarificationRoute(): AiIntentRoute {
+    return {
+      intent: 'general_chat',
+      requiresTools: false,
+      confidence: 0.3,
+      reason: 'too_ambiguous_needs_clarification',
+    };
+  }
+
+  private needsClarificationResponse(route: AiIntentRoute, userMessage: string): boolean {
+    if (route.confidence >= 0.55) return false;
+    if (route.intent !== 'general_chat') return false;
+    const normalized = normalizeSearchText(userMessage || '').trim();
+    // Only trigger for short, semantically empty messages
+    return normalized.length < 25 && !normalized.includes('?');
+  }
+
+  private recordRoutingCase(
+    userMessage: string,
+    route: AiIntentRoute,
+    selectedSkill: string,
+    outcome: string,
+    error?: string,
+  ) {
+    const routed = route as AiIntentRoute & {
+      classifiedBy?: string;
+      ruleIntent?: string;
+      ruleReason?: string;
+      classifierIntent?: string;
+      classifierReason?: string;
+    };
+    if (routed.classifiedBy !== 'llm' && routed.classifiedBy !== 'rule_after_llm_fail') return;
+
+    appendConfusionCase({
+      userMessage,
+      ruleIntent: routed.ruleIntent || route.intent,
+      ruleReason: routed.ruleReason || route.reason,
+      classifierIntent: routed.classifierIntent || route.intent,
+      classifierConfidence: route.confidence,
+      classifierReason: routed.classifierReason || route.reason,
+      selectedSkill,
+      outcome,
+      error,
+    });
+  }
+
   // ─── Chat ──────────────────────────────────────────────────────────────────
 
   async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string, sessionId?: string) {
@@ -392,7 +526,26 @@ export class AiAgentService {
     await this.chatService.saveMessage(familyId, 'user', userMessage, sessionId);
 
     const targetUserId = userIds[0] || '';
-    const intentRoute = classifyAiIntent(userMessage, !!image);
+    const intentRoute = await this.classifyIntentWithFallback(userMessage, !!image);
+
+    // Low-confidence gate: ask user to clarify rather than guess
+    if (this.needsClarificationResponse(intentRoute, userMessage)) {
+      const clarificationMsg = 'Mình chưa hiểu rõ ý bạn lắm. Bạn có thể nói rõ hơn không? Í bạn đang hỏi về lịch, bóng đá, sổ tay gia đình, hay điều gì khác? 🙏';
+      await this.chatService.saveMessage(familyId, 'assistant', clarificationMsg, sessionId);
+      const requestLog = appendRequestLog({
+        type: 'chat',
+        intent: intentRoute.intent,
+        model: 'direct',
+        latencyMs: 0,
+        cached: false,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      return { content: clarificationMsg, familyId, cached: false, direct: true, requestLogId: requestLog.id };
+    }
+
     const routedModel = routeAiModel(modelSelection, intentRoute);
 
     // Cache check
@@ -402,7 +555,18 @@ export class AiAgentService {
     const cached = cacheKey ? getCachedResponse(cacheKey) : undefined;
     if (cached) {
       await this.chatService.saveMessage(familyId, 'assistant', cached.content, sessionId);
-      return { ...cached, cached: true };
+      const requestLog = appendRequestLog({
+        type: 'chat',
+        intent: intentRoute.intent,
+        model: routedModel.provider,
+        latencyMs: 0,
+        cached: true,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      return { ...cached, cached: true, requestLogId: requestLog.id };
     }
 
     const skill = this.skillRegistry.getSkillForIntent(intentRoute.intent as any);
@@ -413,7 +577,39 @@ export class AiAgentService {
     const directStructuredAction = await this.tryHandleStructuredMemoryEvent(skill, knowledgeSkill, skillContext);
     if (directStructuredAction) {
       await this.chatService.saveMessage(familyId, 'assistant', directStructuredAction, sessionId);
-      return { content: directStructuredAction, familyId, cached: false, direct: true };
+      this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_structured_memory_event');
+      const requestLog = appendRequestLog({
+        type: 'chat',
+        intent: intentRoute.intent,
+        skill: skill.name,
+        model: 'direct',
+        latencyMs: 0,
+        cached: false,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      return { content: directStructuredAction, familyId, cached: false, direct: true, requestLogId: requestLog.id };
+    }
+
+    const directCalendarMutation = await this.tryHandleStructuredCalendarMutation(skill, skillContext);
+    if (directCalendarMutation) {
+      await this.chatService.saveMessage(familyId, 'assistant', directCalendarMutation, sessionId);
+      this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_calendar_mutation');
+      const requestLog = appendRequestLog({
+        type: 'chat',
+        intent: intentRoute.intent,
+        skill: skill.name,
+        model: 'direct',
+        latencyMs: 0,
+        cached: false,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      return { content: directCalendarMutation, familyId, cached: false, direct: true, requestLogId: requestLog.id };
     }
 
     // Direct answer
@@ -422,7 +618,20 @@ export class AiAgentService {
       if (direct) {
         await this.chatService.saveMessage(familyId, 'assistant', direct.content, sessionId);
         if (cacheKey) setCachedResponse(cacheKey, { content: direct.content, familyId }, getSkillTtl(intentRoute.intent));
-        return { content: direct.content, familyId, cached: false, direct: true };
+        this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_answer');
+        const requestLog = appendRequestLog({
+          type: 'chat',
+          intent: intentRoute.intent,
+          skill: skill.name,
+          model: 'direct',
+          latencyMs: 0,
+          cached: false,
+          redacted: false,
+          userId: targetUserId || undefined,
+          familyId,
+          sessionId,
+        });
+        return { content: direct.content, familyId, cached: false, direct: true, requestLogId: requestLog.id };
       }
     }
 
@@ -442,37 +651,19 @@ export class AiAgentService {
     const allowKnowledgeWrite = this.shouldAllowKnowledgeWriteTool(skillContext);
     const skillTools = this.getSkillToolsForContext(skill, skillContext);
     const knowledgeTools = knowledgeSkill?.getTools && allowKnowledgeWrite ? knowledgeSkill.getTools() : [];
-    const combinedTools = [...skillTools];
-    for (const kt of knowledgeTools) {
-      if (!combinedTools.some(st => st.function.name === kt.function.name)) {
-        combinedTools.push(kt);
-      }
-    }
+    const combinedTools = mergeUniqueTools(skillTools, knowledgeTools);
 
-    // Unified tool dispatcher
     const baseExecuteToolChat = deps.executeTool;
-    deps.executeTool = async (name: string, args: any, fid: string, uid: string) => {
-      this.logger.debug(`[ToolDispatch/chat] Executing tool: ${name}`);
-      if (name === 'createWikiEntry' && !this.shouldAllowKnowledgeWriteTool(skillContext)) {
-        return toolError(name, 'Knowledge write is disabled because the user is asking a question, not asking to save memory.');
-      }
-      if (skill.executeTool) {
-        const r = await skill.executeTool(name, args, skillContext);
-        if (r !== undefined) {
-          this.logger.debug(`[ToolDispatch/chat] ${name} handled by ${skill.name}`);
-          return r;
-        }
-      }
-      if (knowledgeSkill?.executeTool) {
-        const r = await knowledgeSkill.executeTool(name, args, skillContext);
-        if (r !== undefined) {
-          this.logger.debug(`[ToolDispatch/chat] ${name} handled by FamilyKnowledgeSkill`);
-          return r;
-        }
-      }
-      this.logger.warn(`[ToolDispatch/chat] No skill handled tool: ${name}, using baseExecuteTool`);
-      return baseExecuteToolChat(name, args, fid, uid);
-    };
+    deps.executeTool = createSkillToolDispatcher({
+      label: 'ToolDispatch/chat',
+      logger: this.logger,
+      tools: combinedTools,
+      skill,
+      knowledgeSkill,
+      context: skillContext,
+      baseExecuteTool: baseExecuteToolChat,
+      shouldAllowSideEffectTool: (name) => this.shouldAllowSideEffectTool(name, skillContext),
+    });
 
     const chatInput = {
       familyId, history: skillContext.history || [], familyInfo: skillContext.familyContext || '',
@@ -485,22 +676,35 @@ export class AiAgentService {
     const t0 = Date.now();
     let aiError: string | undefined;
     let result: any;
+    let requestLogId: string | undefined;
     try {
       result = await (routedModel.provider === 'gemini' ? handleGeminiChat(deps, chatInput) : handleGroqChat(deps, chatInput));
     } catch (err: any) {
       aiError = err?.message || 'Unknown error';
       throw err;
     } finally {
-      appendRequestLog({
+      const requestLog = appendRequestLog({
         type: 'chat',
         intent: intentRoute.intent,
+        skill: skill.name,
         model: routedModel.provider,
+        toolsCalled: combinedTools.map((t: any) => t.function?.name).filter(Boolean),
+        ragSnippetCount: skillContext.ragSources?.length ?? 0,
+        ragQuery: skillContext.ragQuery,
+        ragMiss: skillContext.ragMiss,
+        ragSources: skillContext.ragSources,
         latencyMs: Date.now() - t0,
         cached: false,
         redacted: hits.length > 0,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
         error: aiError,
+        fallbackReason: this.classifyFallbackReason(aiError),
         tokenCount: result?.usage?.totalTokens,
       });
+      requestLogId = requestLog.id;
+      this.recordRoutingCase(userMessage, intentRoute, skill.name, aiError ? 'model_error' : 'model_success', aiError);
     }
     // Handle pseudo-function calls (hallucinations or text-based tools)
     if (result.content && result.content.includes('<function:')) {
@@ -513,7 +717,7 @@ export class AiAgentService {
 
     if (cacheKey) setCachedResponse(cacheKey, result, getSkillTtl(intentRoute.intent));
 
-    return { ...result, cached: false };
+    return { ...result, cached: false, requestLogId };
   }
 
   private stripPseudoFunctionTags(content: string) {
@@ -587,6 +791,115 @@ export class AiAgentService {
       .trim() || memoryTitle || 'Kỷ niệm gia đình';
   }
 
+  private async tryHandleStructuredCalendarMutation(skill: any, context: AiSkillContext) {
+    if (context.intent !== 'event_mutation') return undefined;
+
+    const calendarSkill = skill?.name === 'CalendarSkill'
+      ? skill
+      : this.skillRegistry.getAllSkills().find((candidate) => candidate.name === 'CalendarSkill');
+    if (!calendarSkill?.executeTool) return undefined;
+
+    const parsed = parseCalendarMutation(context.userMessage || '', context.resolvedFamilyId);
+    if (!parsed) return undefined;
+    if (parsed.needsClarification) return parsed.needsClarification;
+
+    if (parsed.action === 'create') {
+      const dateList = Array.isArray(parsed.args.dateList) ? parsed.args.dateList.filter(Boolean) : [];
+      if (dateList.length > 1) {
+        const results = [];
+        for (const date of dateList) {
+          const { dateList: _dateList, endDate: _endDate, ...singleEventArgs } = parsed.args;
+          const result = await calendarSkill.executeTool('createEvent', {
+            ...singleEventArgs,
+            date,
+          }, context);
+          results.push(result);
+        }
+        this.logger.debug(`[DirectCalendarMutation] action=create_range count=${results.length}`);
+        return this.formatStructuredCalendarMutationResult(parsed.action, parsed.args, results);
+      }
+
+      const result = await calendarSkill.executeTool('createEvent', parsed.args, context);
+      this.logger.debug(`[DirectCalendarMutation] action=create result=${JSON.stringify(result)}`);
+      return this.formatStructuredCalendarMutationResult(parsed.action, parsed.args, result);
+    }
+
+    const eventId = parsed.args.id || await this.findSingleEventIdForMutation(calendarSkill, context, parsed);
+    if (!eventId) {
+      return 'Minh chua tim duoc dung mot su kien khop voi yeu cau. Hay gui ten su kien kem ngay, hoac mo lich va gui lai id su kien.';
+    }
+
+    const toolName = parsed.action === 'delete' ? 'deleteEvent' : 'updateEvent';
+    const args = {
+      ...parsed.args,
+      id: eventId,
+      familyId: context.resolvedFamilyId || context.familyId,
+    };
+    const result = await calendarSkill.executeTool(toolName, args, context);
+    this.logger.debug(`[DirectCalendarMutation] action=${parsed.action} result=${JSON.stringify(result)}`);
+    return this.formatStructuredCalendarMutationResult(parsed.action, args, result);
+  }
+
+  private async findSingleEventIdForMutation(calendarSkill: any, context: AiSkillContext, parsed: any) {
+    const lookup = parsed.lookup;
+    if (!lookup?.title || !lookup.month || !lookup.year) return undefined;
+
+    const result = await calendarSkill.executeTool('getEventsByMonth', {
+      familyId: context.resolvedFamilyId || context.familyId,
+      month: lookup.month,
+      year: lookup.year,
+      userId: context.userId,
+    }, context);
+
+    const events = Array.isArray(result?.data) ? result.data : [];
+    const normalizedTitle = normalizeSearchText(lookup.title);
+    const matches = events.filter((event: any) => {
+      const eventTitle = normalizeSearchText(event?.title || '');
+      const titleMatches = eventTitle.includes(normalizedTitle) || normalizedTitle.includes(eventTitle);
+      if (!titleMatches) return false;
+      if (!lookup.date) return true;
+      const eventDate = event?.date ? new Date(event.date).toISOString().slice(0, 10) : '';
+      return eventDate === lookup.date;
+    });
+
+    return matches.length === 1 ? matches[0].id : undefined;
+  }
+
+  private formatStructuredCalendarMutationResult(action: string, args: any, result: any) {
+    if (Array.isArray(result)) {
+      const failed = result.filter((item) => item?.ok === false);
+      if (failed.length > 0) {
+        return failed[0]?.error?.message || 'Khong the tao day du chuoi su kien luc nay.';
+      }
+    }
+
+    if (result?.ok === false) {
+      return result?.error?.message || 'Khong the thuc hien thao tac lich luc nay.';
+    }
+
+    if (action === 'delete') {
+      return 'Da xoa su kien khoi lich.';
+    }
+
+    const date = args.date ? parseCalendarDate(String(args.date)) : undefined;
+    const endDate = args.endDate ? parseCalendarDate(String(args.endDate)) : undefined;
+    const dateText = endDate
+      ? `${date?.display || args.date} - ${endDate.display || args.endDate}`
+      : date?.display || args.date || 'chua ro ngay';
+    const scopeText = args.scope === 'PRIVATE' ? 'Ca nhan' : 'Gia dinh';
+    if (action === 'update') {
+      return `Da cap nhat su kien${args.title ? `: ${args.title}` : ''}.\nNgay: ${dateText}${args.time ? `\nGio: ${args.time}` : ''}`;
+    }
+
+    return [
+      `Đã tạo sự kiện: ${args.title || 'Su kien'}`,
+      `Ngày: ${dateText}`,
+      `Giờ: ${args.time || '09:00'}`,
+      `Phạm vi: ${scopeText}`,
+      args.recurring && args.recurring !== 'NONE' ? `Được lặp lại: ${args.recurring}` : undefined,
+    ].filter(Boolean).join('\n');
+  }
+
   private async tryHandleStructuredMemoryEvent(skill: any, knowledgeSkill: any, context: AiSkillContext) {
     const message = context.userMessage || '';
     const normalized = normalizeSearchText(message);
@@ -613,6 +926,10 @@ export class AiAgentService {
       familyId: context.resolvedFamilyId,
     }, context);
 
+    if (memoryResult?.data?.consentRequired) {
+      return 'Thong tin nay co ve nhay cam nen minh chua luu vao long memory. Hay xac nhan truoc khi luu vao so tay gia dinh.';
+    }
+
     const eventResult = await calendarSkill.executeTool('createEvent', {
       title: eventTitle,
       description: memoryTitle,
@@ -635,7 +952,30 @@ export class AiAgentService {
     await this.chatService.saveMessage(familyId, 'user', userMessage, sessionId);
 
     const targetUserId = userIds[0] || '';
-    const intentRoute = classifyAiIntent(userMessage, !!image);
+    const intentRoute = await this.classifyIntentWithFallback(userMessage, !!image);
+
+    // Low-confidence gate: ask user to clarify rather than guess
+    if (this.needsClarificationResponse(intentRoute, userMessage)) {
+      const clarificationMsg = 'Mình chưa hiểu rõ ý bạn lắm. Bạn có thể nói rõ hơn không? Ý bạn đang hỏi về lịch, bóng đá, sổ tay gia đình, hay điều gì khác? 🙏';
+      await this.chatService.saveMessage(familyId, 'assistant', clarificationMsg, sessionId);
+      const requestLog = appendRequestLog({
+        type: 'stream',
+        intent: intentRoute.intent,
+        model: 'direct',
+        latencyMs: 0,
+        cached: false,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: clarificationMsg })}\\n\\n`);
+      res.write('data: [DONE]\\n\\n');
+      res.end();
+      return;
+    }
+
     const routedModel = routeAiModel(modelSelection, intentRoute);
 
     // Cache check
@@ -647,11 +987,22 @@ export class AiAgentService {
     res.write(`data: ${JSON.stringify({ type: 'status', status: image ? 'uploading_image' : 'generating_answer' })}\n\n`);
 
     if (cached) {
+      const requestLog = appendRequestLog({
+        type: 'stream',
+        intent: intentRoute.intent,
+        model: routedModel.provider,
+        latencyMs: 0,
+        cached: true,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
       res.write(`data: ${JSON.stringify({ type: 'cached', cached: true })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
       res.write(`data: ${JSON.stringify({ content: cached.content })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
-      appendRequestLog({ type: 'stream', intent: intentRoute.intent, model: routedModel.provider, latencyMs: 0, cached: true, redacted: false });
       return;
     }
 
@@ -663,10 +1014,46 @@ export class AiAgentService {
     const directStructuredAction = await this.tryHandleStructuredMemoryEvent(skill, knowledgeSkill, skillContext);
     if (directStructuredAction) {
       await this.chatService.saveMessage(familyId, 'assistant', directStructuredAction, sessionId);
+      const requestLog = appendRequestLog({
+        type: 'stream',
+        intent: intentRoute.intent,
+        skill: skill.name,
+        model: 'direct',
+        latencyMs: 0,
+        cached: false,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
       res.write(`data: ${JSON.stringify({ content: directStructuredAction })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
-      appendRequestLog({ type: 'stream', intent: intentRoute.intent, model: 'direct', latencyMs: 0, cached: false, redacted: false });
+      this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_structured_memory_event');
+      return;
+    }
+
+    const directCalendarMutation = await this.tryHandleStructuredCalendarMutation(skill, skillContext);
+    if (directCalendarMutation) {
+      await this.chatService.saveMessage(familyId, 'assistant', directCalendarMutation, sessionId);
+      const requestLog = appendRequestLog({
+        type: 'stream',
+        intent: intentRoute.intent,
+        skill: skill.name,
+        model: 'direct',
+        latencyMs: 0,
+        cached: false,
+        redacted: false,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
+      });
+      res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: directCalendarMutation })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_calendar_mutation');
       return;
     }
 
@@ -676,9 +1063,23 @@ export class AiAgentService {
       if (direct) {
         await this.chatService.saveMessage(familyId, 'assistant', direct.content, sessionId);
         if (cacheKey) setCachedResponse(cacheKey, { content: direct.content, familyId }, getSkillTtl(intentRoute.intent));
+        const requestLog = appendRequestLog({
+          type: 'stream',
+          intent: intentRoute.intent,
+          skill: skill.name,
+          model: 'direct',
+          latencyMs: 0,
+          cached: false,
+          redacted: false,
+          userId: targetUserId || undefined,
+          familyId,
+          sessionId,
+        });
+        res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
         res.write(`data: ${JSON.stringify({ content: direct.content })}\n\n`);
         res.write('data: [DONE]\n\n');
         res.end();
+        this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_answer');
         return;
       }
     }
@@ -695,37 +1096,19 @@ export class AiAgentService {
     const allowKnowledgeWrite = this.shouldAllowKnowledgeWriteTool(skillContext);
     const skillTools = this.getSkillToolsForContext(skill, skillContext);
     const knowledgeTools = knowledgeSkill?.getTools && allowKnowledgeWrite ? knowledgeSkill.getTools() : [];
-    const combinedTools = [...skillTools];
-    for (const kt of knowledgeTools) {
-      if (!combinedTools.some(st => st.function.name === kt.function.name)) {
-        combinedTools.push(kt);
-      }
-    }
+    const combinedTools = mergeUniqueTools(skillTools, knowledgeTools);
 
-    // Build unified tool dispatcher - try CalendarSkill first, then FamilyKnowledgeSkill, then fallback
     const baseExecuteTool = deps.executeTool;
-    deps.executeTool = async (name: string, args: any, fid: string, uid: string) => {
-      this.logger.debug(`[ToolDispatch] Executing tool: ${name}`);
-      if (name === 'createWikiEntry' && !this.shouldAllowKnowledgeWriteTool(skillContext)) {
-        return toolError(name, 'Knowledge write is disabled because the user is asking a question, not asking to save memory.');
-      }
-      if (skill.executeTool) {
-        const r = await skill.executeTool(name, args, skillContext);
-        if (r !== undefined) {
-          this.logger.debug(`[ToolDispatch] ${name} handled by ${skill.name}`);
-          return r;
-        }
-      }
-      if (knowledgeSkill?.executeTool) {
-        const r = await knowledgeSkill.executeTool(name, args, skillContext);
-        if (r !== undefined) {
-          this.logger.debug(`[ToolDispatch] ${name} handled by FamilyKnowledgeSkill`);
-          return r;
-        }
-      }
-      this.logger.warn(`[ToolDispatch] No skill handled tool: ${name}, using baseExecuteTool`);
-      return baseExecuteTool(name, args, fid, uid);
-    };
+    deps.executeTool = createSkillToolDispatcher({
+      label: 'ToolDispatch',
+      logger: this.logger,
+      tools: combinedTools,
+      skill,
+      knowledgeSkill,
+      context: skillContext,
+      baseExecuteTool,
+      shouldAllowSideEffectTool: (name) => this.shouldAllowSideEffectTool(name, skillContext),
+    });
 
     const streamInput = {
       familyId, history: skillContext.history || [], familyInfo: skillContext.familyContext || '',
@@ -737,6 +1120,24 @@ export class AiAgentService {
 
     const t1 = Date.now();
     let streamError: string | undefined;
+    const requestLog = appendRequestLog({
+      type: 'stream',
+      intent: intentRoute.intent,
+      skill: skill.name,
+      model: routedModel.provider,
+      toolsCalled: combinedTools.map((t: any) => t.function?.name).filter(Boolean),
+      ragSnippetCount: skillContext.ragSources?.length ?? 0,
+      ragQuery: skillContext.ragQuery,
+      ragMiss: skillContext.ragMiss,
+      ragSources: skillContext.ragSources,
+      latencyMs: 0,
+      cached: false,
+      redacted: streamHits.length > 0,
+      userId: targetUserId || undefined,
+      familyId,
+      sessionId,
+    });
+    res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
     try {
       if (routedModel.provider === 'gemini') {
         await handleGeminiStream(deps, streamInput);
@@ -759,15 +1160,22 @@ export class AiAgentService {
       await this.chatService.saveMessage(familyId, 'assistant', fallbackMessage, sessionId);
       return;
     } finally {
-      appendRequestLog({
-        type: 'stream',
-        intent: intentRoute.intent,
-        model: routedModel.provider,
+      updateRequestLog(requestLog.id, {
+        toolsCalled: combinedTools.map((t: any) => t.function?.name).filter(Boolean),
+        ragSnippetCount: skillContext.ragSources?.length ?? 0,
+        ragQuery: skillContext.ragQuery,
+        ragMiss: skillContext.ragMiss,
+        ragSources: skillContext.ragSources,
         latencyMs: Date.now() - t1,
         cached: false,
         redacted: streamHits.length > 0,
+        userId: targetUserId || undefined,
+        familyId,
+        sessionId,
         error: streamError,
+        fallbackReason: this.classifyFallbackReason(streamError),
       });
+      this.recordRoutingCase(userMessage, intentRoute, skill.name, streamError ? 'model_error' : 'model_success', streamError);
     }
   }
 
@@ -791,12 +1199,36 @@ JSON duy nhất: {"category": "...", "type": "INCOME"|"EXPENSE"}`;
     }
   }
 
-  getSystemStats() {
-    const { getRequestLogs, getLogStats } = require('../ai-request-log');
+  private classifyFallbackReason(error?: string) {
+    if (!error) return undefined;
+    const text = error.toLowerCase();
+    if (text.includes('failed to call a function') || text.includes('tool')) return 'tool-call failed';
+    if (text.includes('rate') || text.includes('429')) return 'rate limit';
+    if (text.includes('timeout') || text.includes('timed out')) return 'timeout';
+    if (text.includes('vision') || text.includes('image') || text.includes('overload')) return 'vision overload';
+    if (text.includes('tavily') || text.includes('search')) return 'search API failed';
+    return 'unknown';
+  }
+
+  async getSystemStats(filters: { model?: string; skill?: string; status?: 'ok' | 'error' | 'cached'; familyId?: string; hasRag?: 'true' | 'false' } = {}) {
+    const { getConfusionStats, getConfusionCases } = require('../ai-confusion-log');
+    const [logStats, feedback, recentLogs, topRagSources] = await Promise.all([
+      getLogStats(),
+      getFeedbackStats(),
+      getFilteredRequestLogs(50, filters),
+      getTopRetrievedRagSources(10),
+    ]);
+
     return {
       cache: getCacheStats(),
-      logStats: getLogStats(),
-      recentLogs: getRequestLogs(20),
+      logStats,
+      routingConfusions: {
+        stats: getConfusionStats(),
+        recent: getConfusionCases(10),
+      },
+      feedback,
+      recentLogs,
+      topRagSources,
       models: {
         groq: this.groqModel,
         gemini: this.geminiModel,
@@ -809,5 +1241,27 @@ JSON duy nhất: {"category": "...", "type": "INCOME"|"EXPENSE"}`;
       memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       timestamp: new Date().toISOString(),
     };
+  }
+
+  async addFeedback(input: {
+    requestLogId: string;
+    value: AiFeedbackValue;
+    source?: 'web' | 'telegram' | 'admin';
+    userId?: string;
+    comment?: string;
+  }) {
+    const allowed: AiFeedbackValue[] = ['correct', 'wrong', 'missing_context', 'wrong_family', 'wrong_datetime'];
+    if (!input.requestLogId || !allowed.includes(input.value)) {
+      return { ok: false, error: 'Invalid feedback payload' };
+    }
+
+    const log = await addRequestFeedback(input.requestLogId, {
+      value: input.value,
+      source: input.source || 'web',
+      userId: input.userId,
+      comment: input.comment,
+    });
+    if (!log) return { ok: false, error: 'Request log not found or expired' };
+    return { ok: true, requestLogId: log.id, feedbackCount: log.feedbacks?.length || 0 };
   }
 }

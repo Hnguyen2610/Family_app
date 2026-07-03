@@ -27,35 +27,55 @@ export class NotificationsController {
 
     this.logger.log(`Vercel Cron Trigger [${now.toISOString()}]: ICT Day=${dayOfWeek}, Date=${dateOfMonth}`);
 
-    // 1. Always trigger Family Daily Reminders
-    this.logger.log('Triggering daily reminders...');
-    await this.notificationsService.sendDailyReminder();
-
-    // 1.5. Trigger proactive assistant suggestions with dedupe protection
-    this.logger.log('Triggering proactive assistant...');
-    const proactiveAssistant = await this.notificationsService.runProactiveAssistant();
+    const tasks: Array<{ name: string; run: () => Promise<unknown> }> = [
+      {
+        name: 'dailyReminder',
+        run: () => this.notificationsService.sendDailyReminder(),
+      },
+      {
+        name: 'proactiveAssistant',
+        run: () => this.notificationsService.runProactiveAssistant(),
+      },
+    ];
     
     // 2. If Monday (1), trigger Super Admin Weekly Horoscope
     if (dayOfWeek === 1) {
-      this.logger.log('It is Monday! Triggering weekly horoscope...');
-      await this.notificationsService.sendWeeklyHoroscope();
+      tasks.push({
+        name: 'weeklyHoroscope',
+        run: () => this.notificationsService.sendWeeklyHoroscope(),
+      });
     }
 
     // 3. If 1st of month, trigger Monthly Summary
     if (dateOfMonth === 1) {
-      this.logger.log('It is the 1st of the month! Triggering monthly summary...');
-      await this.notificationsService.sendMonthlySummary();
+      tasks.push({
+        name: 'monthlySummary',
+        run: () => this.notificationsService.sendMonthlySummary(),
+      });
     }
+
+    const results = await Promise.allSettled(
+      tasks.map(async (task) => {
+        this.logger.log(`Triggering ${task.name}...`);
+        await task.run();
+        return task.name;
+      }),
+    );
+
+    const taskStatus = tasks.reduce<Record<string, boolean>>((acc, task, index) => {
+      const result = results[index];
+      const ok = result.status === 'fulfilled';
+      acc[task.name] = ok;
+      if (!ok) {
+        this.logger.error(`Failed to execute ${task.name}`, result.reason);
+      }
+      return acc;
+    }, {});
     
     return { 
-      success: true, 
+      success: results.every((result) => result.status === 'fulfilled'),
       message: 'Morning notifications processed',
-      tasks: {
-        dailyReminder: true,
-        proactiveAssistant,
-        weeklyHoroscope: dayOfWeek === 1,
-        monthlySummary: dateOfMonth === 1
-      }
+      tasks: taskStatus,
     };
   }
 

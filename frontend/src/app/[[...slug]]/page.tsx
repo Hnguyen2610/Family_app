@@ -18,6 +18,7 @@ import Finance from '@/components/Finance';
 import AiMemorySettings from '@/components/AiMemorySettings';
 import FamilyNotes from '@/components/FamilyNotes';
 import VisionDrafts from '@/components/VisionDrafts';
+import WeatherBadge from '@/components/WeatherBadge';
 
 
 import { useAuth } from '@/hooks/useAuth';
@@ -30,7 +31,6 @@ type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
   const router = useRouter();
-  const [isScrolled, setIsScrolled] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const { user, isAuthenticated, isLoading, currentFamilyId, setCurrentFamilyId } = useAuth();
   const { t, language } = useTranslation();
@@ -67,14 +67,6 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
   };
 
   useEffect(() => {
-    const onScroll = () => {
-      setIsScrolled(globalThis.window.scrollY > 250);
-    };
-    globalThis.window.addEventListener('scroll', onScroll, { passive: true });
-    return () => globalThis.window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
     if (globalThis.window !== undefined && globalThis.window.scrollY > 0) {
       globalThis.window.scrollTo({ top: 0, behavior: 'instant' as any });
     }
@@ -109,7 +101,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-[120px] -z-10" />
 
       {/* Main static header area */}
-      <div className={`transition-opacity duration-300 min-h-[280px] md:min-h-[350px] ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      <div className="hidden">
         <div className="hidden md:block absolute top-3 left-2 md:top-8 md:left-8 z-50">
           <button
             onClick={() => setIsSidebarOpen(true)}
@@ -119,8 +111,9 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           </button>
         </div>
 
-        <header className="pt-16 md:pt-16 pb-4 md:pb-8 relative z-10 text-center">
+        <header className="pt-16 md:pt-16 pb-3 md:pb-4 relative z-10 text-center">
           <div className="hidden md:flex absolute top-3 right-3 md:top-8 md:right-8 items-center gap-2 md:gap-4">
+            <WeatherBadge variant="full" />
              {/* Family Selection (Optional if multiple) */}
             {families.length > 1 && (
               <div ref={familyDropdownRef} className="relative">
@@ -173,17 +166,24 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             )}
             <NotificationDropdown />
           </div>
-          <div className="inline-block animate-soft-float mb-4 md:mb-6">
-            <div className="w-16 h-16 md:w-32 md:h-32 rounded-3xl bg-gradient-to-br from-primary/20 to-blue-600/10 border border-primary/20 flex items-center justify-center text-4xl md:text-7xl text-primary mx-auto shadow-2xl shadow-primary/20">
+          <div className="hidden md:inline-flex items-center gap-3 rounded-2xl border border-border/50 bg-card/50 px-4 py-2 shadow-sm backdrop-blur-md">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
               <FiHome />
             </div>
+            <div className="text-left">
+              <h1 className="text-sm font-black tracking-tight text-slate-900 dark:text-slate-100">
+                Family<span className="text-primary">Hub</span>
+              </h1>
+              {user && (
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+                  {t('nav.welcome')} {user.name}
+                  {currentFamily ? ` · ${currentFamily.name}` : ''}
+                </p>
+              )}
+            </div>
           </div>
-          <h1 className="text-6xl md:text-9xl font-extrabold tracking-tighter leading-[1.2] pb-8">
-            <span className="bg-clip-text text-transparent bg-gradient-to-br from-slate-900 via-slate-800 to-slate-600 dark:from-white dark:via-slate-200 dark:to-slate-400 py-4">Family</span>
-            <span className="text-primary ml-2">Hub</span>
-          </h1>
           {user && (
-            <div className="mt-4 flex flex-col items-center gap-1">
+            <div className="mt-2 flex flex-col items-center gap-1 md:hidden">
               <p className="text-muted-foreground font-bold text-lg">
                 {t('nav.welcome')} {user.name}
               </p>
@@ -198,7 +198,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </div>
 
       {/* Sticky Bar */}
-      <div className={`fixed top-0 left-0 right-0 z-[100] translate-y-0 opacity-100 transition-all duration-300 border-b border-border/60 ${isScrolled ? 'md:translate-y-0 md:opacity-100' : 'md:-translate-y-full md:opacity-0 md:pointer-events-none'}`}>
+      <div className="fixed top-0 left-0 right-0 z-[100] translate-y-0 opacity-100 transition-all duration-300 border-b border-border/60">
         <header className="bg-background/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-2 md:px-8 py-2 md:py-2.5 flex justify-between items-center gap-2 md:gap-4">
             {/* Menu Left (Sticky) */}
@@ -218,11 +218,11 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               }}
             >
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-slate-200 dark:bg-slate-800 rounded-lg flex items-center justify-center border border-black/5 dark:border-white/5">
-                  <FiHome className="text-primary" />
+                <div className="w-9 h-9 bg-slate-200 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-black/5 dark:border-white/5">
+                  <FiHome className="text-primary text-lg" />
                 </div>
                 <div className="hidden sm:block text-left">
-                  <h1 className="text-sm font-extrabold tracking-tighter text-slate-900 dark:text-slate-100">
+                  <h1 className="text-lg font-extrabold tracking-tighter text-slate-900 dark:text-slate-100">
                     Family <span className="text-primary">Hub</span>
                   </h1>
                 </div>
@@ -231,6 +231,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
 
             {/* Shortcut */}
             <div className="shrink-0 items-center flex gap-2 md:gap-4">
+              <WeatherBadge />
               {families.length > 1 && (
                 <div ref={stickyFamilyDropdownRef} className="relative">
                   <button
@@ -286,9 +287,9 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </div>
 
       {/* Content Area */}
-      <main className="max-w-6xl mx-auto px-3 md:px-8 pb-20 md:pb-32 min-h-[60vh]">
+      <main className={`${activeTab === 'chat' ? 'max-w-[1800px] px-2 md:px-6 xl:px-10' : 'max-w-6xl px-3 md:px-8'} mx-auto pt-16 md:pt-20 pb-4 md:pb-6 min-h-[calc(100dvh-64px)]`}>
         <NewMonthModal />
-        <div className="glass rounded-[2.5rem] p-4 md:p-12 min-h-[500px] border-white/40 dark:border-slate-800/40 shadow-2xl">
+        <div className={`glass rounded-[2.5rem] ${activeTab === 'chat' ? 'p-2 md:p-6 xl:p-8' : 'p-4 md:p-12'} min-h-[calc(100dvh-96px)] md:min-h-[calc(100dvh-112px)] border-white/40 dark:border-slate-800/40 shadow-2xl`}>
           {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} />}
           {activeTab === 'calendar' && <Calendar />}
           {activeTab === 'chat' && <Chatbot />}
@@ -305,7 +306,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </main>
 
       {/* Footer */}
-      <footer className="py-10 md:py-20 border-t border-border/60 bg-card/40 backdrop-blur-md">
+      <footer className="hidden">
         <div className="max-w-5xl mx-auto px-6 text-center">
           <p className="text-muted-foreground font-bold text-xs md:text-sm uppercase tracking-widest">
             © Family Calendar. Made with ❤️ for your home.

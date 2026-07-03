@@ -6,6 +6,7 @@ import { FiArrowLeft } from 'react-icons/fi';
 import { useState } from 'react';
 import { usersAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
+import { TimePicker } from '@/components/ui/time-picker';
 
 interface NotificationSettingsProps {
   readonly onBack: () => void;
@@ -13,7 +14,7 @@ interface NotificationSettingsProps {
 
 export default function NotificationSettings({ onBack }: NotificationSettingsProps) {
   const { user, refreshUser } = useAuth();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   
   // Default settings
   const defaultSettings = {
@@ -22,7 +23,20 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
     HOLIDAY: true,
     APPOINTMENT: true,
     TASK: true,
-    GENERAL: true
+    GENERAL: true,
+    proactiveAssistant: true,
+    proactiveAssistantChannels: {
+      webpush: true,
+      telegram: true,
+    },
+    proactiveAssistantTypes: {
+      eventChecklist: true,
+      weather: true,
+      finance: true,
+      medicineSchool: true,
+      familyNotes: true,
+    },
+    proactiveAssistantTime: '07:30',
   };
 
   const [settings, setSettings] = useState<any>(user?.notificationSettings || defaultSettings);
@@ -47,6 +61,80 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
     }
   };
 
+  const toggleProactiveChannel = async (channel: 'webpush' | 'telegram') => {
+    const oldSettings = { ...settings };
+    const currentChannels = settings.proactiveAssistantChannels || {};
+    const newSettings = {
+      ...settings,
+      proactiveAssistantChannels: {
+        ...currentChannels,
+        [channel]: !(currentChannels[channel] ?? true),
+      },
+    };
+    setSettings(newSettings);
+
+    try {
+      setIsSaving(true);
+      await usersAPI.update(user!.id, { notificationSettings: newSettings });
+      await refreshUser();
+      toast.success(t('common.success'));
+    } catch (error) {
+      toast.error(t('common.error'));
+      setSettings(oldSettings);
+      console.error('NotificationSettings: Update failed', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const toggleProactiveType = async (type: 'eventChecklist' | 'weather' | 'finance' | 'medicineSchool' | 'familyNotes') => {
+    const oldSettings = { ...settings };
+    const currentTypes = settings.proactiveAssistantTypes || {};
+    const newSettings = {
+      ...settings,
+      proactiveAssistantTypes: {
+        ...currentTypes,
+        [type]: !(currentTypes[type] ?? true),
+      },
+    };
+    setSettings(newSettings);
+
+    try {
+      setIsSaving(true);
+      await usersAPI.update(user!.id, { notificationSettings: newSettings });
+      await refreshUser();
+      toast.success(t('common.success'));
+    } catch (error) {
+      toast.error(t('common.error'));
+      setSettings(oldSettings);
+      console.error('NotificationSettings: Update failed', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateProactiveTime = async (time: string) => {
+    const oldSettings = { ...settings };
+    const newSettings = {
+      ...settings,
+      proactiveAssistantTime: time || '07:30',
+    };
+    setSettings(newSettings);
+
+    try {
+      setIsSaving(true);
+      await usersAPI.update(user!.id, { notificationSettings: newSettings });
+      await refreshUser();
+      toast.success(t('common.success'));
+    } catch (error) {
+      toast.error(t('common.error'));
+      setSettings(oldSettings);
+      console.error('NotificationSettings: Update failed', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const notificationTypes = [
     { id: 'BIRTHDAY', label: t('settings.notificationsBirthday'), icon: '🎂' },
     { id: 'ANNIVERSARY', label: t('settings.notificationsAnniversary'), icon: '💍' },
@@ -54,6 +142,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
     { id: 'APPOINTMENT', label: t('settings.notificationsAppointment'), icon: '📅' },
     { id: 'TASK', label: t('settings.notificationsTask'), icon: '✅' },
     { id: 'GENERAL', label: t('settings.notificationsGeneral'), icon: '📢' },
+    { id: 'proactiveAssistant', label: language === 'vi' ? 'Trợ lý chủ động' : 'Proactive Assistant', icon: '🤖' },
   ];
 
   return (
@@ -90,7 +179,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
                 </div>
                 <div>
                   <p className="text-sm font-black text-slate-700 dark:text-slate-200">{type.label}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Email Notification</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{language === 'vi' ? 'Thông báo qua Email' : 'Email Notification'}</p>
                 </div>
               </div>
               
@@ -100,6 +189,75 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
             </button>
           );
         })}
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+          {language === 'vi' ? 'Kênh nhận thông báo chủ động' : 'Proactive Assistant Channels'}
+        </p>
+        {[
+          { id: 'webpush' as const, label: 'Web Push' },
+          { id: 'telegram' as const, label: 'Telegram' },
+        ].map((channel) => {
+          const isActive = settings.proactiveAssistantChannels?.[channel.id] ?? true;
+          return (
+            <button
+              key={channel.id}
+              type="button"
+              onClick={() => !isSaving && toggleProactiveChannel(channel.id)}
+              className="w-full flex items-center justify-between p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
+            >
+              <div>
+                <p className="text-sm font-black text-slate-700 dark:text-slate-200">{channel.label}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{language === 'vi' ? 'Kênh gửi' : 'Proactive assistant'}</p>
+              </div>
+              <div className={`w-12 h-6 rounded-full transition-all relative ${isActive ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${isActive ? 'left-7' : 'left-1'}`} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+          {language === 'vi' ? 'Loại thông báo chủ động' : 'Proactive Assistant Types'}
+        </p>
+        {[
+          { id: 'eventChecklist' as const, label: language === 'vi' ? 'Nhắc lịch sự kiện' : 'Event checklist' },
+          { id: 'weather' as const, label: language === 'vi' ? 'Thời tiết' : 'Weather' },
+          { id: 'finance' as const, label: language === 'vi' ? 'Chi tiêu' : 'Finance' },
+          { id: 'medicineSchool' as const, label: language === 'vi' ? 'Thuốc / Học hành' : 'Medicine / School' },
+          { id: 'familyNotes' as const, label: language === 'vi' ? 'Sổ tay gia đình' : 'Family notes' },
+        ].map((type) => {
+          const isActive = settings.proactiveAssistantTypes?.[type.id] ?? true;
+          return (
+            <button
+              key={type.id}
+              type="button"
+              onClick={() => !isSaving && toggleProactiveType(type.id)}
+              className="w-full flex items-center justify-between p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
+            >
+              <div>
+                <p className="text-sm font-black text-slate-700 dark:text-slate-200">{type.label}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{language === 'vi' ? 'Tin tóm tắt hàng ngày' : 'Daily briefing'}</p>
+              </div>
+              <div className={`w-12 h-6 rounded-full transition-all relative ${isActive ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${isActive ? 'left-7' : 'left-1'}`} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800">
+        <TimePicker
+          value={settings.proactiveAssistantTime || '07:30'}
+          onChange={updateProactiveTime}
+          label={language === 'vi' ? 'Giờ nhận tin chủ động' : 'Proactive Assistant Time'}
+          language={language}
+          disabled={isSaving}
+        />
       </div>
 
       {/* Note Section */}

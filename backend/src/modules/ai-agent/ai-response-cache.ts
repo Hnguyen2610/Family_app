@@ -9,7 +9,10 @@ export const SKILL_CACHE_TTL: Partial<Record<string, number>> = {
   general_chat: 3600_000,    // 1 hour — factual Q&A rarely changes
   gold_price:   5 * 60_000,  // 5 min — market price refreshes frequently
   horoscope:    3600_000,     // 1 hour — daily horoscope is stable
-  meal_suggest: 30 * 60_000, // 30 min — menu suggestions per session
+  meal_suggestion: 30 * 60_000, // 30 min
+  football: 5 * 60_000, // 5 min
+  weather: 30 * 60_000, // 30 min
+  family_knowledge: 10 * 60_000, // 10 min
 };
 
 type CacheEntry<T> = {
@@ -64,7 +67,8 @@ export function isResponseCacheable(
   intentRoute: AiIntentRoute
 ): boolean {
   if (hasImage) return false;
-  if (intentRoute.requiresTools) return false;
+  const cacheableToolIntents = new Set(['football']);
+  if (intentRoute.requiresTools && !cacheableToolIntents.has(intentRoute.intent)) return false;
 
   const normalizedQuestion = normalizeQuestion(userMessage);
   if (normalizedQuestion.length < 4) return false;
@@ -75,7 +79,10 @@ export function isResponseCacheable(
     'general_chat',
     'gold_price',
     'horoscope',
-    'meal_suggest',
+    'meal_suggestion',
+    'football',
+    'weather',
+    'family_knowledge',
   ]);
 
   return cacheableIntents.has(intentRoute.intent);
@@ -89,7 +96,8 @@ export function buildResponseCacheKey(input: {
   intent?: string;
 }): string {
   // For time-sensitive skills (gold_price), bucket by 5-min window
-  const timeBucket = input.intent === 'gold_price'
+  const shortTtlIntent = input.intent === 'gold_price' || input.intent === 'football' || input.intent === 'weather';
+  const timeBucket = shortTtlIntent
     ? Math.floor(Date.now() / (5 * 60_000))
     : Math.floor(Date.now() / 3600_000); // hourly bucket for others
 
@@ -99,7 +107,7 @@ export function buildResponseCacheKey(input: {
     input.familyId || 'no-family',
     input.userId || 'no-user',
     input.model || 'default-model',
-    input.intent === 'gold_price' ? `t${timeBucket}` : normalizeQuestion(input.userMessage),
+    shortTtlIntent ? `t${timeBucket}:${normalizeQuestion(input.userMessage)}` : normalizeQuestion(input.userMessage),
   ].join('|');
 }
 

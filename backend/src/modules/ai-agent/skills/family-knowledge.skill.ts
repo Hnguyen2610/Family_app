@@ -1,14 +1,40 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AiIntent } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { RagService } from '../services/rag.service';
 import { toolSuccess, toolError } from '../ai-tool-results';
+import { PrismaService } from '../../../prisma/prisma.service';
+
+function normalizeTextForSensitivity(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+export function isSensitiveMemory(title: string, content: string): boolean {
+  const text = `${title} ${content}`.toLowerCase();
+  const normalized = normalizeTextForSensitivity(text);
+
+  const sensitiveKeywords = [
+    'di ung', 'allergy', 'allergies',
+    'benh ', 'om ', 'sot ', 'ho ', 'dau ', 'kham', 'bac si', 'thuoc ', 'don thuoc', 'medical', 'suc khoe', 'health',
+    'tien ', 'luong ', 'thu nhap', 'chi tieu', 'ngan hang', 'bank', 'tai khoan', 'mat khau', 'password', 'pin', 'credit',
+    'vay ', 'no ', 'finan', 'highly sensitive', 'nhay cam', 'bi mat', 'secret'
+  ];
+
+  return sensitiveKeywords.some(keyword => normalized.includes(keyword));
+}
 
 @Injectable()
 export class FamilyKnowledgeSkill implements AiSkill {
   name = 'FamilyKnowledgeSkill';
+  private readonly logger = new Logger(FamilyKnowledgeSkill.name);
 
-  constructor(private readonly ragService: RagService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ragService: RagService,
+  ) {}
 
   canHandle(intent: AiIntent): boolean {
     return intent === 'family_knowledge';
@@ -18,9 +44,12 @@ export class FamilyKnowledgeSkill implements AiSkill {
     const ragContext = context.ragContext || 'No retrieved family knowledge snippets.';
 
     return `FAMILY KNOWLEDGE RAG RULES:
-- Use retrieved snippets to answer questions about the family (wiki/long memory).
-- Use createWikiEntry to save new important information about the family for the long term (e.g., anniversaries, birthdays not in calendar, family rules, preferences).
-- If information is not in snippets and not in history, say you don't know it yet but the user can ask you to save it.
+- Answer ONLY from the retrieved snippets below. Do NOT invent facts not present in snippets.
+- Keep answers SHORT and direct (2-4 sentences max).
+- Use createWikiEntry ONLY when user explicitly asks to save/remember something new.
+- If information is NOT in snippets, say: "Mình chưa tìm thấy thông tin này trong sổ tay gia đình. Bạn có muốn mình lưu lại không?"
+- Do NOT repeat the source labels or chunk IDs in the response.
+- Respond in the same language as the user (Vietnamese preferred).
 
 RETRIEVED FAMILY KNOWLEDGE:
 ${ragContext}`;
@@ -81,11 +110,22 @@ ${ragContext}`;
           return { needsClarification: true, message: 'TOOL_NEEDS_CLARIFICATION: Please ask the user which specific family they want to save this information to before calling this tool again.' };
         }
         const title = this.buildStableTitle(args, context);
-        console.log(`[FamilyKnowledgeSkill] createWikiEntry: familyId=${saveFamilyId}, title=${title}`);
+        const content = String(args.content || '').trim();
+        if (isSensitiveMemory(title, content)) {
+          return toolSuccess(toolName, {
+            consentRequired: true,
+            sensitive: true,
+            title,
+            content,
+            familyId: saveFamilyId,
+            message: 'Thong tin nay co ve nhay cam. Hay xin xac nhan cua user truoc khi luu vao long memory.',
+          });
+        }
+        this.logger.debug(`createWikiEntry: familyId=${saveFamilyId}, title=${title}`);
         const result = await this.ragService.createKnowledgeDocument({
           familyId: saveFamilyId,
           title,
-          content: args.content,
+          content,
           sourceType: 'ai_chat_saved',
           createdBy: context.userId,
         });
@@ -98,10 +138,13 @@ ${ragContext}`;
   }
 
   async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
+    // If we have ragContext, let the LLM synthesize a concise answer from snippets
+    // (the system prompt instructs conciseness, so no need to hardcode here)
     if (context.ragContext) return undefined;
 
+    // No RAG results found — return a friendly fallback
     return {
-      content: 'Minh chua tim thay thong tin phu hop trong hệ thống bộ nhớ (Family Wiki). Ban co the bao minh lưu thông tin này vào bộ nhớ, mình sẽ nhớ mãi về sau!',
+      content: 'Mình chưa tìm thấy thông tin liên quan trong sổ tay gia đình. Bạn có thể nhờ mình lưu thông tin này vào bộ nhớ gia đình, mình sẽ nhớ mãi về sau! 📒',
       direct: true,
     };
   }

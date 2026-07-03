@@ -154,7 +154,14 @@ export class EventsService {
           if (e.scope === 'FAMILY' && e.familyId !== familyId) return false;
           return true;
         })
-        .map((e) => ({ ...e, familyName: e.scope === 'GLOBAL' ? 'Hệ thống' : familyName }));
+        .map((e) => ({
+          ...e,
+          familyName: e.scope === 'GLOBAL'
+            ? 'Hệ thống'
+            : e.scope === 'PRIVATE'
+            ? 'Cá nhân'
+            : familyName,
+        }));
 
       // Expand recurring and filter by date
       if (month && year) {
@@ -442,7 +449,11 @@ export class EventsService {
 
     let mappedEvents = events.map((e) => ({
       ...e,
-      familyName: familiesMap[e.familyId] || (e.scope === 'GLOBAL' ? 'Hệ thống' : 'Cá nhân'),
+      familyName: e.scope === 'GLOBAL'
+        ? 'Hệ thống'
+        : e.scope === 'PRIVATE'
+        ? 'Cá nhân'
+        : familiesMap[e.familyId] || 'Gia đình',
     }));
 
     if (month && year) {

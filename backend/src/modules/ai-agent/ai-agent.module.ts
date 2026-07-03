@@ -15,11 +15,18 @@ import { CalendarSkill } from './skills/calendar.skill';
 import { HoroscopeSkill as HoroscopeAiSkill } from './skills/horoscope.skill';
 import { FamilyKnowledgeSkill } from './skills/family-knowledge.skill';
 import { FootballSkill } from './skills/football.skill';
+import { WeatherSkill } from './skills/weather.skill';
 import { SearchSkill } from './skills/search.skill';
 import { AiSkillRegistry } from './skills/ai-skill-registry';
+import { WeatherModule } from '../weather/weather.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => MealsModule), forwardRef(() => EventsModule)],
+  imports: [
+    PrismaModule,
+    forwardRef(() => MealsModule),
+    forwardRef(() => EventsModule),
+    WeatherModule,
+  ],
   controllers: [AiAgentController],
   providers: [
     AiAgentService,
@@ -34,9 +41,10 @@ import { AiSkillRegistry } from './skills/ai-skill-registry';
     HoroscopeAiSkill,
     FamilyKnowledgeSkill,
     FootballSkill,
+    WeatherSkill,
     SearchSkill,
     AiSkillRegistry,
   ],
-  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiSkillRegistry, FootballSkill, SearchSkill],
+  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiSkillRegistry, FootballSkill, WeatherSkill, SearchSkill],
 })
 export class AiAgentModule {}

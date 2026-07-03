@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { formatCurrency } from '@/utils/format';
 
 interface Transaction {
   id: string;
@@ -123,10 +124,6 @@ export default function Finance() {
       </div>
     );
   }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
-  };
 
   const percentSpent = status ? (status.totalSpentToday / (status.dailyBudget || 1)) * 100 : 0;
   const isOver = status?.isOverspent;

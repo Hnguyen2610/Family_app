@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { AiIntent } from '../ai-intent-router';
 import { EventsService } from '../../events/events.service';
@@ -9,6 +9,7 @@ import { normalizeSearchText } from '../ai-intent-router';
 @Injectable()
 export class CalendarSkill implements AiSkill {
   name = 'CalendarSkill';
+  private readonly logger = new Logger(CalendarSkill.name);
 
   constructor(
     @Inject(forwardRef(() => EventsService))
@@ -189,7 +190,7 @@ export class CalendarSkill implements AiSkill {
             args.isRecurring = true;
           }
 
-          console.log(`[CalendarSkill] createEvent: familyId=${createFamilyId}, date=${args.date}, title=${args.title}, recurring=${args.recurring}`);
+          this.logger.debug(`createEvent: familyId=${createFamilyId}, date=${args.date}, title=${args.title}, recurring=${args.recurring}`);
 
           let eventDate = new Date(args.date);
           if (args.time) {
@@ -198,8 +199,9 @@ export class CalendarSkill implements AiSkill {
               eventDate.setHours(hours, minutes, 0, 0);
             }
           }
+          const { dateList: _dateList, endDate: _endDate, ...eventArgs } = args;
           const event = await this.eventsService.create(createFamilyId, context.userId, {
-            ...args,
+            ...eventArgs,
             familyId: createFamilyId,
             date: eventDate,
             time: args.time || '09:00',
@@ -207,7 +209,7 @@ export class CalendarSkill implements AiSkill {
               ? `LUNAR_${args.recurring}`
               : args.recurring,
           });
-          console.log(`[CalendarSkill] Event created: id=${(event as any)?.id}`);
+          this.logger.debug(`Event created: id=${(event as any)?.id}`);
           return toolSuccess(toolName, event);
         }
 

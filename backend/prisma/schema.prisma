@@ -237,6 +237,53 @@ model AiExtractionDraft {
   @@index([createdAt])
 }
 
+model AiRequestLog {
+  id              String              @id
+  timestamp       DateTime            @default(now())
+  type            String
+  intent          String
+  skill           String?
+  model           String
+  toolsCalled     String[]            @default([])
+  ragSnippetCount Int?
+  ragQuery        String?
+  ragMiss         Boolean?
+  ragSources      Json?
+  latencyMs       Int                 @default(0)
+  cached          Boolean             @default(false)
+  redacted        Boolean             @default(false)
+  userId          String?
+  familyId        String?
+  sessionId       String?
+  error           String?
+  fallbackReason  String?
+  tokenCount      Int?
+
+  feedbacks AiRequestFeedback[]
+
+  @@index([timestamp])
+  @@index([familyId])
+  @@index([intent])
+  @@index([skill])
+  @@index([model])
+  @@index([cached])
+}
+
+model AiRequestFeedback {
+  id           String       @id @default(cuid())
+  requestLogId String
+  requestLog   AiRequestLog @relation(fields: [requestLogId], references: [id], onDelete: Cascade)
+  value        String
+  source       String
+  userId       String?
+  comment      String?
+  createdAt    DateTime     @default(now())
+
+  @@index([requestLogId])
+  @@index([value])
+  @@index([createdAt])
+}
+
 // ============================================
 // Notifications
 // ============================================

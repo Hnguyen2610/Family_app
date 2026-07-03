@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { normalizeSearchText } from '../ai-intent-router';
 
@@ -21,7 +21,9 @@ export type RagSearchResult = {
   documentId: string;
   title: string;
   content: string;
+  familyId: string;
   sourceType: string;
+  category?: string;
   score: number;
   chunkIndex: number;
   retrieval: 'semantic' | 'lexical';
@@ -54,16 +56,34 @@ const STOP_WORDS = new Set([
 
 @Injectable()
 export class RagService {
+  private readonly logger = new Logger(RagService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async createKnowledgeDocument(input: CreateKnowledgeDocumentInput) {
     const content = input.content.trim();
+    const title = input.title.trim();
+    const existing = await this.findExistingDocumentByTitle(input.familyId, title);
+    if (existing) {
+      const mergedContent = this.mergeDocumentContent(existing.content || '', content);
+      return this.updateKnowledgeDocument(input.familyId, existing.id, {
+        title,
+        content: mergedContent,
+        metadata: {
+          ...((existing.metadata as Record<string, any>) || {}),
+          ...(input.metadata || {}),
+          mergedFromDuplicate: true,
+          lastMergedAt: new Date().toISOString(),
+        },
+      });
+    }
+
     const chunks = this.chunkText(content);
 
     const document = await this.prisma.aiDocument.create({
       data: {
         familyId: input.familyId,
-        title: input.title.trim(),
+        title,
         content,
         sourceType: input.sourceType || 'family_wiki',
         createdBy: input.createdBy,
@@ -86,6 +106,28 @@ export class RagService {
       where: { id: document.id },
       include: { chunks: true },
     });
+  }
+
+  private async findExistingDocumentByTitle(familyId: string, title: string) {
+    const normalizedTitle = normalizeSearchText(title);
+    if (!normalizedTitle) return null;
+
+    const candidates = await this.prisma.aiDocument.findMany({
+      where: { familyId },
+      select: { id: true, title: true, content: true, metadata: true },
+      take: 50,
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return candidates.find((candidate) => normalizeSearchText(candidate.title) === normalizedTitle) || null;
+  }
+
+  private mergeDocumentContent(existingContent: string, nextContent: string) {
+    const existing = existingContent.trim();
+    const next = nextContent.trim();
+    if (!existing) return next;
+    if (!next || normalizeSearchText(existing).includes(normalizeSearchText(next))) return existing;
+    return `${existing}\n\n${next}`;
   }
 
   async listKnowledgeDocuments(familyId: string) {
@@ -197,7 +239,9 @@ export class RagService {
           select: {
             id: true,
             title: true,
+            familyId: true,
             sourceType: true,
+            metadata: true,
           },
         },
       },
@@ -212,7 +256,9 @@ export class RagService {
           documentId: chunk.document.id,
           title: chunk.document.title,
           content: chunk.content,
+          familyId: chunk.document.familyId,
           sourceType: chunk.document.sourceType,
+          category: this.getDocumentCategory(chunk.document.metadata),
           score,
           chunkIndex: chunk.chunkIndex,
           retrieval: 'lexical' as const,
@@ -235,59 +281,93 @@ export class RagService {
   }
 
   private async searchSemantic(familyId: string, query: string, limit: number): Promise<RagSearchResult[]> {
-    const embedding = await this.generateEmbedding(query);
-    if (!embedding) return [];
+    try {
+      const embedding = await this.generateEmbedding(query);
+      if (!embedding) return [];
 
-    const vector = this.toVectorLiteral(embedding);
-    const rows = await this.prisma.$queryRawUnsafe<Array<{
-      documentId: string;
-      title: string;
-      content: string;
-      sourceType: string;
-      score: number;
-      chunkIndex: number;
-    }>>(
-      `
-      SELECT
-        d.id AS "documentId",
-        d.title,
-        c.content,
-        d."sourceType",
-        (1 - (c.embedding_vector <=> $2::vector))::float AS score,
-        c."chunkIndex"
-      FROM "AiDocumentChunk" c
-      INNER JOIN "AiDocument" d ON d.id = c."documentId"
-      WHERE c."familyId" = $1
-        AND c.embedding_vector IS NOT NULL
-      ORDER BY c.embedding_vector <=> $2::vector
-      LIMIT $3
-      `,
-      familyId,
-      vector,
-      Math.max(1, Math.min(limit, 5)),
-    );
+      const vector = this.toVectorLiteral(embedding);
+      const rows = await this.prisma.$queryRawUnsafe<Array<{
+        documentId: string;
+        title: string;
+        content: string;
+        familyId: string;
+        sourceType: string;
+        metadata: any;
+        score: number;
+        chunkIndex: number;
+      }>>(
+        `
+        SELECT
+          d.id AS "documentId",
+          d.title,
+          c.content,
+          d."familyId",
+          d."sourceType",
+          d.metadata,
+          (1 - (c.embedding_vector <=> $2::vector))::float AS score,
+          c."chunkIndex"
+        FROM "AiDocumentChunk" c
+        INNER JOIN "AiDocument" d ON d.id = c."documentId"
+        WHERE c."familyId" = $1
+          AND c.embedding_vector IS NOT NULL
+        ORDER BY c.embedding_vector <=> $2::vector
+        LIMIT $3
+        `,
+        familyId,
+        vector,
+        Math.max(1, Math.min(limit, 5)),
+      );
 
-    return rows.map((row) => ({ ...row, retrieval: 'semantic' as const }));
+      // Apply a threshold of 0.65 to ensure only highly relevant matches are retrieved
+      return rows
+        .map((row) => ({
+          ...row,
+          category: this.getDocumentCategory(row.metadata),
+          retrieval: 'semantic' as const,
+        }))
+        .filter((row) => row.score >= 0.65);
+    } catch (err: any) {
+      this.logger.warn(`Semantic search failed, falling back to lexical: ${err.message}`);
+      return [];
+    }
   }
 
   private async embedDocumentChunks(chunks: Array<{ id: string; content: string }>) {
     for (const chunk of chunks) {
-      const embedding = await this.generateEmbedding(chunk.content);
-      if (!embedding) continue;
+      try {
+        const embedding = await this.generateEmbedding(chunk.content);
+        if (!embedding) continue;
 
-      const vector = this.toVectorLiteral(embedding);
-      await this.prisma.$executeRawUnsafe(
-        `
-        UPDATE "AiDocumentChunk"
-        SET embedding = $2::jsonb,
-            embedding_vector = $3::vector,
-            metadata = jsonb_set(COALESCE(metadata::jsonb, '{}'::jsonb), '{embeddingReady}', 'true'::jsonb, true)
-        WHERE id = $1
-        `,
-        chunk.id,
-        JSON.stringify(embedding),
-        vector,
-      );
+        const vector = this.toVectorLiteral(embedding);
+        await this.prisma.$executeRawUnsafe(
+          `
+          UPDATE "AiDocumentChunk"
+          SET embedding = $2::jsonb,
+              embedding_vector = $3::vector,
+              metadata = jsonb_set(COALESCE(metadata::jsonb, '{}'::jsonb), '{embeddingReady}', 'true'::jsonb, true)
+          WHERE id = $1
+          `,
+          chunk.id,
+          JSON.stringify(embedding),
+          vector,
+        );
+      } catch (err: any) {
+        this.logger.warn(`Failed to execute pgvector raw update: ${err.message}. Saving embedding JSON only.`);
+        try {
+          const embedding = await this.generateEmbedding(chunk.content);
+          if (embedding) {
+            await this.prisma.aiDocumentChunk.update({
+              where: { id: chunk.id },
+              data: {
+                embedding: embedding as any,
+                metadata: { embeddingReady: true, vectorUnsupported: true }
+              }
+            });
+          }
+        } catch (innerErr: any) {
+          this.logger.error(`Standard json update fallback also failed: ${innerErr.message}`);
+        }
+      }
     }
   }
 
@@ -355,23 +435,34 @@ export class RagService {
   }
 
   private extractTerms(text: string) {
-    return Array.from(new Set(
-      normalizeSearchText(text)
-        .split(/[^a-z0-9]+/g)
-        .map((term) => term.trim())
-        .filter((term) => term.length >= 2 && !STOP_WORDS.has(term)),
-    ));
+    const rawWords = normalizeSearchText(text)
+      .split(/[^a-z0-9]+/g)
+      .map((term) => term.trim())
+      .filter((term) => term.length >= 2);
+
+    const filteredWords = rawWords.filter(w => !STOP_WORDS.has(w));
+    const terms = new Set(filteredWords);
+
+    // Extract bigrams (adjacent word pairs) to match phrases like 'me toi', 'sinh ngay', etc.
+    for (let i = 0; i < rawWords.length - 1; i++) {
+      if (!STOP_WORDS.has(rawWords[i]) || !STOP_WORDS.has(rawWords[i + 1])) {
+        terms.add(`${rawWords[i]} ${rawWords[i + 1]}`);
+      }
+    }
+
+    return Array.from(terms);
   }
 
   private scoreChunk(query: string, terms: string[], candidate: string) {
     const normalizedCandidate = normalizeSearchText(candidate);
     const normalizedQuery = normalizeSearchText(query).trim();
-    let score = normalizedCandidate.includes(normalizedQuery) ? 8 : 0;
+    let score = normalizedCandidate.includes(normalizedQuery) ? 10 : 0;
 
     for (const term of terms) {
       let index = normalizedCandidate.indexOf(term);
       while (index !== -1) {
-        score += term.length >= 5 ? 2 : 1;
+        const isPhrase = term.includes(' ');
+        score += isPhrase ? 4 : (term.length >= 5 ? 2 : 1);
         index = normalizedCandidate.indexOf(term, index + term.length);
       }
     }
@@ -381,5 +472,10 @@ export class RagService {
 
   private estimateTokens(text: string) {
     return Math.ceil(text.length / 4);
+  }
+
+  private getDocumentCategory(metadata: any) {
+    const category = metadata && typeof metadata === 'object' ? metadata.category : undefined;
+    return typeof category === 'string' && category.trim() ? category.trim() : undefined;
   }
 }

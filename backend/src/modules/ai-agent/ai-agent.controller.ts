@@ -164,6 +164,19 @@ export class AiAgentController {
     return this.visionExtractionService.updateDraftStatus(familyId, id, dto.status);
   }
 
+  @Post('feedback')
+  async addFeedback(
+    @Body() dto: {
+      requestLogId: string;
+      value: 'correct' | 'wrong' | 'missing_context' | 'wrong_family' | 'wrong_datetime';
+      source?: 'web' | 'telegram' | 'admin';
+      userId?: string;
+      comment?: string;
+    },
+  ) {
+    return this.aiAgentService.addFeedback(dto);
+  }
+
   @Delete('history/:familyId')
   async clearHistory(
     @Param('familyId') familyId: string,
@@ -174,9 +187,16 @@ export class AiAgentController {
 
   @SkipThrottle()
   @Get('admin/stats')
-  getAdminStats(@Headers('x-admin-secret') adminSecret: string) {
+  async getAdminStats(
+    @Headers('x-admin-secret') adminSecret: string,
+    @Query('model') model?: string,
+    @Query('skill') skill?: string,
+    @Query('status') status?: 'ok' | 'error' | 'cached',
+    @Query('familyId') familyId?: string,
+    @Query('hasRag') hasRag?: 'true' | 'false',
+  ) {
     const secret = process.env.CRON_SECRET || 'family-cron-secret-2026';
     if (adminSecret !== secret) return { error: 'Unauthorized' };
-    return this.aiAgentService.getSystemStats();
+    return this.aiAgentService.getSystemStats({ model, skill, status, familyId, hasRag });
   }
 }

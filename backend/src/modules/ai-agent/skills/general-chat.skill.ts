@@ -75,7 +75,13 @@ export class GeneralChatSkill implements AiSkill {
     if (name === 'updateAiMemory' && context.trace?.res) {
       context.trace.res.write(`data: ${JSON.stringify({
         type: 'memory_consent_request',
-        memory: { type: args.type, value: args.value },
+        memory: {
+          type: args.type,
+          value: args.value,
+          memoryType: this.mapMemoryType(args.type),
+          confidence: 0.8,
+          sourceMessage: context.userMessage,
+        },
       })}\n\n`);
 
       return {
@@ -91,6 +97,9 @@ export class GeneralChatSkill implements AiSkill {
           title: args.title,
           content: args.content,
           category: args.category || 'family',
+          memoryType: this.mapFamilyNoteType(args.category),
+          confidence: 0.8,
+          sourceMessage: context.userMessage,
         },
       })}\n\n`);
 
@@ -99,5 +108,18 @@ export class GeneralChatSkill implements AiSkill {
         message: 'A Family Notes/RAG consent request has been sent to the user. Do NOT save until they confirm.',
       };
     }
+  }
+
+  private mapMemoryType(type: string) {
+    if (type === 'healthRestrictions') return 'health_restriction';
+    if (type === 'familyNotes') return 'family_fact';
+    return 'user_preference';
+  }
+
+  private mapFamilyNoteType(category: string) {
+    if (category === 'health') return 'health_restriction';
+    if (category === 'finance') return 'sensitive_note';
+    if (category === 'school') return 'temporary_note';
+    return 'family_fact';
   }
 }

@@ -114,7 +114,7 @@ When creating or reading dates, pay attention to the day of week and avoid date 
     '- For calendar-related tasks, use CalendarSkill tools (createEvent, updateEvent, deleteEvent).\n' +
     '- For saving family knowledge or "long memory", use createWikiEntry.\n' +
     '- For football/soccer queries (matches, results, standings), use FootballSkill tools.\n' +
-    '- For any real-time information, news, or deep research outside family knowledge, use internetSearch via SearchSkill.\n' +
+    '- For any real-time information, news, or deep research outside family knowledge, use the search tool via SearchSkill.\n' +
     '- DISAMBIGUATION RULE: If context says "USER IS VIEWING ALL FAMILIES", ask the user ONCE which family to use. After they answer, immediately call the tool with that family\'s id. Do NOT ask again.\n' +
     '- If context says "RESOLVED FAMILY: ...", use that family\'s id directly in all tool calls without asking.\n' +
     '- NEVER write pseudo-function calls like <function=name(...)> in your response. Use native tool calling only.\n' +

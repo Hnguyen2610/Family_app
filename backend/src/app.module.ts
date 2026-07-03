@@ -16,6 +16,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { FamiliesModule } from './modules/families/families.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
+import { WeatherModule } from './modules/weather/weather.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
     NotificationsModule,
     AuthModule,
     TelegramModule,
+    WeatherModule,
   ],
   controllers: [AppController],
   providers: [

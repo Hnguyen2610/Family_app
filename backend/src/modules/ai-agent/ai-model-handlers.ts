@@ -6,6 +6,7 @@ import { buildSystemPrompt } from './ai-agent-prompt';
 import { getTools, getGeminiTools } from './ai-agent-tools';
 import { AiIntentRoute } from './ai-intent-router';
 import { AiTrace, measureAiStep } from './ai-observability';
+import { sanitizeAiResponse } from './ai-response-sanitizer';
 
 export interface ModelHandlerDeps {
   logger: Logger;
@@ -180,6 +181,17 @@ function getGeminiVisionBusyMessage() {
   return 'Gemini vision đang quá tải tạm thời nên chưa đọc được ảnh lúc này. Bạn thử gửi lại sau vài giây, hoặc chọn ảnh nhỏ hơn/lớn hơn nhe.';
 }
 
+function sanitizeFinalAssistantContent(content: string, deps: ModelHandlerDeps, context: string, res?: any) {
+  const sanitized = sanitizeAiResponse(content);
+  if (!sanitized.sanitized) return content;
+
+  deps.logger.warn(`[ResponseSanitizer] ${context}: ${sanitized.reasons.join(', ')}`);
+  if (res) {
+    res.write(`data: ${JSON.stringify({ type: 'replace_content', content: sanitized.content })}\n\n`);
+  }
+  return sanitized.content;
+}
+
 export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandlerInput) {
   const { gemini, chatService, logger, executeTool, geminiModel, geminiContextWindow, aiMaxTokens, historyLimit } = deps;
   const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, systemPromptOverride, toolsOverride, image } = input;
@@ -257,6 +269,7 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
     }
   }
 
+  assistantContent = sanitizeFinalAssistantContent(assistantContent, deps, 'gemini_chat');
   const usage = buildUsageSnapshot({
     provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
     historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
@@ -311,6 +324,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
     }
   }
 
+  assistantContent = sanitizeFinalAssistantContent(assistantContent, deps, 'groq_chat');
   const usage = buildUsageSnapshot({
     provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens, historyLimit,
     promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
@@ -414,6 +428,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
     }
   }
 
+  assistantContent = sanitizeFinalAssistantContent(assistantContent, deps, 'gemini_stream', res);
   const usage = buildUsageSnapshot({
     provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
     historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
@@ -539,6 +554,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
     }
   }
 
+  assistantContent = sanitizeFinalAssistantContent(assistantContent, deps, 'groq_stream', res);
   const usage = buildUsageSnapshot({
     provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens, historyLimit,
     promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),

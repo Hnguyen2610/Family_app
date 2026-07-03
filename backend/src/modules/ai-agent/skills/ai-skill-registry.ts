@@ -9,6 +9,7 @@ import { CalendarSkill } from './calendar.skill';
 import { HoroscopeSkill } from './horoscope.skill';
 import { FamilyKnowledgeSkill } from './family-knowledge.skill';
 import { FootballSkill } from './football.skill';
+import { WeatherSkill } from './weather.skill';
 import { SearchSkill } from './search.skill';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class AiSkillRegistry implements OnModuleInit {
       this.moduleRef.get(HoroscopeSkill),
       this.moduleRef.get(FamilyKnowledgeSkill),
       this.moduleRef.get(FootballSkill),
+      this.moduleRef.get(WeatherSkill),
       this.moduleRef.get(SearchSkill),
       this.moduleRef.get(GeneralChatSkill),
     ];

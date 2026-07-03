@@ -21,25 +21,25 @@ export function toolError(tool: string, message: string): StructuredToolResult {
 
 export function formatGoldPriceForUser(result: any): string {
   if (result?.error) {
-    return result.message || 'Khong the lay du lieu gia vang luc nay.';
+    return result.message || 'Không thể lấy dữ liệu giá vàng lúc này.';
   }
 
-  const summary = result?.formatted_summary || 'Khong co du lieu gia vang.';
-  const source = result?.source ? `\n\nNguon: ${result.source}` : '';
+  const summary = result?.formatted_summary || 'Không có dữ liệu giá vàng.';
+  const source = result?.source ? `\n\nNguồn: ${result.source}` : '';
   const time = result?.api_time || result?.fetch_timestamp;
 
-  return `${summary}${source}${time ? `\nCap nhat: ${time}` : ''}`;
+  return `${summary}${source}${time ? `\nCập nhật: ${time}` : ''}`;
 }
 
 export function formatMenuForUser(result: any): string {
   if (result?.error) {
-    return result.message || 'Khong the tao thuc don luc nay.';
+    return result.message || 'Không thể tạo thực đơn lúc này.';
   }
 
   if (typeof result === 'string') return result;
 
   const parts = [];
-  if (result?.mainDish) parts.push(`Mon chinh: ${formatMealName(result.mainDish)}`);
+  if (result?.mainDish) parts.push(`Món chính: ${formatMealName(result.mainDish)}`);
   if (result?.vegetable) parts.push(`Rau: ${formatMealName(result.vegetable)}`);
   if (result?.soup) parts.push(`Canh: ${formatMealName(result.soup)}`);
   if (result?.formatted) parts.push(result.formatted);
@@ -55,7 +55,7 @@ function formatMealName(value: any): string {
 
 export function formatCalendarEventsForUser(events: any[], month: number, year: number): string {
   if (!Array.isArray(events) || events.length === 0) {
-    return `Khong co su kien nao trong thang ${month}/${year}.`;
+    return `Không có sự kiện nào trong tháng ${month}/${year}.`;
   }
 
   const sorted = [...events].sort((a, b) => {
@@ -68,14 +68,14 @@ export function formatCalendarEventsForUser(events: any[], month: number, year: 
     const date = event?.date ? new Date(event.date) : undefined;
     const dateText = date && !Number.isNaN(date.getTime())
       ? date.toLocaleDateString('vi-VN')
-      : 'Chua ro ngay';
+      : 'Chưa rõ ngày';
     const timeText = event?.time ? ` ${event.time}` : '';
     const familyText = event?.familyName ? ` - ${event.familyName}` : '';
-    return `${index + 1}. ${dateText}${timeText}: ${event?.title || 'Su kien'}${familyText}`;
+    return `${index + 1}. ${dateText}${timeText}: ${event?.title || 'Sự kiện'}${familyText}`;
   });
 
   const hiddenCount = sorted.length - lines.length;
-  const more = hiddenCount > 0 ? `\n...con ${hiddenCount} su kien khac.` : '';
+  const more = hiddenCount > 0 ? `\n...còn ${hiddenCount} sự kiện khác.` : '';
 
   return `Sự kiện tháng ${month}/${year}:\n${lines.join('\n')}${more}`;
 }

@@ -8,12 +8,14 @@ import { AiAgentModule } from '../ai-agent/ai-agent.module';
 import { FinanceModule } from '../finance/finance.module';
 import { WebPushService } from './web-push.service';
 import { TelegramModule } from '../telegram/telegram.module';
+import { WeatherModule } from '../weather/weather.module';
 
 @Module({
   imports: [
     MailModule, 
     PrismaModule, 
     TelegramModule,
+    WeatherModule,
     forwardRef(() => EventsModule), 
     forwardRef(() => AiAgentModule),
     forwardRef(() => FinanceModule)

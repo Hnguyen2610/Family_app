@@ -76,10 +76,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
-    // For now, we simply navigate to chat to let them continue.
-    // Passing the initial message would require a global store or url param,
-    // but a simple trick is to save to localStorage as a "pending_chat_prompt"
-    localStorage.setItem('pending_chat_prompt', chatMessage);
+    sessionStorage.setItem('pending_chat_prompt', chatMessage.trim());
+    setChatMessage('');
     onNavigate('chat');
   };
 
