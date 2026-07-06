@@ -1,17 +1,12 @@
-'use client';
+﻿'use client';
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FiArchive,
-  FiCalendar,
-  FiCheck,
-  FiCreditCard,
   FiEye,
   FiFileText,
   FiImage,
   FiRefreshCw,
-  FiTrash2,
   FiUpload,
 } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,54 +14,15 @@ import { useTranslation } from '@/lib/i18n';
 import api, { chatAPI, eventsAPI } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-
-type VisionDraftKind = 'auto' | 'receipt' | 'medicine' | 'school_plan';
-type VisionDraftStatus = 'ALL' | 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
-
-type TransactionDraft = {
-  amount?: number | string | null;
-  type?: string | null;
-  category?: string | null;
-  description?: string | null;
-  date?: string | null;
-};
-
-type EventDraft = {
-  title?: string | null;
-  date?: string | null;
-  time?: string | null;
-  type?: string | null;
-  description?: string | null;
-};
-
-type VisionStructuredData = {
-  draftType?: string;
-  summary?: string;
-  rawText?: string;
-  confidence?: number;
-  transactionDraft?: TransactionDraft | null;
-  eventDrafts?: EventDraft[];
-  medicineDraft?: {
-    patient?: string | null;
-    medicines?: { name?: string | null; dosage?: string | null; schedule?: string | null; notes?: string | null }[];
-    warnings?: string[];
-  } | null;
-  warnings?: string[];
-};
-
-type VisionDraft = {
-  id: string;
-  familyId: string;
-  userId?: string | null;
-  draftType: string;
-  status: 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
-  summary?: string | null;
-  rawText?: string | null;
-  structuredData: VisionStructuredData;
-  metadata?: Record<string, any> | null;
-  createdAt: string;
-  updatedAt: string;
-};
+import { compressImage, isCloudinaryConfigured, uploadToCloudinary } from '@/lib/image-utils';
+import { VisionDraft, VisionDraftKind, VisionDraftStatus } from './vision-drafts/vision-draft-types';
+import {
+  normalizeDate,
+  normalizeEventType,
+  normalizeTransactionCategory,
+  normalizeTransactionType,
+} from './vision-drafts/vision-draft-utils';
+import { VisionDraftCard } from './vision-drafts/VisionDraftCard';
 
 const KIND_OPTIONS: { id: VisionDraftKind; label: string }[] = [
   { id: 'auto', label: 'Auto' },
@@ -81,28 +37,6 @@ const STATUS_OPTIONS: { id: VisionDraftStatus; label: string }[] = [
   { id: 'DISMISSED', label: 'Dismissed' },
   { id: 'ALL', label: 'All' },
 ];
-
-const TRANSACTION_TYPES = new Set(['INCOME', 'EXPENSE']);
-const TRANSACTION_CATEGORIES = new Set([
-  'FOOD',
-  'TRANSPORT',
-  'SHOPPING',
-  'UTILITIES',
-  'RENT',
-  'ENTERTAINMENT',
-  'HEALTH',
-  'EDUCATION',
-  'SALARY',
-  'BONUS',
-  'INVESTMENT',
-  'OTHER',
-]);
-const EVENT_TYPES = new Set(['BIRTHDAY', 'ANNIVERSARY', 'APPOINTMENT', 'REMINDER', 'TASK', 'GENERAL']);
-
-const MAX_IMAGE_DIMENSION = 960;
-const JPEG_QUALITY = 0.62;
-const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
 export default function VisionDrafts() {
   const { user, currentFamilyId } = useAuth();
@@ -169,12 +103,12 @@ export default function VisionDrafts() {
 
     try {
       toast.loading(language === 'vi' ? 'Đang nén ảnh...' : 'Compressing image...', { id: 'vision-image' });
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(file, { maxDimension: 960, quality: 0.62 });
       setImage(compressed.dataUrl);
       setImageUrl('');
       setImageName(file.name);
 
-      if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET) {
+      if (isCloudinaryConfigured()) {
         toast.loading(language === 'vi' ? 'Đang upload Cloudinary...' : 'Uploading to Cloudinary...', { id: 'vision-image' });
         const uploadedUrl = await uploadToCloudinary(compressed.blob, file.name);
         setImage('');
@@ -289,7 +223,7 @@ export default function VisionDrafts() {
   const handleSaveKnowledge = async (draft: VisionDraft) => {
     const content = draft.rawText || draft.structuredData?.rawText || draft.summary || '';
     if (!familyId || !content.trim()) {
-      toast.error(language === 'vi' ? 'Draft khÃ´ng cÃ³ ná»™i dung RAG há»£p lá»‡' : 'Draft has no valid knowledge content');
+      toast.error(language === 'vi' ? 'Draft không có nội dung RAG hợp lệ' : 'Draft has no valid knowledge content');
       return;
     }
 
@@ -307,10 +241,10 @@ export default function VisionDrafts() {
         },
       });
       await markDraft(draft.id, 'CONFIRMED');
-      toast.success(language === 'vi' ? 'ÄÃ£ lÆ°u vÃ o sá»• tay gia Ä‘Ã¬nh' : 'Saved to family knowledge');
+      toast.success(language === 'vi' ? 'Đã lưu vào sổ tay gia đình' : 'Saved to family knowledge');
     } catch (error) {
       console.error('Failed to save vision draft to knowledge:', error);
-      toast.error(language === 'vi' ? 'KhÃ´ng lÆ°u Ä‘Æ°á»£c vÃ o sá»• tay' : 'Unable to save to family knowledge');
+      toast.error(language === 'vi' ? 'Không lưu được vào sổ tay' : 'Unable to save to family knowledge');
     } finally {
       setBusyDraftId(null);
     }
@@ -451,7 +385,7 @@ export default function VisionDrafts() {
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {drafts.map((draft) => (
-            <DraftCard
+            <VisionDraftCard
               key={draft.id}
               draft={draft}
               busy={busyDraftId === draft.id}
@@ -468,269 +402,4 @@ export default function VisionDrafts() {
       </section>
     </div>
   );
-}
-
-function DraftCard({
-  draft,
-  busy,
-  language,
-  labels,
-  onSaveTransaction,
-  onSaveEvents,
-  onSaveKnowledge,
-  onDismiss,
-  t,
-}: {
-  draft: VisionDraft;
-  busy: boolean;
-  language: string;
-  labels: Record<string, string>;
-  onSaveTransaction: () => void;
-  onSaveEvents: () => void;
-  onSaveKnowledge: () => void;
-  onDismiss: () => void;
-  t: (key: any) => string;
-}) {
-  const data = draft.structuredData || {};
-  const transaction = data.transactionDraft;
-  const events = data.eventDrafts || [];
-  const warnings = data.warnings || data.medicineDraft?.warnings || [];
-  const hasKnowledgeContent = Boolean(draft.rawText || data.rawText || draft.summary || data.summary);
-  const canAct = draft.status === 'DRAFT' && !busy;
-
-  const typeLabel = t(`vision.type.${draft.draftType.toLowerCase()}` as any);
-  const statusLabel = t(`vision.status.${draft.status.toLowerCase()}` as any);
-
-  return (
-    <article className="glass rounded-2xl border border-black/5 dark:border-white/5 p-5 space-y-5 hover:border-primary/30 transition-all">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="px-2 py-1 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-300 text-[9px] font-black uppercase tracking-widest">
-              {typeLabel}
-            </span>
-            <span className="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-900 text-slate-500 text-[9px] font-black uppercase tracking-widest">
-              {statusLabel}
-            </span>
-          </div>
-          <p className="font-black text-sm text-slate-900 dark:text-slate-100 line-clamp-2">
-            {draft.summary || data.summary || t('vision.title')}
-          </p>
-          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-2">
-            {new Date(draft.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}
-          </p>
-        </div>
-        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shrink-0">
-          <FiArchive />
-        </div>
-      </div>
-
-      {transaction && (
-        <div className="rounded-xl border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-950/30 p-4 space-y-2">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
-            <FiCreditCard /> Transaction
-          </p>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <Info label="Amount" value={formatAmount(transaction.amount)} />
-            <Info label="Category" value={transaction.category || 'OTHER'} />
-            <Info label="Date" value={transaction.date || '-'} />
-            <Info label="Type" value={transaction.type || 'EXPENSE'} />
-          </div>
-          {transaction.description && <p className="text-xs text-slate-500 leading-relaxed">{transaction.description}</p>}
-        </div>
-      )}
-
-      {events.length > 0 && (
-        <div className="rounded-xl border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-950/30 p-4 space-y-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
-            <FiCalendar /> Events
-          </p>
-          {events.slice(0, 4).map((event, index) => (
-            <div key={`${event.title || 'event'}-${index}`} className="flex items-start justify-between gap-3 text-xs">
-              <span className="font-bold text-slate-700 dark:text-slate-200">{event.title || 'Untitled'}</span>
-              <span className="text-slate-500 font-black shrink-0">{event.date || '-'}</span>
-            </div>
-          ))}
-          {events.length > 4 && (
-            <p className="text-[10px] font-bold text-slate-400">+{events.length - 4} more</p>
-          )}
-        </div>
-      )}
-
-      {data.medicineDraft?.medicines?.length ? (
-        <div className="rounded-xl border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-950/30 p-4 space-y-2">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Medicine</p>
-          {data.medicineDraft.medicines.slice(0, 3).map((medicine, index) => (
-            <p key={`${medicine.name || 'medicine'}-${index}`} className="text-xs text-slate-600 dark:text-slate-300">
-              <span className="font-black">{medicine.name || 'Unknown'}</span>
-              {medicine.dosage ? ` - ${medicine.dosage}` : ''}
-              {medicine.schedule ? ` - ${medicine.schedule}` : ''}
-            </p>
-          ))}
-        </div>
-      ) : null}
-
-      {warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 font-bold space-y-1">
-          {warnings.slice(0, 3).map((warning, index) => (
-            <p key={`${warning}-${index}`}>{warning}</p>
-          ))}
-        </div>
-      )}
-
-      {(draft.rawText || data.rawText) && (
-        <details className="text-xs text-slate-500">
-          <summary className="cursor-pointer font-black uppercase tracking-widest text-[9px]">{t('vision.rawText')}</summary>
-          <p className="mt-3 whitespace-pre-wrap leading-relaxed">{draft.rawText || data.rawText}</p>
-        </details>
-      )}
-
-      <div className="flex flex-wrap gap-2 pt-1">
-        {transaction && (
-          <Button onClick={onSaveTransaction} disabled={!canAct} className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
-            <FiCheck />
-            {busy ? 'Saving...' : labels.saveTransaction}
-          </Button>
-        )}
-        {events.length > 0 && (
-          <Button onClick={onSaveEvents} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
-            <FiCalendar />
-            {busy ? 'Saving...' : labels.saveEvents}
-          </Button>
-        )}
-        {hasKnowledgeContent && (
-          <Button onClick={onSaveKnowledge} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
-            <FiFileText />
-            {busy ? 'Saving...' : 'Save note'}
-          </Button>
-        )}
-        {draft.status === 'DRAFT' && (
-          <Button onClick={onDismiss} disabled={busy} variant="ghost" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 hover:text-rose-500">
-            <FiTrash2 />
-            {labels.dismiss}
-          </Button>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</p>
-      <p className="font-black text-slate-800 dark:text-slate-100 break-words">{value}</p>
-    </div>
-  );
-}
-
-async function compressImage(file: File): Promise<{ dataUrl: string; blob: Blob }> {
-  const dataUrl = await fileToDataUrl(file);
-  const image = await loadImage(dataUrl);
-  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) return { dataUrl, blob: file };
-  context.drawImage(image, 0, 0, width, height);
-  const compressedDataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-  const blob = await canvasToBlob(canvas);
-  return { dataUrl: compressedDataUrl, blob };
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve) => {
-    canvas.toBlob(
-      (blob) => resolve(blob || dataUrlToBlob(canvas.toDataURL('image/jpeg', JPEG_QUALITY))),
-      'image/jpeg',
-      JPEG_QUALITY,
-    );
-  });
-}
-
-function dataUrlToBlob(dataUrl: string) {
-  const [header, data] = dataUrl.split(',');
-  const mime = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new Blob([bytes], { type: mime });
-}
-
-async function uploadToCloudinary(blob: Blob, fileName: string) {
-  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-    throw new Error('Cloudinary is not configured');
-  }
-
-  const formData = new FormData();
-  formData.append('file', blob, fileName.replace(/\.[^.]+$/, '.jpg'));
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(`Cloudinary upload failed: ${response.status}${errorText ? ` - ${errorText.slice(0, 120)}` : ''}`);
-  }
-
-  const result = await response.json();
-  return optimizeCloudinaryUrl(result.secure_url || result.url);
-}
-
-function optimizeCloudinaryUrl(url: string) {
-  if (!url || !url.includes('/upload/')) return url;
-  return url.replace('/upload/', '/upload/f_auto,q_auto,w_960,c_limit/');
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
-  });
-}
-
-function normalizeTransactionType(value?: string | null) {
-  const candidate = String(value || 'EXPENSE').toUpperCase();
-  return TRANSACTION_TYPES.has(candidate) ? candidate : 'EXPENSE';
-}
-
-function normalizeTransactionCategory(value?: string | null) {
-  const candidate = String(value || 'OTHER').toUpperCase();
-  return TRANSACTION_CATEGORIES.has(candidate) ? candidate : 'OTHER';
-}
-
-function normalizeEventType(value?: string | null) {
-  const candidate = String(value || 'GENERAL').toUpperCase();
-  return EVENT_TYPES.has(candidate) ? candidate : 'GENERAL';
-}
-
-function normalizeDate(value?: string | null) {
-  if (!value) return new Date().toISOString();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-}
-
-function formatAmount(value?: number | string | null) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return '-';
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 }

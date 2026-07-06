@@ -19,6 +19,8 @@ import { WeatherSkill } from './skills/weather.skill';
 import { SearchSkill } from './skills/search.skill';
 import { AiSkillRegistry } from './skills/ai-skill-registry';
 import { WeatherModule } from '../weather/weather.module';
+import { AiFamilyResolver } from './ai-family-resolver';
+import { AiStructuredActionHandler } from './ai-structured-action-handler';
 
 @Module({
   imports: [
@@ -44,6 +46,8 @@ import { WeatherModule } from '../weather/weather.module';
     WeatherSkill,
     SearchSkill,
     AiSkillRegistry,
+    AiFamilyResolver,
+    AiStructuredActionHandler,
   ],
   exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiSkillRegistry, FootballSkill, WeatherSkill, SearchSkill],
 })

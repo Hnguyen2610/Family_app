@@ -14,21 +14,21 @@ generator client {
 // User & Family
 // ============================================
 model User {
-  id                   String    @id @default(cuid())
-  email                String    @unique
-  name                 String
-  role                 String?
-  globalRole           String    @default("USER")
-  birthday             DateTime?
-  familyId             String?
-  family               Family?   @relation("LegacyFamily", fields: [familyId], references: [id], onDelete: SetNull)
-  families             Family[]  @relation("UserFamilies")
-  googleId             String?   @unique
-  avatarUrl            String?
-  notificationSettings Json?     @default("{}")
-  telegramChatId       String?   @unique
-  telegramUsername     String?
-  refreshTokenHash     String?
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  name                  String
+  role                  String?
+  globalRole            String    @default("USER")
+  birthday              DateTime?
+  familyId              String?
+  family                Family?   @relation("LegacyFamily", fields: [familyId], references: [id], onDelete: SetNull)
+  families              Family[]  @relation("UserFamilies")
+  googleId              String?   @unique
+  avatarUrl             String?
+  notificationSettings  Json?     @default("{}")
+  telegramChatId        String?   @unique
+  telegramUsername      String?
+  refreshTokenHash      String?
   refreshTokenExpiresAt DateTime?
 
   createdEvents   Event[]
@@ -41,6 +41,7 @@ model User {
   pushSubscriptions PushSubscription[]
   transactions      Transaction[]
   budgets           Budget[]
+  dailyTasks        DailyTask[]
 }
 
 model Family {
@@ -238,20 +239,20 @@ model AiExtractionDraft {
 }
 
 model AiRequestLog {
-  id              String              @id
-  timestamp       DateTime            @default(now())
+  id              String   @id
+  timestamp       DateTime @default(now())
   type            String
   intent          String
   skill           String?
   model           String
-  toolsCalled     String[]            @default([])
+  toolsCalled     String[] @default([])
   ragSnippetCount Int?
   ragQuery        String?
   ragMiss         Boolean?
   ragSources      Json?
-  latencyMs       Int                 @default(0)
-  cached          Boolean             @default(false)
-  redacted        Boolean             @default(false)
+  latencyMs       Int      @default(0)
+  cached          Boolean  @default(false)
+  redacted        Boolean  @default(false)
   userId          String?
   familyId        String?
   sessionId       String?
@@ -380,4 +381,21 @@ enum TransactionCategory {
   BONUS // Thưởng (Income)
   INVESTMENT // Đầu tư
   OTHER // Khác
+}
+
+// ============================================
+// Daily Tasks
+// ============================================
+model DailyTask {
+  id              String    @id @default(cuid())
+  userId          String
+  title           String
+  priority        Int       @default(0) // 0 = cao nhất, tăng dần = thấp hơn
+  intervalMinutes Int       @default(30) // số phút bất kỳ giữa các lần nhắc
+  isActive        Boolean   @default(true)
+  lastNotifiedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

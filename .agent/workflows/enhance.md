@@ -33,10 +33,14 @@ This command adds features or makes updates to existing application.
    Should I start?"
    ```
 
-4. **Apply**
+4. **Apply & Verify**
    - Call relevant agents
    - Make changes
    - Test
+
+4.5. **Code Review**
+   - Run `/review` to verify code quality and security standards.
+   - Address critical findings before finalizing.
 
 5. **Update Preview**
    - Hot reload or restart

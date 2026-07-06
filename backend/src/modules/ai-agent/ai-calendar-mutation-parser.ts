@@ -206,8 +206,26 @@ function extractEventId(message: string) {
 }
 
 function extractExplicitTitle(message: string) {
-  const match = message.match(/(?:title|tieu de|tiêu đề)\s*[:：]\s*["']?([^"'\n.]+)["']?/i);
-  return match?.[1]?.trim();
+  const markers = [
+    /(?:v(?:o|\u1edb)i\s+)?(?:title|tieu\s*de|ti\u00eau\s*\u0111\u1ec1)\s*(?:(?:la|l\u00e0)\s+|[:\uff1a]\s*)?/iu,
+    /(?:v(?:o|\u1edb)i\s+)?(?:ten\s+su\s+kien|t\u00ean\s+s\u1ef1\s+ki\u1ec7n|ten\s+lich|t\u00ean\s+l\u1ecbch)\s*(?:(?:la|l\u00e0)\s+|[:\uff1a]\s*)?/iu,
+  ];
+
+  for (const marker of markers) {
+    const match = marker.exec(message);
+    if (!match || match.index === undefined) continue;
+
+    const rest = message.slice(match.index + match[0].length);
+    const stop = rest.search(/\s+(?:ngay|ng\u00e0y|vao|v\u00e0o|luc|l\u00fac|scope|pham\s*vi|ph\u1ea1m\s*vi)\b|[.\n]/iu);
+    const title = (stop >= 0 ? rest.slice(0, stop) : rest)
+      .replace(/^[\s"']+|[\s"']+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (title) return title;
+  }
+
+  return undefined;
 }
 
 function stripCommonEventWords(value: string) {

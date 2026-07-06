@@ -17,6 +17,7 @@ import { FamiliesModule } from './modules/families/families.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { WeatherModule } from './modules/weather/weather.module';
+import { DailyTasksModule } from './modules/daily-tasks/daily-tasks.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { WeatherModule } from './modules/weather/weather.module';
     AuthModule,
     TelegramModule,
     WeatherModule,
+    DailyTasksModule,
   ],
   controllers: [AppController],
   providers: [

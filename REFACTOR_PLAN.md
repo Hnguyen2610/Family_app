@@ -57,29 +57,29 @@ Muc tieu: lam codebase gon hon, DRY hon, de maintain hon nhung khong doi behavio
 
 ## Phase 4: Notifications Service Split
 
-- [ ] Tach proactive briefing builder ra `proactive-briefing.builder.ts`.
-- [ ] Tach cron orchestration ra helper/service neu Nest DI phu hop.
-- [ ] Tach finance/weather/event/family-note briefing items thanh helper rieng.
-- [ ] Tach notification dedupe helper.
-- [ ] Giu `NotificationsService` chi lam:
+- [x] Tach proactive briefing builder ra `proactive-briefing.builder.ts`.
+- [x] Tach cron orchestration ra helper/service neu Nest DI phu hop.
+- [x] Tach finance/weather/event/family-note briefing items thanh helper rieng.
+- [x] Tach notification dedupe helper.
+- [x] Giu `NotificationsService` chi lam:
   - create/read/delete notification
   - call sub-builders/services
   - expose cron entrypoints
-- [ ] Build backend.
+- [x] Build backend.
 
 ## Phase 5: AiAgentService Deep Cleanup
 
-- [ ] Tach family resolution ra `ai-family-resolver.ts`.
-- [ ] Tach request/session pipeline ra `ai-chat-pipeline.ts`.
-- [ ] Tach cache/session history helper ra `ai-session-cache.ts`.
-- [ ] Tach structured memory/event shortcut handler ra `ai-structured-action-handler.ts`.
-- [ ] Tach request log/usage assembly ra `ai-request-telemetry.ts`.
-- [ ] Giu `AiAgentService` la orchestrator mong:
+- [x] Tach family resolution ra `ai-family-resolver.ts`.
+- [x] Tach request/session pipeline ra `ai-chat-pipeline.ts`.
+- [x] Tach cache/session history helper ra `ai-session-cache.ts`.
+- [x] Tach structured memory/event shortcut handler ra `ai-structured-action-handler.ts`.
+- [x] Tach request log/usage assembly ra `ai-request-telemetry.ts`.
+- [x] Giu `AiAgentService` la orchestrator mong:
   - classify intent
   - select skill
   - call pipeline/model handler
   - save messages/logs
-- [ ] Build backend.
+- [x] Build backend.
 
 ## Phase 6: Calendar UI Cleanup
 
@@ -93,23 +93,23 @@ Muc tieu: lam codebase gon hon, DRY hon, de maintain hon nhung khong doi behavio
 
 ## Phase 7: VisionDrafts And Image Utilities
 
-- [ ] Gom image helpers dung chung:
+- [x] Gom image helpers dung chung:
   - `compressImage`
   - `fileToDataUrl`
   - `loadImage`
   - `dataUrlToBlob`
   - `uploadToCloudinary`
   - `optimizeCloudinaryUrl`
-- [ ] Cap nhat `VisionDrafts` va `Chatbot` dung chung image util neu phu hop.
-- [ ] Tach `DraftCard` va normalizers ra file rieng.
-- [ ] Build frontend.
+- [x] Cap nhat `VisionDrafts` va `Chatbot` dung chung image util neu phu hop.
+- [x] Tach `DraftCard` va normalizers ra file rieng.
+- [x] Build frontend.
 
 ## Phase 8: Final Verification
 
-- [ ] Backend build.
-- [ ] Frontend build.
-- [ ] `git diff --check`.
-- [ ] `gitnexus detect-changes`.
+- [x] Backend build.
+- [x] Frontend build.
+- [x] `git diff --check`.
+- [x] `gitnexus detect-changes`.
 - [ ] Review file size top list.
 - [ ] Review nhung behavior can manual smoke test:
   - AI chat web stream

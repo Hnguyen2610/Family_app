@@ -37,6 +37,7 @@ Before any deployment:
 - [ ] No TypeScript errors (`npx tsc --noEmit`)
 - [ ] ESLint passing (`npx eslint .`)
 - [ ] All tests passing (`npm test`)
+- [ ] Automated Code Review completed (`/review`)
 
 ### Security
 - [ ] No hardcoded secrets

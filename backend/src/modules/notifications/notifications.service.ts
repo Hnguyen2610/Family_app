@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+﻿import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
@@ -7,9 +7,8 @@ import { WebPushService } from './web-push.service';
 import { AiAgentService } from '../ai-agent/services/ai-agent.service';
 import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
-import { formatIctDate, getIctDateKey, getIctNow, startOfIctDay } from '../../utils/timezone.util';
+import { getIctNow } from '../../utils/timezone.util';
 import { TelegramService } from '../telegram/telegram.service';
-import { WeatherForecastSummary, WeatherService } from '../weather/weather.service';
 import { buildDailyEmailHtml, buildMonthlyEmailHtml } from './notification-email-formatters';
 import {
   cleanHtmlForTelegram,
@@ -17,14 +16,10 @@ import {
   type CreateNotificationOptions,
   type NotificationPayload,
   type ProactiveAssistantSummary,
-  type ProactiveBriefingItem,
   type ProactiveRunOptions,
 } from './notification-types';
-import {
-  getProactiveDeliveryOptions,
-  isProactiveTypeEnabled,
-  shouldRunProactiveAtConfiguredHour,
-} from './proactive-notification-settings';
+import { NotificationDeliveryService } from './notification-delivery.service';
+import { ProactiveAssistantService } from './proactive-assistant.service';
 
 @Injectable()
 export class NotificationsService {
@@ -41,7 +36,8 @@ export class NotificationsService {
     @Inject(forwardRef(() => FinanceService))
     private readonly financeService: FinanceService,
     private readonly telegramService: TelegramService,
-    private readonly weatherService: WeatherService,
+    private readonly notificationDeliveryService: NotificationDeliveryService,
+    private readonly proactiveAssistantService: ProactiveAssistantService,
   ) {}
 
   // --- In-App Notifications ---
@@ -51,37 +47,7 @@ export class NotificationsService {
     data: NotificationPayload,
     options: CreateNotificationOptions | boolean = {},
   ) {
-    try {
-      const skipTelegram = typeof options === 'boolean' ? options : options.skipTelegram === true;
-      const skipWebPush = typeof options === 'boolean' ? false : options.skipWebPush === true;
-      const dbNotification = await this.prisma.notification.create({
-        data: {
-          userId,
-          type: data.type,
-          title: data.title,
-          message: data.message,
-          metadata: data.metadata || {},
-        },
-      });
-
-      // Send Web Push
-      if (!skipWebPush) {
-        await this.webPushService.sendToUser(userId, {
-          title: data.title,
-          body: data.message,
-          url: data.metadata?.path || '/'
-        });
-      }
-
-      // Send Telegram
-      if (!skipTelegram) {
-        await this.telegramService.sendMessageToUser(userId, `<b>${data.title}</b>\n${data.message}`);
-      }
-
-      return dbNotification;
-    } catch (e) {
-      this.logger.error(`Failed to create notification for user ${userId}`, e);
-    }
+    return this.notificationDeliveryService.createNotification(userId, data, options);
   }
 
   async getForUser(userId: string) {
@@ -105,7 +71,7 @@ export class NotificationsService {
       data: { isRead: true },
     });
   }
-  
+
   async delete(id: string, userId: string) {
     return this.prisma.notification.deleteMany({
       where: { id, userId },
@@ -170,7 +136,7 @@ export class NotificationsService {
 
           // 2. Generate Horoscope using AI (Gemini)
           const horoscope = await this.aiAgentService.generateHoroscope(user.name, user.birthday || undefined, context);
-          
+
           // 3. Send Email
           await this.mailService.sendHoroscopeEmail(user.email, user.name, horoscope);
 
@@ -309,290 +275,8 @@ export class NotificationsService {
   }
 
   async runProactiveAssistant(options: ProactiveRunOptions = {}): Promise<ProactiveAssistantSummary> {
-    const summary: ProactiveAssistantSummary = {
-      usersScanned: 0,
-      dailyBriefings: 0,
-      eventSuggestions: 0,
-      financeSuggestions: 0,
-      weatherSuggestions: 0,
-      familyNoteSuggestions: 0,
-      skippedDuplicates: 0,
-      errors: 0,
-    };
-
-    const now = getIctNow();
-    this.logger.log('Starting proactive assistant cron job...');
-    const weatherForecast = await this.weatherService.getTomorrowForecast();
-
-    const users = await this.prisma.user.findMany({
-      select: {
-        id: true,
-        notificationSettings: true,
-        familyId: true,
-        family: { select: { id: true, name: true } },
-        families: { select: { id: true, name: true } },
-      },
-    });
-
-    for (const user of users) {
-      summary.usersScanned += 1;
-
-      try {
-        const settings = (user.notificationSettings || {}) as Record<string, any>;
-        if (settings.proactiveAssistant === false) continue;
-        if (options.respectUserTime && !shouldRunProactiveAtConfiguredHour(settings, now)) continue;
-
-        const briefingResult = await this.sendDailyBriefing(user, now, weatherForecast);
-        summary.dailyBriefings += briefingResult.sent;
-        summary.eventSuggestions += briefingResult.eventItems;
-        summary.financeSuggestions += briefingResult.financeItems;
-        summary.weatherSuggestions += briefingResult.weatherItems;
-        summary.familyNoteSuggestions += briefingResult.familyNoteItems;
-        summary.skippedDuplicates += briefingResult.skippedDuplicates;
-      } catch (error) {
-        summary.errors += 1;
-        this.logger.error(`Failed proactive assistant for user ${user.id}`, error);
-      }
-    }
-
-    this.logger.log(`Proactive assistant finished: ${JSON.stringify(summary)}`);
-    return summary;
+    return this.proactiveAssistantService.run(options);
   }
-
-  private async sendDailyBriefing(user: any, now: Date, weatherForecast: WeatherForecastSummary | null) {
-    const result = {
-      sent: 0,
-      skippedDuplicates: 0,
-      eventItems: 0,
-      financeItems: 0,
-      weatherItems: 0,
-      familyNoteItems: 0,
-    };
-    const settings = (user.notificationSettings || {}) as Record<string, any>;
-    const items: ProactiveBriefingItem[] = [];
-
-    if (isProactiveTypeEnabled(settings, 'eventChecklist')) {
-      const eventItems = await this.buildEventBriefingItems(user.id, now);
-      items.push(...eventItems);
-      result.eventItems = eventItems.length;
-    }
-
-    if (isProactiveTypeEnabled(settings, 'weather')) {
-      const weatherItem = this.buildWeatherBriefingItem(weatherForecast);
-      if (weatherItem) {
-        items.push(weatherItem);
-        result.weatherItems = 1;
-      }
-    }
-
-    if (isProactiveTypeEnabled(settings, 'finance')) {
-      const financeItem = await this.buildFinanceBriefingItem(user.id, now);
-      if (financeItem) {
-        items.push(financeItem);
-        result.financeItems = 1;
-      }
-    }
-
-    const includeFamilyNotes = isProactiveTypeEnabled(settings, 'familyNotes');
-    const includeMedicineSchool = isProactiveTypeEnabled(settings, 'medicineSchool');
-    if (includeFamilyNotes || includeMedicineSchool) {
-      const noteItems = await this.buildFamilyNoteBriefingItems(user, includeFamilyNotes, includeMedicineSchool);
-      items.push(...noteItems);
-      result.familyNoteItems = noteItems.length;
-    }
-
-    if (items.length === 0) return result;
-
-    const dateKey = getIctDateKey(now);
-    const title = `Tóm tắt gia đình ${formatIctDate(now)}`;
-    const message = this.formatDailyBriefingMessage(items);
-    const created = await this.createProactiveNotification(user.id, {
-      type: 'PROACTIVE_DAILY_BRIEFING',
-      title,
-      message,
-      metadata: {
-        path: items[0]?.path || '/',
-        source: 'proactive-assistant',
-        proactiveReason: 'daily_briefing',
-        dateKey,
-        itemCount: items.length,
-        reasons: items.map((item) => item.reason),
-        items: items.map((item) => ({
-          kind: item.kind,
-          title: item.title,
-          path: item.path,
-          reason: item.reason,
-          metadata: item.metadata || {},
-        })),
-      },
-    }, 1, getProactiveDeliveryOptions(settings));
-
-    if (created) result.sent = 1;
-    else result.skippedDuplicates = 1;
-    return result;
-  }
-
-  private async buildEventBriefingItems(userId: string, now: Date): Promise<ProactiveBriefingItem[]> {
-    const upcomingEvents = await this.getUpcomingEventsForUser(userId, now, this.proactiveLookaheadDays);
-    return upcomingEvents
-      .filter((event) => event.type !== 'HOLIDAY')
-      .filter((event) => {
-        const daysUntil = this.getDaysUntil(now, new Date(event.date));
-        return daysUntil >= 1 && daysUntil <= this.proactiveLookaheadDays;
-      })
-      .slice(0, 3)
-      .map((event) => {
-        const eventDate = new Date(event.date);
-        const daysUntil = this.getDaysUntil(now, eventDate);
-        const type = String(event.type || 'GENERAL');
-        const reason = type === 'BIRTHDAY'
-          ? 'birthday_soon'
-          : type === 'ANNIVERSARY'
-            ? 'anniversary_soon'
-            : 'event_soon';
-        return {
-          kind: 'event' as const,
-          title: event.title,
-          message: `Còn ${daysUntil} ngày nữa: ${event.title} (${formatIctDate(eventDate)}).`,
-          path: '/calendar',
-          reason,
-          metadata: {
-            eventId: event.id,
-            eventType: type,
-            eventDate: eventDate.toISOString(),
-            daysUntil,
-          },
-        };
-      });
-  }
-
-  private buildWeatherBriefingItem(forecast: WeatherForecastSummary | null): ProactiveBriefingItem | null {
-    if (!forecast) return null;
-
-    const shouldNotify =
-      forecast.chanceOfRain >= 50 ||
-      forecast.totalPrecipMm >= 2 ||
-      /rain|mưa|drizzle|shower|storm|thunder/i.test(forecast.condition);
-
-    if (!shouldNotify) return null;
-
-    return {
-      kind: 'weather',
-      title: `Thời tiết ${forecast.location}`,
-      message: `Ngày mai ${forecast.condition.toLowerCase()}, khả năng mưa ${forecast.chanceOfRain}%, ${Math.round(forecast.minTempC)}-${Math.round(forecast.maxTempC)}°C.`,
-      path: '/calendar',
-      reason: 'rain_or_bad_weather_tomorrow',
-      metadata: {
-        provider: process.env.WEATHER_PROVIDER || 'weatherapi',
-        location: forecast.location,
-        forecastDate: forecast.date,
-        chanceOfRain: forecast.chanceOfRain,
-        totalPrecipMm: forecast.totalPrecipMm,
-      },
-    };
-  }
-
-  private async buildFinanceBriefingItem(userId: string, now: Date): Promise<ProactiveBriefingItem | null> {
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const previous = this.getPreviousMonth(currentMonth, currentYear);
-
-    const [currentReport, previousReport] = await Promise.all([
-      this.financeService.getMonthlyReportData(userId, currentMonth, currentYear),
-      this.financeService.getMonthlyReportData(userId, previous.month, previous.year),
-    ]);
-
-    const currentFood = this.getCategoryAmount(currentReport, 'FOOD');
-    const previousFood = this.getCategoryAmount(previousReport, 'FOOD');
-    const minimumComparableAmount = 100000;
-    if (previousFood < minimumComparableAmount || currentFood < previousFood * 1.2) return null;
-
-    const increasePercent = Math.round(((currentFood - previousFood) / previousFood) * 100);
-    return {
-      kind: 'finance',
-      title: `Chi tiêu ăn uống tăng ${increasePercent}%`,
-      message: `FOOD tháng này ${currentFood.toLocaleString('vi-VN')}đ, cao hơn tháng trước ${increasePercent}%.`,
-      path: '/finance',
-      reason: 'food_spending_increased',
-      metadata: {
-        category: 'FOOD',
-        currentAmount: currentFood,
-        previousAmount: previousFood,
-        increasePercent,
-      },
-    };
-  }
-
-  private async buildFamilyNoteBriefingItems(
-    user: any,
-    includeGeneralNotes: boolean,
-    includeMedicineSchoolNotes: boolean,
-  ): Promise<ProactiveBriefingItem[]> {
-    const familyIds = this.getUserFamilyIds(user);
-    if (familyIds.length === 0) return [];
-
-    const since = getIctNow();
-    since.setDate(since.getDate() - 7);
-
-    const documents = await this.prisma.aiDocument.findMany({
-      where: {
-        familyId: { in: familyIds },
-        updatedAt: { gte: since },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 3,
-      select: {
-        id: true,
-        title: true,
-        sourceType: true,
-        familyId: true,
-        metadata: true,
-        updatedAt: true,
-      },
-    });
-
-    return documents
-      .map((document) => ({
-        document,
-        reason: this.getFamilyNoteReason(document.metadata),
-      }))
-      .filter(({ reason }) => {
-        const isMedicineSchool =
-          reason === 'medicine_or_health_note_updated' ||
-          reason === 'school_note_updated';
-        return isMedicineSchool ? includeMedicineSchoolNotes : includeGeneralNotes;
-      })
-      .map(({ document, reason }) => ({
-        kind: 'family_note' as const,
-        title: document.title,
-        message: `Sổ tay vừa cập nhật: ${document.title}.`,
-        path: '/notes',
-        reason,
-        metadata: {
-          documentId: document.id,
-          familyId: document.familyId,
-          sourceType: document.sourceType,
-          updatedAt: document.updatedAt.toISOString(),
-        },
-      }));
-  }
-
-  private formatDailyBriefingMessage(items: ProactiveBriefingItem[]) {
-    const lines = ['Hôm nay có vài điểm đáng chú ý:'];
-    const labels: Record<ProactiveBriefingItem['kind'], string> = {
-      event: 'Lịch',
-      weather: 'Thời tiết',
-      finance: 'Chi tiêu',
-      family_note: 'Sổ tay',
-    };
-
-    for (const item of items) {
-      lines.push(`- ${labels[item.kind]}: ${item.message}`);
-    }
-
-    return lines.join('\n');
-  }
-
   // 2. Cron Job: 6:00 AM every day
   @Cron('0 6 * * *', {
     name: 'daily-reminder',
@@ -641,9 +325,9 @@ export class NotificationsService {
 
         // Push to family members
         for (const user of family.users) {
-          const pushTitle = isMungMot ? `🌙 Mùng 1 Âm lịch` : isRam ? `🌕 Nhắc nhở ngày Rằm` : `🔔 Nhắc nhở sự kiện hôm nay`;
+          const pushTitle = isMungMot ? `🔮 Mùng 1 Âm lịch` : isRam ? `🔮 Nhắc nhở ngày Rằm` : `🔮 Nhắc nhở sự kiện hôm nay`;
           const pushBody = lunarSpecialMsg || `Gia đình bạn có ${todayFamilyEvents.length} sự kiện diễn ra vào hôm nay.`;
-          
+
           await this.webPushService.sendToUser(user.id, {
             title: pushTitle,
             body: pushBody,
@@ -688,234 +372,6 @@ export class NotificationsService {
 
       this.logger.log(`Sent private event reminder to user ${userId}`);
     }
-  }
-
-  private async sendUpcomingEventSuggestions(user: any, now: Date) {
-    const result = { sent: 0, skippedDuplicates: 0 };
-    const settings = (user.notificationSettings || {}) as Record<string, any>;
-    if (settings.proactiveAssistant === false) return result;
-
-    const upcomingEvents = await this.getUpcomingEventsForUser(user.id, now, this.proactiveLookaheadDays);
-    const actionableEvents = upcomingEvents
-      .filter((event) => event.type !== 'HOLIDAY')
-      .filter((event) => {
-        const daysUntil = this.getDaysUntil(now, new Date(event.date));
-        return daysUntil >= 1 && daysUntil <= this.proactiveLookaheadDays;
-      })
-      .slice(0, 3);
-
-    for (const event of actionableEvents) {
-      const eventDate = new Date(event.date);
-      const daysUntil = this.getDaysUntil(now, eventDate);
-      const isBirthday = event.type === 'BIRTHDAY';
-      const isAnniversary = event.type === 'ANNIVERSARY';
-      const eventLabel = isBirthday ? 'sinh nhật' : isAnniversary ? 'kỷ niệm' : 'sự kiện';
-      const dateLabel = formatIctDate(eventDate);
-      const title = `Sắp có ${eventLabel}: ${event.title}`;
-      const message = `Còn ${daysUntil} ngày nữa là ${event.title} (${dateLabel}). Bạn có muốn FamilyGPT gợi ý checklist, quà tặng hoặc việc cần chuẩn bị không?`;
-
-      const created = await this.createProactiveNotification(user.id, {
-        type: 'PROACTIVE_EVENT',
-        title,
-        message,
-        metadata: {
-          path: '/calendar',
-          eventId: event.id,
-          eventDate: eventDate.toISOString(),
-          daysUntil,
-          source: 'proactive-assistant',
-          proactiveReason: isBirthday ? 'birthday_soon' : isAnniversary ? 'anniversary_soon' : 'event_soon',
-        },
-      }, 14, getProactiveDeliveryOptions(settings));
-
-      if (created) result.sent += 1;
-      else result.skippedDuplicates += 1;
-    }
-
-    return result;
-  }
-
-  private async sendWeatherSuggestion(user: any, forecast: WeatherForecastSummary | null) {
-    const result = { sent: 0, skippedDuplicates: 0 };
-    if (!forecast) return result;
-
-    const settings = (user.notificationSettings || {}) as Record<string, any>;
-    if (settings.proactiveAssistant === false) return result;
-
-    const shouldNotify =
-      forecast.chanceOfRain >= 50 ||
-      forecast.totalPrecipMm >= 2 ||
-      /rain|mưa|drizzle|shower|storm|thunder/i.test(forecast.condition);
-
-    if (!shouldNotify) return result;
-
-    const title = `Dự báo thời tiết ${forecast.location}`;
-    const message = [
-      `Ngày mai (${forecast.date}) có ${forecast.condition.toLowerCase()}, khả năng mưa ${forecast.chanceOfRain}%.`,
-      `Nhiệt độ khoảng ${Math.round(forecast.minTempC)}-${Math.round(forecast.maxTempC)}°C.`,
-      'Cả nhà nhớ chuẩn bị áo mưa/ô và kiểm tra đồ phơi nếu cần nhé.',
-    ].join(' ');
-
-    const created = await this.createProactiveNotification(user.id, {
-      type: 'PROACTIVE_WEATHER',
-      title,
-      message,
-      metadata: {
-        path: '/calendar',
-        source: 'proactive-assistant',
-        proactiveReason: 'rain_or_bad_weather_tomorrow',
-        provider: process.env.WEATHER_PROVIDER || 'weatherapi',
-        location: forecast.location,
-        forecastDate: forecast.date,
-        chanceOfRain: forecast.chanceOfRain,
-        totalPrecipMm: forecast.totalPrecipMm,
-      },
-    }, 1, getProactiveDeliveryOptions(settings));
-
-    if (created) result.sent += 1;
-    else result.skippedDuplicates += 1;
-
-    return result;
-  }
-
-  private async sendFinanceSpendingInsight(userId: string, now: Date) {
-    const result = { sent: 0, skippedDuplicates: 0 };
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const previous = this.getPreviousMonth(currentMonth, currentYear);
-
-    const [currentReport, previousReport] = await Promise.all([
-      this.financeService.getMonthlyReportData(userId, currentMonth, currentYear),
-      this.financeService.getMonthlyReportData(userId, previous.month, previous.year),
-    ]);
-
-    const currentFood = this.getCategoryAmount(currentReport, 'FOOD');
-    const previousFood = this.getCategoryAmount(previousReport, 'FOOD');
-    const minimumComparableAmount = 100000;
-
-    if (previousFood < minimumComparableAmount || currentFood < previousFood * 1.2) {
-      return result;
-    }
-
-    const increasePercent = Math.round(((currentFood - previousFood) / previousFood) * 100);
-    const title = `Chi tiêu ăn uống tháng ${currentMonth} tăng`;
-    const message = `Chi tiêu FOOD tháng này đang cao hơn tháng trước ${increasePercent}%. Hiện tại: ${currentFood.toLocaleString('vi-VN')}d, tháng trước: ${previousFood.toLocaleString('vi-VN')}d. ạn có muốn xem chi tiết không?`;
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { notificationSettings: true },
-    });
-    const settings = (user?.notificationSettings || {}) as Record<string, any>;
-
-    const created = await this.createProactiveNotification(userId, {
-      type: 'PROACTIVE_FINANCE',
-      title,
-      message,
-      metadata: {
-        path: '/finance',
-        category: 'FOOD',
-        currentAmount: currentFood,
-        previousAmount: previousFood,
-        increasePercent,
-        source: 'proactive-assistant',
-        proactiveReason: 'food_spending_increased',
-      },
-    }, 30, getProactiveDeliveryOptions(settings));
-
-    if (created) result.sent += 1;
-    else result.skippedDuplicates += 1;
-
-    return result;
-  }
-
-  private async getUpcomingEventsForUser(userId: string, now: Date, lookaheadDays: number) {
-    const start = startOfIctDay(now);
-    const end = startOfIctDay(now);
-    end.setDate(end.getDate() + lookaheadDays);
-
-    const currentMonth = start.getMonth() + 1;
-    const currentYear = start.getFullYear();
-    const endMonth = end.getMonth() + 1;
-    const endYear = end.getFullYear();
-
-    const currentEvents = await this.eventsService.findAll('all', currentMonth, currentYear, userId);
-    let allEvents = [...currentEvents];
-
-    if (currentMonth !== endMonth || currentYear !== endYear) {
-      const nextEvents = await this.eventsService.findAll('all', endMonth, endYear, userId);
-      allEvents = [...allEvents, ...nextEvents];
-    }
-
-    const seen = new Set<string>();
-    return allEvents
-      .filter((event) => {
-        const eventDate = startOfIctDay(new Date(event.date));
-        return eventDate > start && eventDate <= end;
-      })
-      .filter((event) => {
-        const key = `${event.id}:${new Date(event.date).toISOString()}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }
-
-  private async createProactiveNotification(
-    userId: string,
-    data: NotificationPayload,
-    dedupeDays: number,
-    options: CreateNotificationOptions = {},
-  ) {
-    const since = getIctNow();
-    since.setDate(since.getDate() - dedupeDays);
-
-    const existing = await this.prisma.notification.findFirst({
-      where: {
-        userId,
-        type: data.type,
-        title: data.title,
-        createdAt: { gte: since },
-      },
-      select: { id: true },
-    });
-
-    if (existing) return false;
-
-    await this.createNotification(userId, data, options);
-    return true;
-  }
-
-  private getUserFamilyIds(user: any) {
-    const ids = new Set<string>();
-    if (user?.familyId) ids.add(user.familyId);
-    if (user?.family?.id) ids.add(user.family.id);
-    for (const family of user?.families || []) {
-      if (family?.id) ids.add(family.id);
-    }
-    return [...ids];
-  }
-
-  private getFamilyNoteReason(metadata: any) {
-    const category = String(metadata?.category || metadata?.type || '').toLowerCase();
-    if (['medicine', 'health', 'suc_khoe', 'suc khoe'].some((item) => category.includes(item))) return 'medicine_or_health_note_updated';
-    if (['school', 'hoc_tap', 'hoc tap'].some((item) => category.includes(item))) return 'school_note_updated';
-    return 'family_note_updated';
-  }
-
-  private getCategoryAmount(report: { categories?: Array<{ category: string; amount: number }> }, category: string) {
-    return report.categories?.find((item) => item.category === category)?.amount || 0;
-  }
-
-  private getPreviousMonth(month: number, year: number) {
-    if (month === 1) return { month: 12, year: year - 1 };
-    return { month: month - 1, year };
-  }
-
-  private getDaysUntil(from: Date, to: Date) {
-    const fromDay = startOfIctDay(from).getTime();
-    const toDay = startOfIctDay(to).getTime();
-    return Math.round((toDay - fromDay) / (24 * 60 * 60 * 1000));
   }
 
 }

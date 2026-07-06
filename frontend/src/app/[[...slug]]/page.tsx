@@ -19,14 +19,15 @@ import AiMemorySettings from '@/components/AiMemorySettings';
 import FamilyNotes from '@/components/FamilyNotes';
 import VisionDrafts from '@/components/VisionDrafts';
 import WeatherBadge from '@/components/WeatherBadge';
+import DailyTasks from '@/components/DailyTasks';
 
 
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
-import { FiPlus,FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage } from 'react-icons/fi';
+import { FiPlus,FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage, FiCheckCircle } from 'react-icons/fi';
 
-type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory';
+type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory' | 'daily-tasks';
 
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
@@ -298,6 +299,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           {activeTab === 'finance' && <Finance />}
           {activeTab === 'notes' && <FamilyNotes />}
           {activeTab === 'vision-drafts' && <VisionDrafts />}
+          {activeTab === 'daily-tasks' && <DailyTasks />}
           {activeTab === 'admin' && <AdminDashboard />}
           {(activeTab === 'settings' || activeTab === 'profile') && <Settings onNavigate={setActiveTab} />}
           {activeTab === 'notifications' && <NotificationSettings onBack={() => setActiveTab('settings')} />}
@@ -459,6 +461,12 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               onClick={() => { setActiveTab('vision-drafts'); setIsSidebarOpen(false); }}
               icon={<FiImage />}
               label={language === 'vi' ? 'Draft ảnh AI' : 'Vision Drafts'}
+            />
+            <SidebarItem
+              active={activeTab === 'daily-tasks'}
+              onClick={() => { setActiveTab('daily-tasks'); setIsSidebarOpen(false); }}
+              icon={<FiCheckCircle />}
+              label={language === 'vi' ? 'Việc trong ngày' : 'Daily Tasks'}
             />
             {user?.globalRole === 'SUPER_ADMIN' && (
               <SidebarItem

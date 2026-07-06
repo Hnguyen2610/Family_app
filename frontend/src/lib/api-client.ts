@@ -409,4 +409,17 @@ export const notificationsAPI = {
     apiClient.post('/api/notifications/push/unsubscribe', { endpoint }, { params: { userId } }),
 };
 
+export const dailyTasksAPI = {
+  getAll: (userId: string) =>
+    apiClient.get('/api/daily-tasks', { params: { userId } }),
+  create: (data: { userId: string; title: string; priority?: number; intervalMinutes?: number }) =>
+    apiClient.post('/api/daily-tasks', data),
+  update: (id: string, data: { title?: string; priority?: number; intervalMinutes?: number; isActive?: boolean }) =>
+    apiClient.patch(`/api/daily-tasks/${id}`, data),
+  reorder: (items: { id: string; priority: number }[]) =>
+    apiClient.patch('/api/daily-tasks/reorder', items),
+  remove: (id: string) =>
+    apiClient.delete(`/api/daily-tasks/${id}`),
+};
+
 export default apiClient;

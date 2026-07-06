@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { parseMemoryProfile } from '@/utils/ai-memory-profile';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
-import { compressImageFile, MAX_IMAGE_DATA_URL_CHARS } from './chatbot/image-utils';
+import { compressImageFile, MAX_IMAGE_DATA_URL_CHARS } from '@/lib/image-utils';
 import { type MemoryConsent, type Message, type RagConsent } from './chatbot/chatbot-types';
 import { createDefaultUsageByModel, getStatusLabel, type AiModelProvider } from './chatbot/chatbot-usage';
 import { ChatbotHeader } from './chatbot/ChatbotHeader';

@@ -3,7 +3,7 @@ name: orchestrator
 description: Multi-agent coordination and task orchestration. Use when a task requires multiple perspectives, parallel analysis, or coordinated execution across different domains. Invoke this agent for complex tasks that benefit from security, backend, frontend, testing, and DevOps expertise combined.
 tools: Read, Grep, Glob, Bash, Write, Edit, Agent
 model: inherit
-skills: clean-code, parallel-agents, behavioral-modes, plan-writing, brainstorming, architecture, lint-and-validate, powershell-windows, bash-linux
+skills: clean-code, parallel-agents, behavioral-modes, plan-writing, brainstorming, architecture, lint-and-validate, powershell-windows, bash-linux, subagent-driven-development, using-git-worktrees
 ---
 
 # Orchestrator - Native Multi-Agent Coordination
@@ -252,6 +252,13 @@ Select 2-5 agents based on task requirements. Prioritize:
 1. **Always include** if modifying code: test-engineer
 2. **Always include** if touching auth: security-auditor
 3. **Include** based on affected layers
+
+### Step 2.5: Subagent Dispatch & Worktree Isolation
+Before invoking specialists to perform modifications:
+1. **Create Git Worktree:** If the environment allows workspace isolation, run the PowerShell worktree helper (from `using-git-worktrees` skill) to create a target code workspace under `C:\Users\jvb\AppData\Local\Temp\worktrees`.
+2. **Write Task File:** Write a task specification file under `.agent/tasks/{task-id}.md` following the `subagent-driven-development` protocol.
+3. **Execute Task in Worktree:** Direct the subagent to perform their work exclusively in the temporary worktree directory.
+4. **Cleanup after Completion:** Once the subagent finishes and results are verified/pushed, run the worktree helper `-Action Remove` to clean up the temporary directory.
 
 ### Step 3: Sequential Invocation
 Invoke agents in logical order:

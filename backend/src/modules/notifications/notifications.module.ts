@@ -9,6 +9,9 @@ import { FinanceModule } from '../finance/finance.module';
 import { WebPushService } from './web-push.service';
 import { TelegramModule } from '../telegram/telegram.module';
 import { WeatherModule } from '../weather/weather.module';
+import { ProactiveBriefingBuilder } from './proactive-briefing.builder';
+import { NotificationDeliveryService } from './notification-delivery.service';
+import { ProactiveAssistantService } from './proactive-assistant.service';
 
 @Module({
   imports: [
@@ -21,7 +24,13 @@ import { WeatherModule } from '../weather/weather.module';
     forwardRef(() => FinanceModule)
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsService, WebPushService],
-  exports: [NotificationsService],
+  providers: [
+    NotificationsService,
+    WebPushService,
+    ProactiveBriefingBuilder,
+    NotificationDeliveryService,
+    ProactiveAssistantService,
+  ],
+  exports: [NotificationsService, WebPushService],
 })
 export class NotificationsModule {}
