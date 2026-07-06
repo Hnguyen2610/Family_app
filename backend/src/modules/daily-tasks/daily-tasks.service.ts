@@ -2,17 +2,16 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TelegramSender } from '../telegram/services/telegram-sender';
 import { WebPushService } from '../notifications/web-push.service';
-import { getIctNow } from '../../utils/timezone.util';
+import { getIctDateKey, getIctNow } from '../../utils/timezone.util';
 
-// Active hours in ICT (Ho Chi Minh timezone)
 const ACTIVE_WINDOWS = [
   { start: 8, end: 12 },
   { start: 14, end: 17 },
 ];
 
 function isWithinActiveHours(now: Date): boolean {
-  const h = now.getHours();
-  return ACTIVE_WINDOWS.some((w) => h >= w.start && h < w.end);
+  const hour = now.getHours();
+  return ACTIVE_WINDOWS.some((window) => hour >= window.start && hour < window.end);
 }
 
 export interface CreateDailyTaskDto {
@@ -27,11 +26,20 @@ export interface UpdateDailyTaskDto {
   priority?: number;
   intervalMinutes?: number;
   isActive?: boolean;
+  completedAt?: Date | null;
 }
 
 export interface ReorderDto {
   id: string;
   priority: number;
+}
+
+export interface TriggerNextResult {
+  sent: boolean;
+  task?: string;
+  reason?: string;
+  telegram?: boolean;
+  webPush?: boolean;
 }
 
 @Injectable()
@@ -44,8 +52,6 @@ export class DailyTasksService {
     private readonly webPushService: WebPushService,
   ) {}
 
-  // ── CRUD ──────────────────────────────────────────────────────────────
-
   async findAll(userId: string) {
     return this.prisma.dailyTask.findMany({
       where: { userId },
@@ -54,7 +60,6 @@ export class DailyTasksService {
   }
 
   async create(dto: CreateDailyTaskDto) {
-    // Auto-assign next priority if not provided
     if (dto.priority === undefined) {
       const last = await this.prisma.dailyTask.findFirst({
         where: { userId: dto.userId },
@@ -85,17 +90,23 @@ export class DailyTasksService {
     return { success: true };
   }
 
-  // ── Trigger next ──────────────────────────────────────────────────────
+  async completeToday(id: string, userId: string) {
+    const result = await this.prisma.dailyTask.updateMany({
+      where: { id, userId },
+      data: { completedAt: new Date() },
+    });
+    return { completed: result.count > 0 };
+  }
 
-  async triggerNext(userId: string): Promise<{ sent: boolean; task?: string; reason?: string }> {
-    const now = getIctNow();
+  async triggerNext(userId: string): Promise<TriggerNextResult> {
+    const activeHourNow = getIctNow();
+    const now = new Date();
 
-    if (!isWithinActiveHours(now)) {
+    if (!isWithinActiveHours(activeHourNow)) {
       this.logger.log(`[DailyTasks] Outside active hours for user ${userId}`);
       return { sent: false, reason: 'outside_active_hours' };
     }
 
-    // Find highest-priority task that is due
     const tasks = await this.prisma.dailyTask.findMany({
       where: { userId, isActive: true },
       orderBy: { priority: 'asc' },
@@ -104,10 +115,11 @@ export class DailyTasksService {
     if (!tasks.length) return { sent: false, reason: 'no_active_tasks' };
 
     const nowMs = now.getTime();
-    const due = tasks.find((t) => {
-      if (!t.lastNotifiedAt) return true; // never notified
-      const elapsed = (nowMs - t.lastNotifiedAt.getTime()) / 60_000;
-      return elapsed >= t.intervalMinutes;
+    const due = tasks.find((task) => {
+      if (this.isCompletedToday(task.completedAt, now)) return false;
+      if (!task.lastNotifiedAt) return true;
+      const elapsedMinutes = (nowMs - task.lastNotifiedAt.getTime()) / 60_000;
+      return elapsedMinutes >= task.intervalMinutes;
     });
 
     if (!due) {
@@ -115,55 +127,80 @@ export class DailyTasksService {
       return { sent: false, reason: 'no_task_due' };
     }
 
-    // Build the Telegram message
     const totalActive = tasks.length;
-    const position = tasks.findIndex((t) => t.id === due.id) + 1;
+    const position = tasks.findIndex((task) => task.id === due.id) + 1;
     const message =
-      `🔔 <b>Nhắc việc (${position}/${totalActive})</b>\n` +
-      `📌 ${due.title}\n` +
-      `⏱ Nhắc lại sau: <b>${due.intervalMinutes} phút</b>`;
+      `<b>Nhắc việc (${position}/${totalActive})</b>\n` +
+      `${due.title}\n` +
+      `Nhắc lại sau: <b>${due.intervalMinutes} phút</b>`;
 
-    // Send Telegram
-    const sentTelegram = await this.telegramSender.sendMessageToUser(userId, message);
+    const telegramResult = await this.telegramSender.sendDailyTaskReminderToUser(userId, message, due.id);
 
-    // Send Web Push notification
-    await this.webPushService.sendToUser(userId, {
-      title: `🔔 Nhắc việc (${position}/${totalActive})`,
-      body: due.title,
-      icon: '/icon.png',
-      tag: `daily-task-${due.id}`,
-      data: {
-        url: '/daily-tasks',
-      },
-    });
+    let sentWebPush = false;
+    try {
+      await this.webPushService.sendToUser(userId, {
+        title: `Nhắc việc (${position}/${totalActive})`,
+        body: due.title,
+        icon: '/icon.png',
+        tag: `daily-task-${due.id}`,
+        data: {
+          url: '/daily-tasks',
+        },
+      });
+      sentWebPush = true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[DailyTasks] Web push failed for user ${userId}: ${errorMessage}`);
+    }
 
-    // Update last notified time to rotate
+    const sentAnyChannel = telegramResult.ok || sentWebPush;
+    if (!sentAnyChannel) {
+      const reason = telegramResult.reason || 'delivery_failed';
+      this.logger.warn(`[DailyTasks] No delivery channel succeeded for "${due.title}" to user ${userId}: ${reason}`);
+      return {
+        sent: false,
+        task: due.title,
+        reason,
+        telegram: false,
+        webPush: false,
+      };
+    }
+
     await this.prisma.dailyTask.update({
       where: { id: due.id },
       data: { lastNotifiedAt: now },
     });
-    
-    this.logger.log(`[DailyTasks] Sent task reminder "${due.title}" to user ${userId} (Telegram: ${sentTelegram})`);
 
-    return { sent: sentTelegram, task: due.title };
+    this.logger.log(
+      `[DailyTasks] Sent task reminder "${due.title}" to user ${userId} (Telegram: ${telegramResult.ok}, WebPush: ${sentWebPush})`,
+    );
+
+    return {
+      sent: true,
+      task: due.title,
+      telegram: telegramResult.ok,
+      webPush: sentWebPush,
+      reason: telegramResult.ok ? undefined : telegramResult.reason,
+    };
   }
-
-  // ── Daily reset ───────────────────────────────────────────────────────
 
   async resetDaily(userId: string) {
     const result = await this.prisma.dailyTask.updateMany({
       where: { userId },
-      data: { lastNotifiedAt: null },
+      data: { lastNotifiedAt: null, completedAt: null },
     });
     this.logger.log(`[DailyTasks] Reset ${result.count} tasks for user ${userId}`);
     return { reset: result.count };
   }
 
-  // ── Helper ────────────────────────────────────────────────────────────
-
   private async findOneOrThrow(id: string) {
     const task = await this.prisma.dailyTask.findUnique({ where: { id } });
     if (!task) throw new NotFoundException(`DailyTask ${id} not found`);
     return task;
+  }
+
+  private isCompletedToday(completedAt: Date | null, now: Date) {
+    if (!completedAt) return false;
+    return getIctDateKey(completedAt) === getIctDateKey(now);
   }
 }

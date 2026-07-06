@@ -394,6 +394,7 @@ model DailyTask {
   intervalMinutes Int       @default(30) // số phút bất kỳ giữa các lần nhắc
   isActive        Boolean   @default(true)
   lastNotifiedAt  DateTime?
+  completedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

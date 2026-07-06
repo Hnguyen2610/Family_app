@@ -9,8 +9,8 @@
   --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
-  --primary: 221.2 83.2% 53.3%;
-  /* Modern Blue */
+  --primary: 330 81% 60%;
+  /* Soft Pink */
   --primary-foreground: 210 40% 98%;
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222 47% 11.2%;
@@ -22,7 +22,7 @@
   --destructive-foreground: 210 40% 98%;
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
-  --ring: 221.2 83.2% 53.3%;
+  --ring: 330 81% 60%;
   --radius: 0.75rem;
   /* More precise, less rounded */
 }
@@ -35,8 +35,8 @@
   --card-foreground: 213 31% 91%;
   --popover: 222 47% 10%;
   --popover-foreground: 213 31% 91%;
-  --primary: 199 89% 48%;
-  /* Electric Cyan */
+  --primary: 330 81% 64%;
+  /* Soft Pink */
   --primary-foreground: 222 47% 7%;
   --secondary: 222 47% 15%;
   --secondary-foreground: 213 31% 91%;
@@ -48,7 +48,7 @@
   --destructive-foreground: 213 31% 91%;
   --border: 222 47% 15%;
   --input: 222 47% 15%;
-  --ring: 199 89% 48%;
+  --ring: 330 81% 64%;
 }
 
 @layer base {

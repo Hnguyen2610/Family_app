@@ -37,6 +37,12 @@ export class DailyTasksController {
     return this.dailyTasksService.reorder(items);
   }
 
+  @Patch(':id/done')
+  completeToday(@Param('id') id: string, @Body('userId') userId: string) {
+    if (!userId) throw new UnauthorizedException('userId is required');
+    return this.dailyTasksService.completeToday(id, userId);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateDailyTaskDto) {
     return this.dailyTasksService.update(id, dto);

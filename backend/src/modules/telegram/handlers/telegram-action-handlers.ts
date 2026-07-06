@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Telegraf, Context } from 'telegraf';
 import { AiAgentService } from '../../ai-agent/services/ai-agent.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { TelegramSender } from '../services/telegram-sender';
 import { TelegramContextService } from '../services/telegram-context.service';
 import { TelegramAiResponder } from '../services/telegram-ai-responder.service';
@@ -17,6 +18,7 @@ export class TelegramActionHandlers {
   private readonly logger = new Logger(TelegramActionHandlers.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly sender: TelegramSender,
     private readonly context: TelegramContextService,
     private readonly aiResponder: TelegramAiResponder,
@@ -40,6 +42,7 @@ export class TelegramActionHandlers {
     bot.action(/^note_save:(.+)$/, (ctx) => this.handleNoteSave(ctx as any));
     bot.action(/^note_skip:(.+)$/, (ctx) => this.handleNoteSkip(ctx as any));
     bot.action(/^ai_feedback:([^:]+):(.+)$/, (ctx) => this.handleAiFeedback(ctx as any));
+    bot.action(/^daily_task_done:(.+)$/, (ctx) => this.handleDailyTaskDone(ctx as any));
   }
 
   private async handleMenuFootball(ctx: Context) {
@@ -159,5 +162,27 @@ export class TelegramActionHandlers {
       userId: user?.id,
     } as any);
     await ctx.answerCbQuery(result.ok ? 'Đã ghi nhận feedback' : 'Feedback đã hết hạn');
+  }
+
+  private async handleDailyTaskDone(ctx: any) {
+    const taskId = ctx.match?.[1];
+    const user = await this.context.getLinkedUser(ctx.from?.id?.toString() || '');
+    if (!taskId || !user) {
+      await ctx.answerCbQuery('Không tìm thấy tài khoản hoặc công việc');
+      return;
+    }
+
+    const result = await this.prisma.dailyTask.updateMany({
+      where: { id: taskId, userId: user.id },
+      data: { completedAt: new Date() },
+    });
+
+    if (!result.count) {
+      await ctx.answerCbQuery('Không tìm thấy công việc');
+      return;
+    }
+
+    await ctx.answerCbQuery('Đã đánh dấu hoàn thành hôm nay');
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
   }
 }

@@ -15,6 +15,8 @@ import {
   FiClock,
   FiRefreshCw,
   FiCheckCircle,
+  FiBell,
+  FiPauseCircle,
 } from 'react-icons/fi';
 import {
   DndContext,
@@ -41,6 +43,7 @@ interface DailyTask {
   intervalMinutes: number;
   isActive: boolean;
   lastNotifiedAt: string | null;
+  completedAt: string | null;
   createdAt: string;
 }
 
@@ -124,6 +127,23 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
       setTasks((prev) =>
         prev.map((t) => (t.id === id ? { ...t, isActive: currentStatus } : t))
       );
+    }
+  };
+
+  const handleCompleteToday = async (id: string) => {
+    if (!user?.id) return;
+    const completedAt = new Date().toISOString();
+    const previousTasks = [...tasks];
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, completedAt } : t))
+    );
+    try {
+      await dailyTasksAPI.completeToday(id, user.id);
+      toast.success(language === 'vi' ? 'Đã hoàn thành hôm nay' : 'Marked done for today');
+    } catch (error) {
+      console.error('Failed to complete task:', error);
+      toast.error(language === 'vi' ? 'Không thể đánh dấu hoàn thành' : 'Failed to mark done');
+      setTasks(previousTasks);
     }
   };
 
@@ -213,7 +233,7 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
               <FiArrowLeft /> {language === 'vi' ? 'Quay lại' : 'Back'}
             </Button>
           )}
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 text-2xl border border-indigo-500/20">
+          <div className="w-12 h-12 rounded-2xl bg-pink-500/10 flex items-center justify-center text-pink-500 text-2xl border border-pink-500/20 shadow-sm shadow-pink-100">
             <FiCheckCircle />
           </div>
           <div>
@@ -240,9 +260,9 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-8">
         {/* Form add task */}
-        <section className="glass rounded-3xl border border-black/5 dark:border-white/5 p-6 md:p-8 space-y-5 h-fit">
+        <section className="glass rounded-3xl border border-pink-100 dark:border-pink-500/10 bg-white/85 dark:bg-slate-950/75 p-6 md:p-8 space-y-5 h-fit shadow-xl shadow-pink-100/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+            <div className="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center text-pink-500 border border-pink-500/20">
               <FiPlus />
             </div>
             <div>
@@ -269,7 +289,7 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
                     ? 'Ví dụ: Đọc báo cáo ngày, Kiểm tra server...'
                     : 'E.g. Read morning logs, Check servers...'
                 }
-                className="h-11 rounded-xl"
+                className="h-11 rounded-xl border-pink-100 focus:border-pink-300 focus:ring-pink-200"
               />
             </div>
 
@@ -284,7 +304,7 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
                   value={intervalMinutes}
                   onChange={(e) => setIntervalMinutes(Math.max(1, Number(e.target.value)))}
                   disabled={isSaving}
-                  className="h-11 rounded-xl pr-14"
+                  className="h-11 rounded-xl pr-14 border-pink-100 focus:border-pink-300 focus:ring-pink-200"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 capitalize">
                   {language === 'vi' ? 'phút' : 'mins'}
@@ -295,7 +315,7 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
             <Button
               type="submit"
               disabled={isSaving}
-              className="w-full h-12 text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl mt-4"
+              className="w-full h-12 text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl mt-4 bg-pink-500 hover:bg-pink-600 text-white shadow-lg shadow-pink-200"
             >
               <FiPlus />
               {isSaving
@@ -309,8 +329,8 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
           </form>
 
           {/* Business Hours Note */}
-          <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 text-[11px] text-slate-500 space-y-1.5 leading-relaxed">
-            <div className="flex items-center gap-2 text-indigo-500 font-black uppercase tracking-wider">
+          <div className="p-4 rounded-2xl bg-pink-50 border border-pink-100 text-[11px] text-slate-500 space-y-1.5 leading-relaxed dark:bg-pink-500/5 dark:border-pink-500/10">
+            <div className="flex items-center gap-2 text-pink-500 font-black uppercase tracking-wider">
               <FiClock />
               <span>{language === 'vi' ? 'Khung giờ hoạt động' : 'Active Notification Windows'}</span>
             </div>
@@ -328,14 +348,14 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
             <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
               {language === 'vi' ? 'Hàng đợi nhắc việc' : 'Reminder Queue'}
             </h3>
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">
+            <span className="text-[10px] font-black text-pink-500 uppercase tracking-widest">
               {tasks.length} {language === 'vi' ? 'công việc' : 'tasks'}
             </span>
           </div>
 
           {tasks.length === 0 ? (
-            <div className="glass rounded-3xl border border-black/5 dark:border-white/5 p-12 text-center">
-              <FiCheckCircle className="mx-auto text-4xl text-slate-300 dark:text-slate-700 mb-4" />
+            <div className="glass rounded-3xl border border-pink-100 dark:border-pink-500/10 bg-white/80 p-12 text-center">
+              <FiCheckCircle className="mx-auto text-4xl text-pink-200 dark:text-pink-500/30 mb-4" />
               <p className="text-sm font-bold text-slate-500">
                 {isLoading
                   ? language === 'vi'
@@ -359,6 +379,7 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
                       key={task.id}
                       task={task}
                       language={language}
+                      onCompleteToday={handleCompleteToday}
                       onToggleActive={handleToggleActive}
                       onUpdateInterval={handleUpdateInterval}
                       onRemove={handleRemove}
@@ -381,15 +402,89 @@ export default function DailyTasks({ onBack }: DailyTasksProps) {
   );
 }
 
+function isCompletedToday(completedAt: string | null) {
+  if (!completedAt) return false;
+  const completedDate = new Date(completedAt);
+  const now = new Date();
+  return completedDate.toDateString() === now.toDateString();
+}
+
+function formatReminderTime(value: string, language: string) {
+  let date = new Date(value);
+  const now = new Date();
+
+  // Legacy rows were saved with an ICT-shifted Date. On an ICT browser they show +7h.
+  // If the stored value is suspiciously in the future today, display the corrected time.
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs > 60_000 && diffMs <= 8 * 60 * 60 * 1000) {
+    date = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+  }
+
+  return date.toLocaleTimeString(language === 'vi' ? 'vi-VN' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+}
+
+function formatTime(date: Date, language: string) {
+  return date.toLocaleTimeString(language === 'vi' ? 'vi-VN' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+}
+
+function getNextCronEstimate(baseDate = new Date()) {
+  const next = new Date(baseDate);
+  const roundedMinutes = Math.ceil((next.getMinutes() + 1) / 5) * 5;
+  next.setSeconds(0, 0);
+  if (roundedMinutes >= 60) {
+    next.setHours(next.getHours() + 1, 0, 0, 0);
+  } else {
+    next.setMinutes(roundedMinutes);
+  }
+  return next;
+}
+
+function moveIntoActiveWindow(date: Date) {
+  const next = new Date(date);
+  const hour = next.getHours();
+  if (hour < 8) {
+    next.setHours(8, 0, 0, 0);
+  } else if (hour >= 12 && hour < 14) {
+    next.setHours(14, 0, 0, 0);
+  } else if (hour >= 17) {
+    next.setDate(next.getDate() + 1);
+    next.setHours(8, 0, 0, 0);
+  }
+  return next;
+}
+
+function getNextReminderLabel(task: DailyTask, language: string, completedToday: boolean) {
+  if (completedToday) return language === 'vi' ? 'Đã xong hôm nay' : 'Done today';
+  if (!task.isActive) return language === 'vi' ? 'Đã tạm dừng' : 'Paused';
+
+  const now = new Date();
+  const dueAt = task.lastNotifiedAt
+    ? new Date(new Date(task.lastNotifiedAt).getTime() + task.intervalMinutes * 60_000)
+    : getNextCronEstimate(now);
+  const next = moveIntoActiveWindow(dueAt > now ? dueAt : getNextCronEstimate(now));
+
+  return `${language === 'vi' ? 'Nhắc tiếp' : 'Next'} ${formatTime(next, language)}`;
+}
+
 function SortableTaskItem({
   task,
   language,
   onToggleActive,
+  onCompleteToday,
   onUpdateInterval,
   onRemove,
 }: {
   task: DailyTask;
   language: string;
+  onCompleteToday: (id: string) => void;
   onToggleActive: (id: string, current: boolean) => void;
   onUpdateInterval: (id: string, mins: number) => void;
   onRemove: (id: string) => void;
@@ -403,93 +498,127 @@ function SortableTaskItem({
     transition,
     zIndex: isDragging ? 50 : undefined,
   };
+  const completedToday = isCompletedToday(task.completedAt);
+  const reminderLabel = getNextReminderLabel(task, language, completedToday);
 
   return (
     <article
       ref={setNodeRef}
       style={style}
-      className={`glass rounded-2xl border p-4 flex items-center gap-3 transition-colors ${
+      className={`glass rounded-2xl border p-4 grid grid-cols-[auto_minmax(0,1fr)] gap-3 transition-colors ${
         isDragging
-          ? 'border-primary/50 shadow-2xl bg-white/90 dark:bg-slate-900/90'
+          ? 'border-pink-300 shadow-2xl shadow-pink-100 bg-white/95 dark:bg-slate-900/90'
+          : completedToday
+          ? 'border-emerald-500/20 bg-emerald-500/5 opacity-70'
           : task.isActive
-          ? 'border-black/5 dark:border-white/5 hover:border-primary/30'
+          ? 'border-pink-100 bg-pink-50/35 hover:border-pink-300 dark:border-pink-500/10 dark:bg-pink-500/5'
           : 'border-black/5 dark:border-white/5 opacity-55 saturate-50'
       }`}
     >
       {/* Drag handle */}
       <button
         type="button"
-        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-grab active:cursor-grabbing p-1 touch-none shrink-0"
+        className="mt-1 text-pink-300 hover:text-pink-500 dark:hover:text-pink-300 cursor-grab active:cursor-grabbing p-1 touch-none shrink-0"
         {...attributes}
         {...listeners}
       >
         <FiGrid className="text-base" />
       </button>
 
-      {/* Task Content */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="font-black text-[13px] text-slate-900 dark:text-slate-100 truncate leading-tight">
-          {task.title}
-        </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400">
-          <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-            {language === 'vi' ? `Ưu tiên ${task.priority + 1}` : `Priority ${task.priority + 1}`}
-          </span>
-          <span className="flex items-center gap-1">
-            <FiClock />
-            {task.lastNotifiedAt
-              ? (language === 'vi' ? 'Nhắc lúc ' : 'Sent ') +
-                new Date(task.lastNotifiedAt).toLocaleTimeString(
-                  language === 'vi' ? 'vi-VN' : 'en-US',
-                  { hour: '2-digit', minute: '2-digit' }
-                )
-              : language === 'vi'
-              ? 'Chưa thông báo hôm nay'
-              : 'Idle today'}
-          </span>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center gap-3 shrink-0">
-        {/* Interval settings */}
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            min="1"
-            value={task.intervalMinutes}
-            onChange={(e) => onUpdateInterval(task.id, Math.max(1, Number(e.target.value)))}
-            className="w-13 h-8 text-center rounded-lg border border-black/10 dark:border-white/10 bg-slate-100/50 dark:bg-slate-950/50 text-[11px] font-black outline-none focus:border-primary/50"
-          />
-          <span className="text-[9px] font-black uppercase text-slate-400 capitalize">
-            {language === 'vi' ? 'Phút' : 'Mins'}
-          </span>
+      <div className="min-w-0 space-y-4">
+        {/* Task Content */}
+        <div className="min-w-0 space-y-1.5">
+          <p className="font-black text-[13px] text-slate-900 dark:text-slate-100 leading-tight break-words">
+            {task.title}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400">
+            <span className="px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-600 dark:text-pink-300 whitespace-nowrap">
+              {language === 'vi' ? `Ưu tiên ${task.priority + 1}` : `Priority ${task.priority + 1}`}
+            </span>
+            {completedToday && (
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                {language === 'vi' ? 'Đã xong hôm nay' : 'Done today'}
+              </span>
+            )}
+            <span className="flex items-center gap-1 min-w-0">
+              <FiClock className="shrink-0" />
+              <span className="break-words">{reminderLabel}</span>
+              <span className="hidden">
+                {task.lastNotifiedAt
+                  ? (language === 'vi' ? 'Nhắc lúc ' : 'Sent ') +
+                    formatReminderTime(task.lastNotifiedAt, language)
+                  : language === 'vi'
+                  ? 'Chưa thông báo hôm nay'
+                  : 'Idle today'}
+              </span>
+            </span>
+          </div>
         </div>
 
-        {/* Toggle Active status */}
-        <button
-          type="button"
-          onClick={() => onToggleActive(task.id, task.isActive)}
-          className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 outline-none ${
-            task.isActive ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-800'
-          }`}
-        >
-          <span
-            className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ${
-              task.isActive ? 'translate-x-4.5' : 'translate-x-0'
+        {/* Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          {!completedToday && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="1"
+                value={task.intervalMinutes}
+                onChange={(e) => onUpdateInterval(task.id, Math.max(1, Number(e.target.value)))}
+                className="w-20 h-8 text-center rounded-lg border border-pink-100 dark:border-pink-500/10 bg-white/75 dark:bg-slate-950/50 text-[11px] font-black outline-none focus:border-pink-300"
+              />
+              <span className="text-[9px] font-black uppercase text-slate-400 capitalize">
+                {language === 'vi' ? 'Phút' : 'Mins'}
+              </span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onCompleteToday(task.id)}
+            disabled={completedToday}
+            className={`h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border ${
+              completedToday
+                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 cursor-default'
+                : 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600 shadow-sm'
             }`}
-          />
-        </button>
+            title={language === 'vi' ? 'Hoàn thành hôm nay' : 'Done today'}
+          >
+            <FiCheckCircle className="text-sm" />
+            <span>{completedToday ? (language === 'vi' ? 'Xong' : 'Done') : 'Done'}</span>
+          </button>
 
-        {/* Delete */}
-        <button
-          type="button"
-          onClick={() => onRemove(task.id)}
-          className="w-8 h-8 rounded-lg text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all flex items-center justify-center border border-black/5 dark:border-white/5"
-          title={language === 'vi' ? 'Xóa' : 'Delete'}
-        >
-          <FiTrash2 className="text-sm" />
-        </button>
+          <button
+            type="button"
+            onClick={() => onToggleActive(task.id, task.isActive)}
+            className={`h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border max-w-full ${
+              task.isActive
+                ? 'bg-pink-500/10 text-pink-600 border-pink-500/20 hover:bg-pink-500/15'
+                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+            }`}
+            title={
+              task.isActive
+                ? language === 'vi'
+                  ? 'Đang nhắc theo interval'
+                  : 'Reminder is active'
+                : language === 'vi'
+                ? 'Đã tạm dừng nhắc'
+                : 'Reminder is paused'
+            }
+          >
+            {task.isActive ? <FiBell className="text-sm" /> : <FiPauseCircle className="text-sm" />}
+            <span>{task.isActive ? (language === 'vi' ? 'Đang nhắc' : 'Active') : (language === 'vi' ? 'Tạm dừng' : 'Paused')}</span>
+          </button>
+
+          {/* Delete */}
+          <button
+            type="button"
+            onClick={() => onRemove(task.id)}
+            className="w-8 h-8 rounded-lg text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all flex items-center justify-center border border-black/5 dark:border-white/5"
+            title={language === 'vi' ? 'Xóa' : 'Delete'}
+          >
+            <FiTrash2 className="text-sm" />
+          </button>
+        </div>
       </div>
     </article>
   );

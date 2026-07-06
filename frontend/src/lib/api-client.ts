@@ -418,6 +418,8 @@ export const dailyTasksAPI = {
     apiClient.patch(`/api/daily-tasks/${id}`, data),
   reorder: (items: { id: string; priority: number }[]) =>
     apiClient.patch('/api/daily-tasks/reorder', items),
+  completeToday: (id: string, userId: string) =>
+    apiClient.patch(`/api/daily-tasks/${id}/done`, { userId }),
   remove: (id: string) =>
     apiClient.delete(`/api/daily-tasks/${id}`),
 };
