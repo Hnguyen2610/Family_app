@@ -271,17 +271,17 @@ export default function VisionDrafts() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300 pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-sky-500/10 flex items-center justify-center text-sky-500 text-2xl border border-sky-500/20">
             <FiEye />
           </div>
           <div>
-            <h2 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase italic">
+            <h2 className="text-2xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
               {copy.title}
             </h2>
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
+            <p className="text-xs text-slate-500 font-semibold mt-1">
               {selectedFamily?.name || copy.chooseFamily}
             </p>
           </div>
@@ -298,13 +298,13 @@ export default function VisionDrafts() {
         </div>
       )}
 
-      <section className="glass rounded-2xl border border-black/5 dark:border-white/5 p-6 md:p-8 space-y-6">
+      <section className="rounded-2xl border border-border bg-card p-6 md:p-8 space-y-6 shadow-sm">
         <div className="flex flex-col lg:flex-row gap-5">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={!familyId || isCreating}
-            className="h-20 lg:w-60 rounded-2xl border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary transition-all flex items-center justify-center gap-3 font-black text-[11px] uppercase tracking-widest disabled:opacity-50"
+            className="h-20 lg:w-60 rounded-2xl border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary transition-all flex items-center justify-center gap-3 font-semibold text-sm disabled:opacity-50"
           >
             <FiImage />
             {imageName || copy.pickImage}
@@ -319,7 +319,7 @@ export default function VisionDrafts() {
                   type="button"
                   onClick={() => setKind(option.id)}
                   disabled={!familyId || isCreating}
-                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
                     kind === option.id
                       ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20'
                       : 'bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 border-black/5 dark:border-white/5 hover:text-primary hover:border-primary/30'
@@ -343,7 +343,7 @@ export default function VisionDrafts() {
               </Button>
             </div>
             {imageTransport && (
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+              <p className="text-xs font-semibold text-slate-400">
                 {imageTransport}
               </p>
             )}
@@ -353,7 +353,7 @@ export default function VisionDrafts() {
 
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+          <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300">
             {copy.subtitle}
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -362,7 +362,7 @@ export default function VisionDrafts() {
                 key={option.id}
                 type="button"
                 onClick={() => setStatus(option.id)}
-                className={`px-3 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${
+                className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
                   status === option.id
                     ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950 border-transparent'
                     : 'bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 border-black/5 dark:border-white/5'
@@ -375,7 +375,7 @@ export default function VisionDrafts() {
         </div>
 
         {drafts.length === 0 && (
-          <div className="glass rounded-2xl border border-black/5 dark:border-white/5 p-10 text-center">
+          <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
             <FiFileText className="mx-auto text-4xl text-slate-300 dark:text-slate-700 mb-4" />
             <p className="text-sm font-bold text-slate-500">
               {isLoading ? (language === 'vi' ? 'Đang tải draft...' : 'Loading drafts...') : copy.empty}

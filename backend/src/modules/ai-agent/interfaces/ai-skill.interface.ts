@@ -26,6 +26,7 @@ export interface AiSkillContext {
   }>;
   history?: any[];
   trace?: AiTrace;
+  source?: 'web' | 'telegram';
 }
 
 export interface AiSkillTool {

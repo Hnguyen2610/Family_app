@@ -33,7 +33,7 @@ export function ChatbotHeader({
   setModel,
 }: ChatbotHeaderProps) {
   return (
-    <header className="px-4 py-3 md:px-8 md:py-6 border-b border-white/5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 bg-white/[0.02] backdrop-blur-md sticky top-0 z-20">
+    <header className="px-4 py-3 md:px-6 md:py-4 border-b border-border flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 bg-card sticky top-0 z-20">
       <div className="flex items-center gap-3 md:gap-5 min-w-0">
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -45,8 +45,8 @@ export function ChatbotHeader({
           <FiActivity />
         </div>
         <div className="min-w-0">
-          <h2 className="text-lg md:text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic truncate">Family <span className="text-primary not-italic">GPT</span></h2>
-          <p className="text-[9px] text-primary font-black uppercase tracking-widest flex items-center gap-1">
+          <h2 className="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight truncate">Family<span className="text-primary">GPT</span></h2>
+          <p className="text-xs text-primary font-semibold flex items-center gap-1">
             <span className="w-1 h-1 bg-primary rounded-full animate-ping" />
             {language === 'vi' ? 'Đang hoạt động' : 'Processing Active'}
           </p>
@@ -87,7 +87,7 @@ export function ChatbotHeader({
         </div>
 
         <div className="flex flex-col gap-1 min-w-0">
-          <div className="px-1 text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500">
+          <div className="px-1 text-[10px] font-semibold text-slate-500 dark:text-slate-500">
             Model <span className="text-primary">{model}</span>
           </div>
           <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg border border-black/5 dark:border-white/5 w-full">
@@ -95,7 +95,7 @@ export function ChatbotHeader({
               <button
                 key={item}
                 onClick={() => setModel(item)}
-                className={`flex-1 px-2 md:px-4 py-1.5 rounded text-[9px] font-black uppercase tracking-widest transition-all ${model === item ? 'bg-primary text-primary-foreground shadow-lg' : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
+                className={`flex-1 px-2 md:px-4 py-1.5 rounded text-xs font-semibold transition-all ${model === item ? 'bg-primary text-primary-foreground shadow-sm' : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
               >
                 {item}
               </button>
@@ -131,11 +131,11 @@ function UsageMeter({
   return (
     <div className="group relative">
       <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+        <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
           <FiCpu size={10} />
           {label}
         </span>
-        <span className="text-[8px] font-black uppercase text-slate-500 dark:text-slate-500">
+        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-500">
           {value}
         </span>
       </div>
@@ -146,7 +146,7 @@ function UsageMeter({
         />
       </div>
       <div className={`pointer-events-none absolute right-0 top-full z-30 mt-2 ${tooltipWidthClass} rounded-lg border border-black/5 dark:border-white/10 bg-white dark:bg-slate-950 p-3 text-[10px] font-bold text-slate-600 dark:text-slate-300 opacity-0 shadow-xl transition-opacity group-hover:opacity-100`}>
-        <div className="mb-1 font-black uppercase tracking-widest text-primary">{tooltipTitle}</div>
+        <div className="mb-1 font-bold text-primary">{tooltipTitle}</div>
         {rows.map(([name, rowValue]) => (
           <div key={name}>{name}: {rowValue}</div>
         ))}

@@ -24,30 +24,26 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 relative overflow-hidden">
-      {/* Decorative background */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-100/50 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-100/50 rounded-full blur-[120px]" />
-
-      <div className="glass w-full max-w-md p-10 rounded-[2.5rem] border-white/60 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-700">
-        <div className="text-center mb-10">
-          <div className="inline-block p-4 bg-white rounded-3xl shadow-xl mb-6 animate-float">
-            <span className="text-5xl">👨‍👩‍👧‍👦</span>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-2xl">
+            <span aria-hidden="true">🏠</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tight mb-2">
+          <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950">
             Family <span className="gradient-text">Calendar</span>
           </h1>
-          <p className="text-slate-500 font-medium">Chào mừng bạn quay trở lại với gia đình!</p>
+          <p className="text-sm font-medium text-slate-500">Chào mừng bạn quay lại với gia đình.</p>
         </div>
 
-        <div className="space-y-6 flex flex-col items-center">
+        <div className="flex flex-col items-center space-y-6">
           {error && (
-            <div className="w-full p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold border border-red-100 animate-shake">
+            <div className="w-full rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-600">
               ⚠️ {error}
             </div>
           )}
 
-          <div className="w-full flex justify-center py-4 bg-white/50 rounded-2xl border border-white/80 hover:bg-white transition-all duration-300">
+          <div className="flex w-full justify-center rounded-xl border border-slate-200 bg-slate-50 py-4 transition-colors hover:bg-white">
             <GoogleLogin
               onSuccess={handleSuccess}
               onError={() => setError('Không thể kết nối với Google.')}
@@ -59,16 +55,16 @@ export default function Login() {
             />
           </div>
 
-          <p className="text-xs text-slate-400 text-center px-4 leading-relaxed">
-            Bằng cách đăng nhập, bạn đồng ý với các điều khoản sử dụng dành riêng cho gia đình của chúng tôi.
+          <p className="px-4 text-center text-xs leading-relaxed text-slate-400">
+            Bằng cách đăng nhập, bạn đồng ý sử dụng Family Calendar để quản lý dữ liệu gia đình của mình.
           </p>
         </div>
 
         {isLoggingIn && (
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-[2.5rem] flex items-center justify-center z-20 animate-in fade-in duration-300">
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/90">
             <div className="flex flex-col items-center">
-              <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-indigo-600 font-black">Nối lại yêu thương...</p>
+              <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+              <p className="font-semibold text-indigo-600">Đang đăng nhập...</p>
             </div>
           </div>
         )}

@@ -89,7 +89,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     return (
       <div className="flex flex-col items-center justify-center p-20">
         <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">
+        <p className="text-slate-500 font-bold text-xs animate-pulse">
           {language === 'vi' ? 'Đang khởi tạo hệ thống...' : 'Initializing Interface...'}
         </p>
       </div>
@@ -101,11 +101,11 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       {/* Date Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-8">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-md text-[9px] font-black uppercase tracking-[0.2em] border border-primary/20 mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-md text-xs font-bold border border-primary/20 mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
             {language === 'vi' ? 'Giao diện bảng điều khiển' : 'Interface Dashboard'}
           </div>
-          <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tighter capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
+          <h1 className="text-3xl md:text-5xl font-bold text-slate-900 dark:text-slate-100 tracking-tight capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
             {format(new Date(), 'EEEE', { locale: language === 'vi' ? vi : undefined })}, <span className="text-primary">{todayFormattedText}</span>
           </h1>
         </div>
@@ -122,32 +122,32 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
         {/* Left Column: Events */}
         <div className="lg:col-span-7 space-y-8">
-          <div className="glass rounded-2xl p-8 border border-black/5 dark:border-white/5 h-full bg-white/80 dark:bg-slate-900/40">
+          <div className="rounded-2xl p-8 border border-border h-full bg-card shadow-sm">
             <div className="flex items-center justify-between mb-8">
               <div className="relative group/view">
                 <button 
-                  className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 hover:text-primary transition-colors pr-8 py-1"
+                  className="text-sm font-bold text-slate-900 dark:text-slate-100  flex items-center gap-3 hover:text-primary transition-colors pr-8 py-1"
                 >
                   <FiCalendar className="text-primary" />
                   {scheduleView === 'today' ? t('dashboard.operations') : (language === 'vi' ? 'Lịch trình tháng này' : 'Monthly Schedule')}
                   <FiChevronDown size={14} className="group-hover/view:translate-y-0.5 transition-transform" />
                 </button>
-                <div className="absolute top-full left-0 mt-2 w-48 glass rounded-xl border border-black/5 dark:border-white/5 opacity-0 invisible group-hover/view:opacity-100 group-hover/view:visible transition-all z-20 shadow-xl py-2">
+                <div className="absolute top-full left-0 mt-2 w-48 rounded-xl border border-border bg-card opacity-0 invisible group-hover/view:opacity-100 group-hover/view:visible transition-all z-20 shadow-md py-2">
                   <button 
                     onClick={() => setScheduleView('today')}
-                    className={`w-full text-left px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-primary/5 ${scheduleView === 'today' ? 'text-primary' : 'text-slate-500'}`}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold hover:bg-primary/5 ${scheduleView === 'today' ? 'text-primary' : 'text-slate-500'}`}
                   >
                     {t('dashboard.operations')}
                   </button>
                   <button 
                     onClick={() => setScheduleView('month')}
-                    className={`w-full text-left px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-primary/5 ${scheduleView === 'month' ? 'text-primary' : 'text-slate-500'}`}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold hover:bg-primary/5 ${scheduleView === 'month' ? 'text-primary' : 'text-slate-500'}`}
                   >
                     {language === 'vi' ? 'Lịch trình tháng này' : 'Monthly Schedule'}
                   </button>
                 </div>
               </div>
-              <span className="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500 text-[10px] px-2 py-1 rounded border border-black/5 dark:border-white/5">
+              <span className="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500 text-xs px-2 py-1 rounded border border-black/5 dark:border-white/5">
                 {scheduleView === 'today' ? todayEvents.length : monthEvents.length} {t('dashboard.tasks')}
               </span>
             </div>
@@ -157,18 +157,18 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 {(scheduleView === 'today' ? todayEvents : monthEvents).map((ev, idx) => (
                   <div key={ev.id || idx} className="relative flex items-start gap-6 p-6 rounded-xl bg-slate-100/40 dark:bg-slate-900/40 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all group">
                     <div className="w-16 shrink-0 pt-1">
-                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 block mb-1">
+                      <span className="text-xs font-bold text-slate-400 dark:text-slate-500 block mb-1">
                         {scheduleView === 'month' ? formatCalendarDayMonth(ev.date) : (ev.time ? ev.time.substring(0, 5) : '00:00')}
                       </span>
                       {scheduleView === 'month' && (
-                        <span className="text-[10px] font-bold text-primary block">
+                        <span className="text-xs font-bold text-primary block">
                           {ev.time ? ev.time.substring(0, 5) : '00:00'}
                         </span>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate">{ev.title}</h4>
+                      <h4 className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate">{ev.title}</h4>
                       {ev.description && (
                         <p className="text-xs text-slate-500 dark:text-slate-500 mt-2 line-clamp-1 font-medium">{ev.description}</p>
                       )}
@@ -180,15 +180,15 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-center glass rounded-xl border border-dashed border-black/5 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/40">
+              <div className="flex flex-col items-center justify-center py-20 text-center rounded-xl border border-dashed border-border bg-card shadow-sm">
                 <FiHeart className="text-3xl text-slate-300 dark:text-slate-800 mb-4" />
-                <p className="text-xs text-slate-500 font-black uppercase tracking-widest">
+                <p className="text-xs text-slate-500 font-bold ">
                   {scheduleView === 'today' ? t('dashboard.noTasks') : (language === 'vi' ? 'Không có sự kiện trong tháng' : 'No events this month')}
                 </p>
 
                 <button
                   onClick={() => onNavigate('calendar')}
-                  className="mt-6 text-primary font-black text-[10px] uppercase tracking-widest border border-primary/20 px-4 py-2 rounded-md hover:bg-primary/5 transition-colors"
+                  className="mt-6 text-primary font-bold text-xs border border-primary/20 px-4 py-2 rounded-md hover:bg-primary/5 transition-colors"
                 >
                   + {t('dashboard.schedule')}
                 </button>
@@ -201,12 +201,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         <div className="lg:col-span-5 flex flex-col gap-8">
 
           {/* Quick Chat AI */}
-          <div className="glass-dark rounded-2xl p-8 border border-primary/30 bg-primary/5 relative overflow-hidden group">
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 shadow-sm p-8 relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-5">
               <FiMessageSquare size={100} />
             </div>
 
-            <h3 className="relative z-10 text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-6">
+            <h3 className="relative z-10 text-sm font-bold text-slate-900 dark:text-slate-100  flex items-center gap-3 mb-6">
               <FiMessageSquare className="text-primary" />
               {t('dashboard.neuralAccess')}
             </h3>
@@ -217,7 +217,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   type="text"
                   value={chatMessage}
                   onChange={(e) => setChatMessage(e.target.value)}
-                  placeholder={language === 'vi' ? "Yêu cầu hệ thống..." : "System command..."}
+                  placeholder={language === 'vi' ? "Hỏi AI bất cứ điều gì..." : "Ask AI anything..."}
                   className="h-12"
                 />
               </div>
@@ -232,18 +232,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
           </div>
 
           {/* Meal Suggestions */}
-          <div className="glass-dark rounded-2xl p-8 border border-white/5 flex-1">
+          <div className="rounded-2xl border border-border bg-card shadow-sm p-8 flex-1">
             <div className="flex items-center justify-between mb-8">
-              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100  flex items-center gap-3">
                 <FiCoffee className="text-primary" />
                 {t('dashboard.nutrition')}
               </h3>
-              <button
-                onClick={() => onNavigate('meals')}
-                className="text-[9px] font-black uppercase tracking-widest text-primary border border-primary/20 px-3 py-1.5 rounded bg-primary/5"
-              >
-                {t('nav.ledger')}
-              </button>
             </div>
 
             <div className="grid gap-4">
@@ -258,13 +252,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-slate-900 dark:text-slate-100 text-sm group-hover:text-primary transition-colors truncate">{meal.name}</h4>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{meal.category || 'Stable'}</p>
+                      <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm group-hover:text-primary transition-colors truncate">{meal.name}</h4>
+                      <p className="text-xs font-bold text-slate-500  mt-1">{meal.category || 'Stable'}</p>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest text-center py-6">{t('common.noData')}</p>
+                <p className="text-xs text-slate-600 font-bold text-center py-6">{t('common.noData')}</p>
               )}
             </div>
           </div>

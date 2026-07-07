@@ -1,4 +1,4 @@
-import type { AiFeedbackValue } from '@/lib/api-client';
+import type { AiActionProposal, AiFeedbackValue } from '@/lib/api-client';
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -6,6 +6,8 @@ export interface Message {
   cached?: boolean;
   requestLogId?: string;
   feedback?: AiFeedbackValue;
+  proposal?: AiActionProposal;
+  proposalStatus?: 'pending' | 'confirmed' | 'rejected';
 }
 
 export interface ChatSession {

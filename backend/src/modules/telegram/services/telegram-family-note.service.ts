@@ -1,8 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Context, Markup } from 'telegraf';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RagService } from '../../ai-agent/services/rag.service';
-import { TelegramSender } from './telegram-sender';
 import { TelegramContextService } from './telegram-context.service';
 import { toObject, getActiveFamily } from '../telegram-family.helpers';
 import { buildTelegramNoteDraft, shouldProposeTelegramFamilyNote } from '../telegram-note-draft';
@@ -18,13 +17,11 @@ export type PendingTelegramFamilyNote = {
 
 @Injectable()
 export class TelegramFamilyNoteService {
-  private readonly logger = new Logger(TelegramFamilyNoteService.name);
   private readonly pendingFamilyNotes = new Map<string, PendingTelegramFamilyNote>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ragService: RagService,
-    private readonly sender: TelegramSender,
     private readonly context: TelegramContextService,
   ) {}
 

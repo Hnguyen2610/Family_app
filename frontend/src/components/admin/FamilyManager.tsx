@@ -105,8 +105,8 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
   return (
     <div className="space-y-6">
       {/* Create Form */}
-      <div className="glass p-8 rounded-[2rem] border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-900/40">
-        <h3 className="text-sm font-black mb-6 uppercase tracking-widest text-slate-900 dark:text-slate-100 italic">Tạo gia đình mới</h3>
+      <div className="p-8 rounded-2xl border border-border bg-card shadow-sm">
+        <h3 className="text-sm font-bold mb-6  text-slate-900 dark:text-slate-100 italic">Tạo gia đình mới</h3>
         <form onSubmit={handleCreateFamily} className="flex flex-col sm:flex-row gap-4">
           <Input
             type="text"
@@ -118,7 +118,7 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
           <Button
             type="submit"
             disabled={isCreating}
-            className="h-12 px-8 font-black uppercase tracking-widest text-[10px] gap-2"
+            className="h-12 px-8 font-bold text-xs gap-2"
           >
             {isCreating ? 'Đang tạo...' : <><FiPlus size={16} /> Tạo</>}
           </Button>
@@ -127,7 +127,7 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
 
       {/* List */}
       <div className="space-y-4">
-        <h3 className="text-lg font-black uppercase tracking-wider text-slate-700">Danh sách gia đình ({families.length})</h3>
+        <h3 className="text-lg font-bold text-slate-700">Danh sách gia đình ({families.length})</h3>
         {isLoading ? (
           <div className="flex justify-center py-20">
             <div className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
@@ -135,7 +135,7 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {families.map((family) => (
-              <div key={family.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden">
+              <div key={family.id} className="bg-card rounded-2xl border border-border shadow-sm hover:shadow-md transition-all overflow-hidden">
                 <div className="p-6 flex items-center justify-between group">
                   <div className="flex-1">
                     {editingFamilyId === family.id ? (
@@ -145,7 +145,7 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
                           type="text"
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1 max-w-md h-12 text-lg font-black italic"
+                          className="flex-1 max-w-md h-12 text-lg font-bold italic"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleUpdateName(family.id);
                             if (e.key === 'Escape') setEditingFamilyId(null);
@@ -168,7 +168,7 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
                     ) : (
                       <>
                         <div className="flex items-center gap-3">
-                          <h4 className="text-xl font-black text-slate-900 dark:text-slate-100 italic tracking-tight">{family.name}</h4>
+                          <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100 italic tracking-tight">{family.name}</h4>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -182,12 +182,12 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
                           </Button>
                         </div>
                         <div className="flex items-center gap-4 mt-2">
-                           <p className="text-[10px] text-slate-400 font-black uppercase tracking-tight bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">NODE ID: {family.id}</p>
+                           <p className="text-xs text-slate-400 font-bold bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">NODE ID: {family.id}</p>
                            <button 
                               onClick={() => toggleExpand(family.id)}
-                              className="text-[10px] font-black text-primary hover:underline transition-colors uppercase tracking-widest flex items-center gap-1"
+                              className="text-xs font-bold text-primary hover:underline transition-colors  flex items-center gap-1"
                            >
-                              <FiUser size={10} /> {family._count?.users || 0} Nodes
+                              <FiUser size={10} /> {family._count?.users || 0} thành viên
                            </button>
                         </div>
                       </>
@@ -216,10 +216,10 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
                 {expandedFamilyId === family.id && (
                     <div className="px-6 pb-6 pt-2 bg-slate-50/50 border-t border-slate-50 animate-in slide-in-from-top-4 duration-300">
                         <div className="flex justify-between items-center mb-4">
-                            <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Danh sách thành viên</h5>
+                            <h5 className="text-xs font-bold text-slate-400">Danh sách thành viên</h5>
                             <button 
                                 onClick={() => onTabChange?.('users')} // In case we want to jump to user manager
-                                className="text-[10px] font-black uppercase tracking-widest text-red-600 hover:underline"
+                                className="text-xs font-bold text-red-600 hover:underline"
                             >
                                 Quản lý người dùng →
                             </button>
@@ -238,8 +238,8 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
                                         <div key={u.id} className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-200/50 shadow-sm">
                                             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm">👤</div>
                                             <div className="min-w-0">
-                                                <p className="text-xs font-black text-slate-800 truncate">{u.name}</p>
-                                                <p className="text-[9px] font-bold text-slate-400 truncate uppercase tracking-tighter">{u.email}</p>
+                                                <p className="text-xs font-bold text-slate-800 truncate">{u.name}</p>
+                                                <p className="text-xs font-bold text-slate-400 truncate">{u.email}</p>
                                             </div>
                                         </div>
                                     ))

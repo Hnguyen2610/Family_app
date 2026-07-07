@@ -38,6 +38,8 @@ export class TelegramAiResponder {
       user?.id ? [user.id] : undefined,
       imageUrl,
       model,
+      undefined,
+      'telegram',
     );
   }
 
@@ -54,11 +56,7 @@ export class TelegramAiResponder {
     try {
       await ctx.sendChatAction('typing');
       const response = await this.chatWithAi(commandContext.familyId, prompt, commandContext.user, 'groq');
-      await this.sender.replyWithAiFeedback(
-        ctx,
-        sanitizeTelegramReply(response.content, prompt, options),
-        response.requestLogId,
-      );
+      await this.replyWithAiResponse(ctx, response, prompt, options);
     } catch (error) {
       this.logger.error(`Telegram AI command error: ${prompt}`, error);
       await ctx.reply(fallbackMessage);
@@ -161,10 +159,34 @@ export class TelegramAiResponder {
       await ctx.reply(loadingMessage);
       await ctx.sendChatAction('typing');
       const response = await this.chatWithAi(familyId, prompt, user, model);
-      await this.sender.replyWithAiFeedback(ctx, response.content, response.requestLogId, replyOptions);
+      await this.replyWithAiResponse(ctx, response, prompt, {}, replyOptions);
     } catch (error) {
       this.logger.error(`Telegram menu action error: ${prompt}`, error);
       await ctx.reply(fallbackMessage);
     }
+  }
+
+  private async replyWithAiResponse(
+    ctx: Context,
+    response: any,
+    prompt: string,
+    options: { hideSources?: boolean } = {},
+    replyOptions?: any,
+  ) {
+    const content = sanitizeTelegramReply(response.content, prompt, options);
+    if (!response.proposal?.proposalId) {
+      await this.sender.replyWithAiFeedback(ctx, content, response.requestLogId, replyOptions);
+      return;
+    }
+
+    await ctx.reply(content, {
+      ...replyOptions,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Xác nhận', callback_data: `proposal_confirm:${response.proposal.proposalId}` }],
+          [{ text: 'Hủy', callback_data: `proposal_reject:${response.proposal.proposalId}` }],
+        ],
+      },
+    });
   }
 }

@@ -7,7 +7,6 @@ import { WebPushService } from './web-push.service';
 import { AiAgentService } from '../ai-agent/services/ai-agent.service';
 import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
-import { getIctNow } from '../../utils/timezone.util';
 import { TelegramService } from '../telegram/telegram.service';
 import { buildDailyEmailHtml, buildMonthlyEmailHtml } from './notification-email-formatters';
 import {
@@ -24,7 +23,6 @@ import { ProactiveAssistantService } from './proactive-assistant.service';
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly proactiveLookaheadDays = 7;
 
   constructor(
     private readonly prisma: PrismaService,

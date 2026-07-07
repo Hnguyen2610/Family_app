@@ -51,6 +51,34 @@ function buildUsageSnapshot(data: any) {
   };
 }
 
+function isActionProposalResult(value: any) {
+  return value?.type === 'action_proposal' && value?.proposalId;
+}
+
+function getActionProposalContent(value: any) {
+  return value?.message || 'Mình đã chuẩn bị thao tác này. Bạn xác nhận trước khi lưu nhé.';
+}
+
+async function returnActionProposalChat(deps: ModelHandlerDeps, input: ChatHandlerInput, proposal: any, usage: any) {
+  const content = getActionProposalContent(proposal);
+  await deps.chatService.saveMessage(input.familyId, 'assistant', content, input.sessionId);
+  return {
+    content,
+    familyId: input.familyId,
+    proposal,
+    usage,
+  };
+}
+
+function writeActionProposalStream(res: any, proposal: any, usage?: any) {
+  const content = getActionProposalContent(proposal);
+  res.write(`data: ${JSON.stringify({ type: 'action_proposal', proposal })}\n\n`);
+  res.write(`data: ${JSON.stringify({ content })}\n\n`);
+  if (usage) res.write(`data: ${JSON.stringify({ type: 'usage', usage })}\n\n`);
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
 function stripPseudoFunctionTags(content: string) {
   return content
     .replace(/<function[=:][\s\S]*?<\/function>/g, '')
@@ -260,6 +288,15 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
       } else {
         calledCalls.add(callCheck);
         const res = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
+        if (isActionProposalResult(res)) {
+          const usage = buildUsageSnapshot({
+            provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
+            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
+            completionText: getActionProposalContent(res), apiUsage: result.response.usageMetadata,
+            quota: unavailableQuota('Gemini API does not expose quota.'),
+          });
+          return returnActionProposalChat(deps, input, res, usage);
+        }
         currentInput = [{ functionResponse: { name: part.functionCall.name, response: res } }];
       }
     } else {
@@ -308,6 +345,14 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
         toolName = toolName.substring(0, toolName.indexOf('{')).trim();
       }
       const res = await executeTool(toolName, JSON.parse(tc.function.arguments), familyId, userId, trace);
+      if (isActionProposalResult(res)) {
+        const usage = buildUsageSnapshot({
+          provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens,
+          historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
+          completionText: getActionProposalContent(res), apiUsage, quota,
+        });
+        return returnActionProposalChat(deps, input, res, usage);
+      }
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res) } as any);
     }
     const finalResult = await measureAiStep(logger, 'model_call', trace, { provider: 'groq', phase: 'final' }, () => openai.chat.completions.create({ model: groqModel, messages, max_tokens: aiMaxTokens }).withResponse());
@@ -402,6 +447,17 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
         } else {
           calledCalls.add(callCheck);
           const toolRes = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
+          if (isActionProposalResult(toolRes)) {
+            const usage = buildUsageSnapshot({
+              provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
+              historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
+              completionText: getActionProposalContent(toolRes), apiUsage,
+              quota: unavailableQuota('Gemini API does not expose quota.'),
+            });
+            await chatService.saveMessage(familyId, 'assistant', getActionProposalContent(toolRes), sessionId);
+            writeActionProposalStream(res, toolRes, usage);
+            return;
+          }
           currentInput = [{ functionResponse: { name: part.functionCall.name, response: toolRes } }];
         }
         break;
@@ -522,6 +578,16 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
         args = {};
       }
       const toolResult = await executeTool(toolName, args, familyId, userId, trace);
+      if (isActionProposalResult(toolResult)) {
+        const usage = buildUsageSnapshot({
+          provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens,
+          historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, intentRoute.intent, systemPromptOverride),
+          completionText: getActionProposalContent(toolResult), apiUsage, quota,
+        });
+        await chatService.saveMessage(familyId, 'assistant', getActionProposalContent(toolResult), sessionId);
+        writeActionProposalStream(res, toolResult, usage);
+        return;
+      }
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,

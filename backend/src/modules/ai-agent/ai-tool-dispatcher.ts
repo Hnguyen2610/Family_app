@@ -1,6 +1,6 @@
 import { AiSkillContext } from './interfaces/ai-skill.interface';
-import { toolError } from './ai-tool-results';
-import { repairToolArgs, toolValidationError, validateToolArgs } from './ai-tool-validation';
+import { repairToolArgs, toolError, toolValidationError, validateToolArgs } from './ai-tool-runtime';
+import { isSideEffectTool } from './ai-tool-policy';
 
 type AiLogger = {
   debug(message: string): void;
@@ -19,6 +19,7 @@ type SkillWithTools = {
 };
 
 type BaseExecuteTool = (toolName: string, args: any, familyId: string, userId: string) => Promise<any>;
+type CreateActionProposal = (toolName: string, args: any, context: AiSkillContext) => Promise<any>;
 
 export function mergeUniqueTools(...toolLists: ToolSchema[][]): ToolSchema[] {
   const tools: ToolSchema[] = [];
@@ -52,6 +53,7 @@ export function createSkillToolDispatcher(options: {
   context: AiSkillContext;
   baseExecuteTool: BaseExecuteTool;
   shouldAllowSideEffectTool: (toolName: string) => boolean;
+  createActionProposal?: CreateActionProposal;
 }): BaseExecuteTool {
   const {
     label,
@@ -62,6 +64,7 @@ export function createSkillToolDispatcher(options: {
     context,
     baseExecuteTool,
     shouldAllowSideEffectTool,
+    createActionProposal,
   } = options;
 
   return async (toolName: string, args: any, familyId: string, userId: string) => {
@@ -72,6 +75,12 @@ export function createSkillToolDispatcher(options: {
     const safeArgs = prepared.args;
     if (!shouldAllowSideEffectTool(toolName)) {
       return toolError(toolName, 'This action needs an explicit create/update/delete/save request before it can run.');
+    }
+
+    if (createActionProposal && isSideEffectTool(toolName)) {
+      const proposal = await createActionProposal(toolName, safeArgs, context);
+      logger.debug(`[${label}] ${toolName} converted to action proposal`);
+      return proposal;
     }
 
     if (skill.executeTool) {

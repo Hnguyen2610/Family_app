@@ -15,6 +15,11 @@ export class CreateEventDto {
   date!: Date;
 
   @IsOptional()
+  @IsDate()
+  @Type(() => Date)
+  endDate?: Date;
+
+  @IsOptional()
   @IsString()
   time?: string;
 
@@ -62,6 +67,11 @@ export class UpdateEventDto {
   @IsDate()
   @Type(() => Date)
   date?: Date;
+
+  @IsOptional()
+  @IsDate()
+  @Type(() => Date)
+  endDate?: Date;
 
   @IsOptional()
   @IsString()

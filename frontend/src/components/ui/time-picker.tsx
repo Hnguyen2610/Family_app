@@ -59,7 +59,7 @@ export function TimePicker({
   return (
     <div className="space-y-2">
       {label && (
-        <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+        <Label className="text-xs font-bold text-slate-500 ">
           {label}
         </Label>
       )}

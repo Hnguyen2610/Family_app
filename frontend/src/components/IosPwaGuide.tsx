@@ -33,14 +33,14 @@ export default function IosPwaGuide({ onClose }: IosPwaGuideProps) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="w-full max-w-md glass rounded-[2.5rem] border border-white/10 overflow-hidden shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
+      <div className="w-full max-w-md glass rounded-2xl border border-white/10 overflow-hidden shadow-md animate-in zoom-in-95 slide-in-from-bottom-10 duration-300">
         {/* Header */}
         <div className="p-8 pb-4 flex justify-between items-start">
           <div>
-            <h3 className="text-2xl font-black text-white tracking-tighter italic">
+            <h3 className="text-2xl font-bold text-white tracking-tight italic">
               iOS <span className="text-primary not-italic">Setup</span>
             </h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">
+            <p className="text-xs font-bold text-slate-400  mt-1">
               {language === 'vi' ? 'Kích hoạt thông báo đẩy' : 'Universal Push Protocol'}
             </p>
           </div>
@@ -57,12 +57,12 @@ export default function IosPwaGuide({ onClose }: IosPwaGuideProps) {
           <div className="space-y-6">
             {steps.map((step, index) => (
               <div key={index} className="flex gap-5 group">
-                <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl shrink-0 group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-500">
+                <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl shrink-0  group-hover:bg-primary/20 transition-all duration-300">
                   {step.icon}
                 </div>
                 <div className="flex-1 pt-1">
                   <p className="text-sm text-slate-300 font-medium leading-relaxed">
-                    <span className="text-primary font-black mr-2">0{index + 1}</span>
+                    <span className="text-primary font-bold mr-2">0{index + 1}</span>
                     {step.text}
                   </p>
                 </div>
@@ -73,7 +73,7 @@ export default function IosPwaGuide({ onClose }: IosPwaGuideProps) {
           <div className="pt-4">
             <button
               onClick={onClose}
-              className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+              className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-md shadow-primary/20  active:scale-95 transition-all"
             >
               {language === 'vi' ? 'Tôi đã hiểu' : 'Acknowledge Protocol'}
             </button>
@@ -81,7 +81,7 @@ export default function IosPwaGuide({ onClose }: IosPwaGuideProps) {
         </div>
 
         <div className="p-6 bg-primary/5 border-t border-white/5 text-center px-10">
-          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-normal">
+          <p className="text-xs text-slate-500 font-bold leading-normal">
             {language === 'vi' 
               ? 'Apple yêu cầu bước này để bảo mật dữ liệu và tiết kiệm pin cho thiết bị của bạn.'
               : 'Apple mandates this procedure for biometric security and power optimization.'}

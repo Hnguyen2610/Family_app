@@ -85,7 +85,11 @@ export default function Calendar() {
       title: event.title,
       description: event.description || '',
       date: event.date ? getCalendarDateKey(event.date) : format(new Date(), 'yyyy-MM-dd'),
-      endDate: event.date ? getCalendarDateKey(event.date) : format(new Date(), 'yyyy-MM-dd'),
+      endDate: event.endDate
+        ? getCalendarDateKey(event.endDate)
+        : event.date
+          ? getCalendarDateKey(event.date)
+          : format(new Date(), 'yyyy-MM-dd'),
       type: event.type,
       time: event.time || '09:00',
       scope: event.scope,
@@ -98,12 +102,12 @@ export default function Calendar() {
 
   const handleSaveEvent = async () => {
     if (!formData.title) {
-      toast.error(language === 'vi' ? 'Vui long nhap tieu de' : 'Please enter a title');
+      toast.error(language === 'vi' ? 'Vui lòng nhập tiêu đề' : 'Please enter a title');
       return;
     }
 
     if (!formData.date) {
-      toast.error(language === 'vi' ? 'Vui long chon ngay bat dau' : 'Please choose a start date');
+      toast.error(language === 'vi' ? 'Vui lòng chọn ngày bắt đầu' : 'Please choose a start date');
       return;
     }
 
@@ -115,11 +119,11 @@ export default function Calendar() {
     const activeCreatorId = user?.id;
 
     if (!targetFamilyId || !activeCreatorId) {
-      toast.error(language === 'vi' ? 'Vui long dang nhap' : 'Please login');
+      toast.error(language === 'vi' ? 'Vui lòng đăng nhập' : 'Please login');
       return;
     }
     if (formData.scope === 'FAMILY' && currentFamilyId === 'all') {
-      toast.error(language === 'vi' ? 'Hay chon mot gia dinh cu the truoc khi tao lich gia dinh' : 'Choose a specific family before creating a family event');
+      toast.error(language === 'vi' ? 'Hãy chọn một gia đình cụ thể trước khi tạo sự kiện' : 'Choose a specific family before creating a family event');
       return;
     }
 
@@ -127,32 +131,32 @@ export default function Calendar() {
       ? `LUNAR_${formData.recurring}`
       : formData.recurring;
 
-    const { endDate, ...eventData } = formData;
+    const endDate = formData.endDate || formData.date;
+    const { endDate: _formEndDate, ...eventData } = formData;
     const payload = {
       ...eventData,
       date: formData.date,
+      endDate,
       isRecurring: formData.recurring !== 'NONE',
       recurring: finalRecurring,
     };
 
     try {
+      const dateRange = getIsoDateRange(formData.date, endDate);
+      if (dateRange.length === 0) {
+        toast.error(language === 'vi' ? 'Khoảng ngày không hợp lệ' : 'Invalid date range');
+        return;
+      }
+      if (dateRange.length >= 32) {
+        toast.error(language === 'vi' ? 'Khoảng ngày tối đa là 31 ngày' : 'Date range is limited to 31 days');
+        return;
+      }
+
       if (editingEvent) {
         await eventsAPI.update(editingEvent.id, targetFamilyId, activeCreatorId, payload);
         toast.success(t('common.success'));
       } else {
-        const dateRange = getIsoDateRange(formData.date, endDate || formData.date);
-        if (dateRange.length === 0) {
-          toast.error(language === 'vi' ? 'Khoang ngay khong hop le' : 'Invalid date range');
-          return;
-        }
-        if (dateRange.length >= 32) {
-          toast.error(language === 'vi' ? 'Khoang ngay toi da la 31 ngay' : 'Date range is limited to 31 days');
-          return;
-        }
-
-        await Promise.all(dateRange.map((date) => (
-          eventsAPI.create(targetFamilyId, activeCreatorId, { ...payload, date })
-        )));
+        await eventsAPI.create(targetFamilyId, activeCreatorId, payload);
         toast.success(t('common.success'));
       }
       setIsModalOpen(false);
@@ -172,7 +176,7 @@ export default function Calendar() {
       user?.familyId;
 
     if (!activeCreatorId || !targetFamilyId) return;
-    if (!confirm(language === 'vi' ? 'Ban co chac chan muon xoa?' : 'Are you sure?')) return;
+    if (!confirm(language === 'vi' ? 'Bạn có chắc chắn muốn xóa?' : 'Are you sure?')) return;
 
     try {
       await eventsAPI.delete(id, targetFamilyId, activeCreatorId);
@@ -188,8 +192,8 @@ export default function Calendar() {
   };
 
   return (
-    <div className="space-y-6 md:space-y-10">
-      <div className="animate-in fade-in duration-700 space-y-6 md:space-y-10">
+    <div className="space-y-5 md:space-y-8">
+      <div className="animate-in fade-in duration-300 space-y-5 md:space-y-8">
         <CalendarHeader
           monthKey={monthKeys[month - 1]}
           t={t}

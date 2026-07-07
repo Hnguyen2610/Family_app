@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AiIntent } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { RagService } from '../services/rag.service';
-import { toolSuccess, toolError } from '../ai-tool-results';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { toolSuccess, toolError } from '../ai-tool-runtime';
 
 function normalizeTextForSensitivity(text: string): string {
   return text
@@ -32,7 +31,6 @@ export class FamilyKnowledgeSkill implements AiSkill {
   private readonly logger = new Logger(FamilyKnowledgeSkill.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly ragService: RagService,
   ) {}
 

@@ -134,13 +134,13 @@ export default function UserManager() {
   return (
     <div className="space-y-6">
       {/* Forms Section */}
-      <div className="bg-white/50 p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-        <h3 className="text-lg font-black mb-4 uppercase tracking-wider text-slate-700">
+      <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
+        <h3 className="text-lg font-bold mb-4  text-slate-700">
           {editingUserId ? 'Chỉnh sửa người dùng' : 'Thêm người dùng mới'}
         </h3>
         <form onSubmit={editingUserId ? handleUpdateUser : handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên hiển thị</p>
+            <p className="text-xs font-bold text-slate-400  ml-1">Tên hiển thị</p>
             <Input
               value={editingUserId ? editingData.name : newUser.name}
               onChange={(e) => editingUserId 
@@ -152,7 +152,7 @@ export default function UserManager() {
           </div>
           
           <div className="space-y-2">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</p>
+             <p className="text-xs font-bold text-slate-400  ml-1">Email</p>
              <Input
                 type="email"
                 value={editingUserId ? editingData.email : newUser.email}
@@ -165,7 +165,7 @@ export default function UserManager() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Gia đình</p>
+            <p className="text-xs font-bold text-slate-400  ml-1">Gia đình</p>
             <div className="flex flex-wrap gap-2 p-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/50 shadow-inner max-h-32 overflow-y-auto">
               {families.map(f => {
                 const isSelected = editingUserId 
@@ -189,7 +189,7 @@ export default function UserManager() {
                         setNewUser({ ...newUser, familyIds: newIds });
                       }
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                       isSelected 
                         ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10' 
                         : 'bg-slate-50 dark:bg-slate-800 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -203,7 +203,7 @@ export default function UserManager() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Quyền hạn</p>
+            <p className="text-xs font-bold text-slate-400  ml-1">Quyền hạn</p>
             <Select
               value={editingUserId ? editingData.globalRole : newUser.role}
               onValueChange={(val) => editingUserId
@@ -245,11 +245,11 @@ export default function UserManager() {
       </div>
 
       {/* List */}
-      <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+      <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+              <tr className="bg-slate-50/50 text-slate-500 text-xs font-bold ">
                 <th className="px-8 py-5">Thành viên</th>
                 <th className="px-8 py-5">Gia đình</th>
                 <th className="px-8 py-5">Quyền hạn</th>
@@ -268,7 +268,7 @@ export default function UserManager() {
                 <tr key={u.id} className={`group hover:bg-slate-50/50 transition-all ${editingUserId === u.id ? 'bg-red-50/30' : ''}`}>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-[1.25rem] bg-slate-100 overflow-hidden flex-shrink-0 shadow-sm border border-white">
+                      <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden flex-shrink-0 shadow-sm border border-white">
                         {u.avatarUrl ? (
                           <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
                         ) : (
@@ -276,8 +276,8 @@ export default function UserManager() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-black text-slate-800 text-sm truncate">{u.name}</p>
-                        <p className="text-[10px] font-bold text-slate-400 truncate uppercase tracking-tighter">{u.email}</p>
+                        <p className="font-bold text-slate-800 text-sm truncate">{u.name}</p>
+                        <p className="text-xs font-bold text-slate-400 truncate">{u.email}</p>
                       </div>
                     </div>
                   </td>
@@ -285,19 +285,19 @@ export default function UserManager() {
                     <div className="flex flex-wrap gap-1 max-w-[200px]">
                       {u.families && u.families.length > 0 ? (
                         u.families.map((f: any) => (
-                          <span key={f.id} className="text-[10px] font-black px-3 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">
+                          <span key={f.id} className="text-xs font-bold px-3 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">
                             {f.name}
                           </span>
                         ))
                       ) : (
-                        <span className="text-[10px] font-black px-3 py-1 rounded-lg bg-slate-50 text-slate-400 border border-transparent italic">
+                        <span className="text-xs font-bold px-3 py-1 rounded-lg bg-slate-50 text-slate-400 border border-transparent italic">
                           Chưa gia nhập
                         </span>
                       )}
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg ${getRoleBadgeClass(u.globalRole)}`}>
+                    <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${getRoleBadgeClass(u.globalRole)}`}>
                       {u.globalRole || 'USER'}
                     </span>
                   </td>

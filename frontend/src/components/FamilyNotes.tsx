@@ -186,10 +186,10 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
             <FiBookOpen />
           </div>
           <div>
-            <h2 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase italic">
+            <h2 className="text-2xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
               {language === 'vi' ? 'Sổ tay gia đình' : 'Family Notes'}
             </h2>
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
+            <p className="text-xs text-slate-500 font-semibold mt-1">
               {selectedFamily?.name || (language === 'vi' ? 'Chọn một gia đình' : 'Choose a family')}
             </p>
           </div>
@@ -209,16 +209,16 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-8">
-        <section className="glass rounded-2xl border border-black/5 dark:border-white/5 p-6 md:p-8 space-y-5">
+        <section className="rounded-2xl border border-border bg-card p-6 md:p-8 space-y-5 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
               <FiPlus />
             </div>
             <div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 {language === 'vi' ? 'Thêm ghi chú' : 'Add Note'}
               </h3>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+              <p className="text-xs text-slate-500 font-semibold">
                 {language === 'vi' ? 'AI sẽ tự chunk + embedding' : 'AI will chunk and embed it'}
               </p>
             </div>
@@ -239,7 +239,7 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                   type="button"
                   onClick={() => setCategory(item.id)}
                   disabled={!familyId || isSaving}
-                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
                     category === item.id
                       ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20'
                       : 'bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 border-black/5 dark:border-white/5 hover:text-primary hover:border-primary/30'
@@ -258,7 +258,7 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                 : 'Write long-form knowledge AI should remember: routines, rules, school plans, health notes, family experience...'}
               className="w-full min-h-[240px] resize-y rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-slate-950/50 px-4 py-4 text-sm leading-relaxed outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all"
             />
-            <Button onClick={handleCreate} disabled={!familyId || isSaving} className="w-full h-12 text-[11px] uppercase tracking-widest flex items-center gap-2">
+            <Button onClick={handleCreate} disabled={!familyId || isSaving} className="w-full h-12 text-sm flex items-center gap-2">
               <FiBookOpen />
               {isSaving ? (language === 'vi' ? 'Đang lưu...' : 'Saving...') : (language === 'vi' ? 'Lưu vào RAG' : 'Save To RAG')}
             </Button>
@@ -267,16 +267,16 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
 
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+            <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300">
               {language === 'vi' ? 'Tài liệu đã index' : 'Indexed Documents'}
             </h3>
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">
+            <span className="text-xs font-bold text-primary">
               {documents.length} {language === 'vi' ? 'ghi chú' : 'notes'}
             </span>
           </div>
 
           {documents.length === 0 && (
-            <div className="glass rounded-2xl border border-black/5 dark:border-white/5 p-10 text-center">
+            <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
               <FiFileText className="mx-auto text-4xl text-slate-300 dark:text-slate-700 mb-4" />
               <p className="text-sm font-bold text-slate-500">
                 {isLoading
@@ -290,7 +290,7 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
             {documents.map((document) => (
               <article
                 key={document.id}
-                className="group glass rounded-2xl border border-black/5 dark:border-white/5 p-5 hover:border-primary/30 transition-all"
+                className="group rounded-2xl border border-border bg-card p-5 hover:border-primary/30 transition-all shadow-sm"
               >
                 <div className="flex items-start justify-between gap-4">
                   <button
@@ -298,15 +298,15 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                     onClick={() => handleOpenEditor(document.id)}
                     className="min-w-0 flex-1 text-left"
                   >
-                    <p className="font-black text-sm text-slate-900 dark:text-slate-100 line-clamp-2">{document.title}</p>
+                    <p className="font-bold text-sm text-slate-900 dark:text-slate-100 line-clamp-2">{document.title}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-3">
-                      <span className="px-2 py-1 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-[9px] font-black uppercase tracking-widest">
+                      <span className="px-2 py-1 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-xs font-semibold">
                         {document.metadata?.category || document.sourceType}
                       </span>
-                      <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">
+                      <span className="text-xs text-slate-400 font-semibold">
                         {document._count?.chunks || 0} chunks
                       </span>
-                      <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">
+                      <span className="text-xs text-slate-400 font-semibold">
                         {new Date(document.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
                       </span>
                     </div>
@@ -339,7 +339,7 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
       <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-2xl md:text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+            <DialogTitle className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
               {language === 'vi' ? 'Xem và sửa ghi chú' : 'View And Edit Note'}
             </DialogTitle>
           </DialogHeader>
@@ -365,7 +365,7 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                     type="button"
                     onClick={() => setEditCategory(item.id)}
                     disabled={isUpdatingDocument}
-                    className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
                       editCategory === item.id
                         ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20'
                         : 'bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 border-black/5 dark:border-white/5 hover:text-primary hover:border-primary/30'

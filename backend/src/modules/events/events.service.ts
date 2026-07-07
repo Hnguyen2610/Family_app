@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEventDto, UpdateEventDto } from './dto/event.dto';
 import { calculateLunarDate, getLunarDateObject, getSolarDateFromLunar } from '../../utils/lunar-calendar.util';
@@ -16,6 +16,9 @@ export class EventsService {
 
   async create(familyId: string, userId: string, dto: CreateEventDto) {
     const normalizedDate = this.normalizeCalendarDate(dto.date);
+    const normalizedEndDate = dto.endDate ? this.normalizeCalendarDate(dto.endDate) : null;
+    this.assertValidDateRange(normalizedDate, normalizedEndDate);
+
     // Auto-calculate lunar date if not provided
     let lunarDate = dto.lunarDate;
     if (!lunarDate && normalizedDate) {
@@ -29,6 +32,7 @@ export class EventsService {
       data: {
         ...eventData,
         date: normalizedDate,
+        endDate: normalizedEndDate,
         lunarDate,
         familyId,
         createdBy: userId,
@@ -199,9 +203,7 @@ export class EventsService {
 
     for (const event of events) {
       if (!event.isRecurring) {
-        // Keep non-recurring events if they are in the month
-        const d = new Date(event.date);
-        if (d >= startOfMonth && d <= endOfMonth) {
+        if (this.eventOverlapsRange(event, startOfMonth, endOfMonth)) {
           expanded.push(event);
         }
         continue;
@@ -325,6 +327,7 @@ export class EventsService {
   async update(id: string, familyId: string, userId: string, dto: UpdateEventDto) {
     const baseId = id.split('_')[0];
     const normalizedDate = dto.date ? this.normalizeCalendarDate(dto.date) : undefined;
+    const normalizedEndDate = dto.endDate ? this.normalizeCalendarDate(dto.endDate) : undefined;
     let lunarDate = dto.lunarDate;
     if (!lunarDate && normalizedDate) {
       lunarDate = calculateLunarDate(normalizedDate);
@@ -333,6 +336,18 @@ export class EventsService {
     const { creatorId: _c, familyId: _f, useLunar: _u, ...updateData } = dto as any;
     if (normalizedDate) {
       updateData.date = normalizedDate;
+    }
+    if (normalizedEndDate) {
+      updateData.endDate = normalizedEndDate;
+    }
+    if (normalizedDate || normalizedEndDate) {
+      const existing = await this.prisma.event.findFirst({
+        where: { id: baseId, familyId },
+        select: { date: true, endDate: true },
+      });
+      const rangeStart = normalizedDate || existing?.date;
+      const rangeEnd = normalizedEndDate || existing?.endDate || null;
+      if (rangeStart) this.assertValidDateRange(rangeStart, rangeEnd);
     }
 
     // Check if user has permission (is creator or is admin)
@@ -385,6 +400,18 @@ export class EventsService {
 
     const date = new Date(value);
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  }
+
+  private assertValidDateRange(start: Date, end: Date | null | undefined) {
+    if (end && end < start) {
+      throw new BadRequestException('endDate must be greater than or equal to date');
+    }
+  }
+
+  private eventOverlapsRange(event: any, rangeStart: Date, rangeEnd: Date) {
+    const eventStart = new Date(event.date);
+    const eventEnd = event.endDate ? new Date(event.endDate) : eventStart;
+    return eventStart <= rangeEnd && eventEnd >= rangeStart;
   }
 
   async delete(id: string, familyId: string, userId: string) {

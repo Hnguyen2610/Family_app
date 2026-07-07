@@ -102,13 +102,13 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
         <DialogHeader className="p-8 sm:p-10 border-b border-black/5 dark:border-white/5 shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-3">
+              <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-bold mb-3">
                 {language === 'vi' ? 'Cấu hình khẩu vị' : 'Palette Config'}
               </div>
-              <DialogTitle className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+              <DialogTitle className="text-2xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 italic tracking-tight">
                 Member <span className="text-primary not-italic">{member.name}</span>
               </DialogTitle>
-              <p className="text-[10px] text-slate-500 mt-2 font-black uppercase tracking-widest leading-none">
+              <p className="text-xs text-slate-500 mt-2 font-bold leading-none">
                 {language === 'vi' ? 'Khởi tạo hồ sơ hương vị cho động cơ tổng hợp AI.' : 'Initializing flavor profiles for AI synthesis engine.'}
               </p>
             </div>
@@ -123,7 +123,7 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                <FiPlus size={60} className="text-primary" />
             </div>
-            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 block leading-none">{language === 'vi' ? 'THÊM MÓN MỚI' : 'ADD NEW DISH'}</Label>
+            <Label className="text-xs font-bold text-slate-500  mb-6 block leading-none">{language === 'vi' ? 'THÊM MÓN MỚI' : 'ADD NEW DISH'}</Label>
             <div className="flex flex-col gap-4">
               {/* Category Segmented Tabs */}
               <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
                     type="button"
                     variant={newMealCategory === cat.value ? 'default' : 'outline'}
                     onClick={() => setNewMealCategory(cat.value)}
-                    className="h-10 px-4 text-xs font-black uppercase tracking-wider"
+                    className="h-10 px-4 text-xs font-bold "
                   >
                     {cat.label}
                   </Button>
@@ -169,7 +169,7 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{language === 'vi' ? 'Đang tải...' : 'Loading...'}</p>
+              <p className="text-xs text-slate-500 font-bold ">{language === 'vi' ? 'Đang tải...' : 'Loading...'}</p>
             </div>
           ) : (
             <div className="pb-10">
@@ -185,14 +185,14 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
                     key={tab.value}
                     type="button"
                     onClick={() => setFilterCategory(tab.value)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all border ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-bold transition-all border ${
                       filterCategory === tab.value
                         ? 'bg-primary/10 text-primary border-primary/30'
                         : 'bg-white dark:bg-slate-800/60 text-slate-500 border-black/5 dark:border-white/5 hover:border-primary/20 hover:text-primary'
                     }`}
                   >
                     {tab.label}
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${filterCategory === tab.value ? 'bg-primary/20 text-primary' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${filterCategory === tab.value ? 'bg-primary/20 text-primary' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
                       {tab.count}
                     </span>
                   </button>
@@ -202,7 +202,7 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
               {/* Meal List */}
               {filteredPreferences.length === 0 ? (
                 <div className="text-center py-16">
-                  <p className="text-[11px] text-slate-400 font-black uppercase tracking-widest italic">
+                  <p className="text-[11px] text-slate-400 font-bold italic">
                     {language === 'vi' ? 'Chưa có món ăn nào trong danh mục này.' : 'No dishes in this category yet.'}
                   </p>
                 </div>
@@ -216,8 +216,8 @@ export default function MealPreferenceModal({ member, onClose }: MealPreferenceM
                     return (
                       <div key={pref.mealId} className="flex items-center justify-between bg-white dark:bg-slate-900 border border-black/5 dark:border-white/5 p-4 rounded-xl group/item hover:border-primary/20 hover:shadow-sm transition-all focus-within:ring-2 focus-within:ring-primary/20">
                         <div className="min-w-0">
-                          <p className="text-sm font-black text-slate-800 dark:text-slate-200 italic truncate">{pref.meal.name}</p>
-                          <p className="text-[9px] text-primary font-black uppercase tracking-widest mt-0.5">{catLabel}</p>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200 italic truncate">{pref.meal.name}</p>
+                          <p className="text-xs text-primary font-bold mt-0.5">{catLabel}</p>
                         </div>
                         <button
                           onClick={() => handleRemove(pref.mealId, pref.meal.name)}

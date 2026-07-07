@@ -26,21 +26,21 @@ export function ChatSidebar({
   return (
     <div
       className={`
-        absolute inset-y-0 left-0 bg-white dark:bg-slate-950 border-r border-black/5 dark:border-white/5 z-50 transition-all duration-500
-        ${isOpen ? 'translate-x-0 w-80 opacity-100 visible shadow-2xl' : '-translate-x-full md:translate-x-0 w-0 md:w-0 opacity-0 invisible md:border-none'}
+        absolute inset-y-0 left-0 bg-white dark:bg-slate-950 border-r border-black/5 dark:border-white/5 z-50 transition-all duration-300
+        ${isOpen ? 'translate-x-0 w-80 opacity-100 visible shadow-md' : '-translate-x-full md:translate-x-0 w-0 md:w-0 opacity-0 invisible md:border-none'}
         md:relative
       `}
     >
       <div className="p-6 h-full flex flex-col">
         <button
           onClick={onStartNewSession}
-          className="btn-primary w-full flex items-center justify-center gap-2 mb-8 uppercase tracking-[0.2em]"
+          className="btn-primary w-full flex items-center justify-center gap-2 mb-8 "
         >
           <FiPlus /> {language === 'vi' ? 'Tạo đoạn chat mới' : 'New chat'}
         </button>
 
         <div className="flex items-center justify-between mb-8 px-2">
-          <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">
+          <h3 className="text-xs font-bold text-slate-500 ">
             {language === 'vi' ? 'Lịch sử chat' : 'Chat History'}
           </h3>
           <button onClick={onClose} className="md:hidden p-2 text-slate-500 hover:text-rose-500">

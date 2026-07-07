@@ -4,15 +4,14 @@ const DEFAULT_TTL_MS = Number.parseInt(process.env.AI_RESPONSE_CACHE_TTL_MS || '
 const MAX_ENTRIES = Number.parseInt(process.env.AI_RESPONSE_CACHE_MAX_ENTRIES || '200', 10);
 const PROMPT_VERSION = 'skill-cache-v2';
 
-// Per-skill TTL configuration (ms)
 export const SKILL_CACHE_TTL: Partial<Record<string, number>> = {
-  general_chat: 3600_000,    // 1 hour — factual Q&A rarely changes
-  gold_price:   5 * 60_000,  // 5 min — market price refreshes frequently
-  horoscope:    3600_000,     // 1 hour — daily horoscope is stable
-  meal_suggestion: 30 * 60_000, // 30 min
-  football: 5 * 60_000, // 5 min
-  weather: 30 * 60_000, // 30 min
-  family_knowledge: 10 * 60_000, // 10 min
+  general_chat: 3600_000,
+  gold_price: 5 * 60_000,
+  horoscope: 3600_000,
+  meal_suggestion: 30 * 60_000,
+  football: 5 * 60_000,
+  weather: 30 * 60_000,
+  family_knowledge: 10 * 60_000,
 };
 
 type CacheEntry<T> = {
@@ -26,7 +25,16 @@ export type CachedAiResponse = {
   usage?: any;
 };
 
-const cache = new Map<string, CacheEntry<CachedAiResponse>>();
+type SessionCacheKeyInput = {
+  familyId: string;
+  userId: string;
+  model: string;
+  userMessage: string;
+  intentRoute: AiIntentRoute;
+  hasImage: boolean;
+};
+
+const responseCache = new Map<string, CacheEntry<CachedAiResponse>>();
 
 function normalizeQuestion(text: string): string {
   return (text || '')
@@ -64,7 +72,7 @@ export function getSkillTtl(intent: string): number {
 export function isResponseCacheable(
   userMessage: string,
   hasImage: boolean,
-  intentRoute: AiIntentRoute
+  intentRoute: AiIntentRoute,
 ): boolean {
   if (hasImage) return false;
   const cacheableToolIntents = new Set(['football']);
@@ -74,7 +82,6 @@ export function isResponseCacheable(
   if (normalizedQuestion.length < 4) return false;
   if (looksContextDependent(normalizedQuestion)) return false;
 
-  // Cacheable intents — add more as needed
   const cacheableIntents = new Set([
     'general_chat',
     'gold_price',
@@ -95,11 +102,10 @@ export function buildResponseCacheKey(input: {
   userMessage: string;
   intent?: string;
 }): string {
-  // For time-sensitive skills (gold_price), bucket by 5-min window
   const shortTtlIntent = input.intent === 'gold_price' || input.intent === 'football' || input.intent === 'weather';
   const timeBucket = shortTtlIntent
     ? Math.floor(Date.now() / (5 * 60_000))
-    : Math.floor(Date.now() / 3600_000); // hourly bucket for others
+    : Math.floor(Date.now() / 3600_000);
 
   return [
     PROMPT_VERSION,
@@ -112,11 +118,11 @@ export function buildResponseCacheKey(input: {
 }
 
 export function getCachedResponse(key: string): CachedAiResponse | undefined {
-  const entry = cache.get(key);
+  const entry = responseCache.get(key);
   if (!entry) return undefined;
 
   if (entry.expiresAt <= Date.now()) {
-    cache.delete(key);
+    responseCache.delete(key);
     return undefined;
   }
 
@@ -124,12 +130,12 @@ export function getCachedResponse(key: string): CachedAiResponse | undefined {
 }
 
 export function setCachedResponse(key: string, value: CachedAiResponse, ttlMs = DEFAULT_TTL_MS) {
-  if (cache.size >= MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey) cache.delete(oldestKey);
+  if (responseCache.size >= MAX_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey) responseCache.delete(oldestKey);
   }
 
-  cache.set(key, {
+  responseCache.set(key, {
     value,
     expiresAt: Date.now() + ttlMs,
   });
@@ -139,9 +145,29 @@ export function getCacheStats() {
   const now = Date.now();
   let active = 0;
   let expired = 0;
-  for (const entry of cache.values()) {
+  for (const entry of responseCache.values()) {
     if (entry.expiresAt > now) active++;
     else expired++;
   }
-  return { total: cache.size, active, expired };
+  return { total: responseCache.size, active, expired };
+}
+
+export function buildSessionCacheKey(input: SessionCacheKeyInput) {
+  const { familyId, userId, model, userMessage, intentRoute, hasImage } = input;
+  return isResponseCacheable(userMessage, hasImage, intentRoute)
+    ? buildResponseCacheKey({ familyId, userId, model, userMessage, intent: intentRoute.intent })
+    : undefined;
+}
+
+export function getSessionCachedResponse(cacheKey?: string) {
+  return cacheKey ? getCachedResponse(cacheKey) : undefined;
+}
+
+export function setSessionCachedResponse(cacheKey: string | undefined, result: any, intent: string) {
+  if (!cacheKey) return;
+  setCachedResponse(cacheKey, result, getSkillTtl(intent));
+}
+
+export function getSessionCacheStats() {
+  return getCacheStats();
 }

@@ -1,15 +1,13 @@
 import { DailyTasksService } from './daily-tasks.service';
-import { getIctNow } from '../../utils/timezone.util';
 
 jest.mock('../../utils/timezone.util', () => ({
-  getIctNow: jest.fn(() => new Date('2026-07-06T09:00:00.000Z')),
+  ICT_TIME_ZONE: 'Asia/Ho_Chi_Minh',
   getIctDateKey: jest.fn((date: Date) => date.toISOString().slice(0, 10)),
 }));
 
 describe('DailyTasksService', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-06T09:20:00.000Z'));
-    (getIctNow as jest.Mock).mockReturnValue(new Date('2026-07-06T09:00:00.000Z'));
   });
 
   afterEach(() => {
@@ -33,14 +31,18 @@ describe('DailyTasksService', () => {
     const webPushService = {
       sendToUser: jest.fn(),
     };
+    const notificationsService = {
+      createNotification: jest.fn().mockResolvedValue({ id: 'notification-1' }),
+    };
 
     const service = new DailyTasksService(
       prisma as any,
       telegramSender as any,
       webPushService as any,
+      notificationsService as any,
     );
 
-    return { service, prisma, telegramSender, webPushService };
+    return { service, prisma, telegramSender, webPushService, notificationsService };
   };
 
   it('marks a task as completed today using the real current time', async () => {
@@ -52,12 +54,12 @@ describe('DailyTasksService', () => {
     expect(result).toEqual({ completed: true });
     expect(prisma.dailyTask.updateMany).toHaveBeenCalledWith({
       where: { id: 'task-1', userId: 'user-1' },
-      data: { completedAt: new Date('2026-07-06T09:20:00.000Z') },
+      data: { completedAt: new Date('2026-07-06T09:20:00.000Z'), nextReminderAt: null },
     });
   });
 
   it('skips tasks already completed today when triggering reminders', async () => {
-    const { service, prisma, telegramSender, webPushService } = buildService();
+    const { service, prisma, telegramSender, webPushService, notificationsService } = buildService();
     prisma.dailyTask.findMany.mockResolvedValue([
       {
         id: 'done-task',
@@ -65,6 +67,7 @@ describe('DailyTasksService', () => {
         intervalMinutes: 30,
         priority: 0,
         lastNotifiedAt: null,
+        nextReminderAt: new Date('2026-07-06T09:00:00.000Z'),
         completedAt: new Date('2026-07-06T08:00:00.000Z'),
       },
       {
@@ -73,6 +76,7 @@ describe('DailyTasksService', () => {
         intervalMinutes: 30,
         priority: 1,
         lastNotifiedAt: null,
+        nextReminderAt: new Date('2026-07-06T09:00:00.000Z'),
         completedAt: null,
       },
     ]);
@@ -86,6 +90,7 @@ describe('DailyTasksService', () => {
       task: 'Next task',
       telegram: true,
       webPush: true,
+      inApp: true,
       reason: undefined,
     });
     expect(telegramSender.sendDailyTaskReminderToUser).toHaveBeenCalledWith(
@@ -96,6 +101,15 @@ describe('DailyTasksService', () => {
     expect(webPushService.sendToUser).toHaveBeenCalledWith(
       'user-1',
       expect.objectContaining({ body: 'Next task' }),
+    );
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        type: 'DAILY_TASK',
+        message: 'Next task',
+        metadata: expect.objectContaining({ taskId: 'next-task', path: '/daily-tasks' }),
+      }),
+      { skipTelegram: true, skipWebPush: true },
     );
   });
 
@@ -108,6 +122,7 @@ describe('DailyTasksService', () => {
         intervalMinutes: 30,
         priority: 0,
         lastNotifiedAt: null,
+        nextReminderAt: new Date('2026-07-06T09:00:00.000Z'),
         completedAt: null,
       },
     ]);
@@ -118,12 +133,58 @@ describe('DailyTasksService', () => {
 
     expect(prisma.dailyTask.update).toHaveBeenCalledWith({
       where: { id: 'task-1' },
-      data: { lastNotifiedAt: new Date('2026-07-06T09:20:00.000Z') },
+      data: {
+        lastNotifiedAt: new Date('2026-07-06T09:20:00.000Z'),
+        nextReminderAt: expect.any(Date),
+      },
     });
   });
 
-  it('does not rotate reminder time when no delivery channel succeeds', async () => {
+  it('does not send the first reminder before the interval has elapsed from the active window start', async () => {
     const { service, prisma, telegramSender, webPushService } = buildService();
+    jest.setSystemTime(new Date('2026-07-06T01:15:00.000Z'));
+    prisma.dailyTask.findMany.mockResolvedValue([
+      {
+        id: 'task-1',
+        title: 'Morning task',
+        intervalMinutes: 30,
+        priority: 0,
+        lastNotifiedAt: null,
+        completedAt: null,
+      },
+    ]);
+
+    const result = await service.triggerNext('user-1');
+
+    expect(result).toEqual({ sent: false, reason: 'no_task_due' });
+    expect(telegramSender.sendDailyTaskReminderToUser).not.toHaveBeenCalled();
+    expect(webPushService.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('sends the first reminder when the interval has elapsed from the active window start', async () => {
+    const { service, prisma, telegramSender } = buildService();
+    jest.setSystemTime(new Date('2026-07-06T01:30:00.000Z'));
+    prisma.dailyTask.findMany.mockResolvedValue([
+      {
+        id: 'task-1',
+        title: 'Morning task',
+        intervalMinutes: 30,
+        priority: 0,
+        lastNotifiedAt: null,
+        completedAt: null,
+      },
+    ]);
+    telegramSender.sendDailyTaskReminderToUser.mockResolvedValue({ ok: true });
+    prisma.dailyTask.update.mockResolvedValue({});
+
+    const result = await service.triggerNext('user-1');
+
+    expect(result.sent).toBe(true);
+    expect(telegramSender.sendDailyTaskReminderToUser).toHaveBeenCalled();
+  });
+
+  it('does not rotate reminder time when no delivery channel succeeds', async () => {
+    const { service, prisma, telegramSender, webPushService, notificationsService } = buildService();
     prisma.dailyTask.findMany.mockResolvedValue([
       {
         id: 'task-1',
@@ -131,6 +192,7 @@ describe('DailyTasksService', () => {
         intervalMinutes: 30,
         priority: 0,
         lastNotifiedAt: null,
+        nextReminderAt: new Date('2026-07-06T09:00:00.000Z'),
         completedAt: null,
       },
     ]);
@@ -139,6 +201,7 @@ describe('DailyTasksService', () => {
       reason: 'telegram_chat_not_linked',
     });
     webPushService.sendToUser.mockRejectedValue(new Error('no subscription'));
+    notificationsService.createNotification.mockResolvedValue(undefined);
 
     const result = await service.triggerNext('user-1');
 
@@ -148,6 +211,7 @@ describe('DailyTasksService', () => {
       reason: 'telegram_chat_not_linked',
       telegram: false,
       webPush: false,
+      inApp: false,
     });
     expect(prisma.dailyTask.update).not.toHaveBeenCalled();
   });
@@ -161,7 +225,7 @@ describe('DailyTasksService', () => {
     expect(result).toEqual({ reset: 2 });
     expect(prisma.dailyTask.updateMany).toHaveBeenCalledWith({
       where: { userId: 'user-1' },
-      data: { lastNotifiedAt: null, completedAt: null },
+      data: { lastNotifiedAt: null, completedAt: null, nextReminderAt: null },
     });
   });
 });

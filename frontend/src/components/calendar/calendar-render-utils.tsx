@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { FiCalendar, FiCheck, FiClock, FiGift, FiStar } from 'react-icons/fi';
+import { getCalendarDateKey } from '@/utils/date';
 
 export function getIsoDateRange(startDate: string, endDate?: string) {
   const start = new Date(`${startDate}T00:00:00`);
@@ -33,6 +34,20 @@ export function getEventIcon(type: string) {
     default:
       return <FiCalendar size={12} />;
   }
+}
+
+export function isEventOnCalendarDay(event: any, year: number, month: number, day: number) {
+  const target = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const start = getCalendarDateKey(event.date);
+  const end = event.endDate ? getCalendarDateKey(event.endDate) : start;
+  return target >= start && target <= end;
+}
+
+export function formatEventDateRange(event: any) {
+  const start = getCalendarDateKey(event.date);
+  const end = event.endDate ? getCalendarDateKey(event.endDate) : start;
+  if (start === end) return start;
+  return `${start} - ${end}`;
 }
 
 export function getMobileEventLabel(event: any) {

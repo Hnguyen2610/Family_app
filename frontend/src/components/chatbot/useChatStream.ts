@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { chatAPI, type ChatUsage } from '@/lib/api-client';
+import { chatAPI, type AiActionProposal, type ChatUsage } from '@/lib/api-client';
 import { getStatusLabel, type AiModelProvider } from './chatbot-usage';
 import type { MemoryConsent, Message, RagConsent } from './chatbot-types';
 
@@ -69,6 +69,7 @@ export function useChatStream({
       let assistantResponse = '';
       let assistantCached = false;
       let assistantRequestLogId: string | undefined;
+      let assistantProposal: AiActionProposal | undefined;
       let pendingFrame: number | null = null;
       let activeSessionId = currentSessionId;
 
@@ -79,7 +80,7 @@ export function useChatStream({
           if (last && last.role === 'assistant') {
             return [
               ...prev.slice(0, -1),
-              { ...last, role: 'assistant', content: assistantResponse, cached: assistantCached, requestLogId: assistantRequestLogId },
+              { ...last, role: 'assistant', content: assistantResponse, cached: assistantCached, requestLogId: assistantRequestLogId, proposal: assistantProposal },
             ];
           }
           return prev;
@@ -124,6 +125,9 @@ export function useChatStream({
               setMemoryConsent(data.memory);
             } else if (status === 'rag_consent_request' && data?.note) {
               setRagConsent(data.note);
+            } else if (status === 'action_proposal' && data?.proposal) {
+              assistantProposal = data.proposal;
+              flushAssistantResponse();
             } else if (status === 'replace_content') {
               assistantResponse = data?.content || assistantResponse;
               if (pendingFrame !== null) {
@@ -151,6 +155,7 @@ export function useChatStream({
         assistantResponse = response.data?.content || '';
         assistantCached = !!response.data?.cached;
         assistantRequestLogId = response.data?.requestLogId || assistantRequestLogId;
+        assistantProposal = response.data?.proposal || assistantProposal;
         updateSessionId(response.data?.sessionId);
         trackUsage(response.data?.usage);
         flushAssistantResponse();

@@ -30,68 +30,67 @@ export default function Onboarding({ onComplete }: { readonly onComplete: () => 
   const slides = [
     {
       id: 'welcome',
-      icon: <FiMonitor className="w-16 h-16 text-primary" />,
-      title: language === 'vi' ? 'KHỞI TẠO HỆ THỐNG' : 'SYSTEM INITIALIZATION',
-      desc: language === 'vi' ? 'Chào mừng đến với Family Hub. Trung tâm quản lý gia đình thế hệ mới với độ ổn định và tính thẩm mỹ cao.' : 'Welcome to Family Hub. A next-generation home management center designed for stability and aesthetics.',
-      bg: 'bg-slate-900/60'
+      icon: <FiMonitor className="h-10 w-10 text-primary" />,
+      title: language === 'vi' ? 'Bắt đầu với Family Hub' : 'Welcome to Family Hub',
+      desc: language === 'vi'
+        ? 'Một nơi gọn gàng để theo dõi lịch, việc nhà, ghi chú và thông tin quan trọng của gia đình.'
+        : 'A tidy place to track schedules, tasks, notes, and important family information.',
     },
     {
       id: 'calendar',
-      icon: <FiActivity className="w-16 h-16 text-primary" />,
-      title: language === 'vi' ? 'LẬP LỊCH TRỰC QUAN' : 'VISUAL SCHEDULING',
-      desc: language === 'vi' ? 'Theo dõi mọi sự kiện và luồng công việc của thành viên trong thời gian thực với giao diện Neural Tech.' : 'Track every event and member workflow in real-time with our Neural Tech interface.',
-      bg: 'bg-slate-900/60'
+      icon: <FiActivity className="h-10 w-10 text-primary" />,
+      title: language === 'vi' ? 'Lịch và nhắc việc rõ ràng' : 'Clear Scheduling',
+      desc: language === 'vi'
+        ? 'Xem việc hôm nay, lịch tháng và các nhắc việc lặp lại mà không phải tìm trong nhiều nơi.'
+        : 'See today’s work, monthly events, and repeating reminders without hunting through separate tools.',
     },
     {
       id: 'ai',
-      icon: <FiCpu className="w-16 h-16 text-primary" />,
-      title: language === 'vi' ? 'TRÍ TUỆ NHÂN TẠO' : 'COGNITIVE AGENT',
-      desc: language === 'vi' ? 'Tối ưu hóa sinh hoạt hàng ngày bằng trợ lý AI, từ việc lên thực đơn đến phân tích chỉ số tài chính.' : 'Optimize daily life with AI agents, from meal planning to financial index analysis.',
-      bg: 'bg-slate-900/60'
+      icon: <FiCpu className="h-10 w-10 text-primary" />,
+      title: language === 'vi' ? 'AI hỗ trợ khi cần' : 'AI When You Need It',
+      desc: language === 'vi'
+        ? 'Hỏi nhanh về lịch, thực đơn, ghi chú gia đình hoặc thông tin cần tra cứu trong ngày.'
+        : 'Ask about schedules, meals, family notes, or useful information for the day.',
     }
   ];
 
   return (
     <div
-      className={`fixed inset-0 z-[999] bg-slate-950 flex flex-col justify-between transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0'} overflow-hidden`}
+      className={`fixed inset-0 z-[999] flex flex-col justify-between overflow-hidden bg-slate-950 transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
     >
-      <div className="absolute top-0 right-0 w-full h-[60%] bg-primary/5 blur-[120px] rounded-full -z-10" />
-
-      <div className="flex-1 flex w-[300%] h-full transition-transform duration-700 ease-in-out" style={{ transform: `translateX(-${currentSlide * 33.333}%)` }}>
+      <div className="flex h-full w-[300%] flex-1 transition-transform duration-500 ease-out" style={{ transform: `translateX(-${currentSlide * 33.333}%)` }}>
         {slides.map((slide) => (
-          <div key={slide.id} className="w-[33.333%] h-full flex flex-col items-center justify-center p-8 md:p-12 relative z-10">
-            <div className="w-32 h-32 rounded-3xl bg-slate-900 border border-white/5 shadow-2xl flex items-center justify-center mb-10 group transition-all duration-500 hover:border-primary/50">
-              <div className="group-hover:scale-110 transition-transform duration-500">
-                {slide.icon}
-              </div>
+          <div key={slide.id} className="flex h-full w-[33.333%] flex-col items-center justify-center px-8 py-12">
+            <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900">
+              {slide.icon}
             </div>
-            <h1 className="text-3xl md:text-5xl font-black text-center mb-6 text-slate-100 tracking-tighter uppercase italic">
+            <h1 className="mb-4 max-w-xl text-center text-3xl font-semibold tracking-tight text-slate-50 md:text-4xl">
               {slide.title}
             </h1>
-            <p className="text-base md:text-xl text-center text-slate-500 font-medium max-w-lg leading-relaxed">
+            <p className="max-w-lg text-center text-base font-medium leading-relaxed text-slate-400 md:text-lg">
               {slide.desc}
             </p>
           </div>
         ))}
       </div>
 
-      <div className="p-10 md:p-16 flex flex-col md:flex-row items-center justify-between gap-10 bg-slate-950 border-t border-white/5 z-20">
-        <div className="flex gap-4">
+      <div className="z-20 flex flex-col items-center justify-between gap-8 border-t border-slate-800 bg-slate-950 p-8 md:flex-row md:p-10">
+        <div className="flex gap-3">
           {slides.map((slide, i) => (
             <div
               key={slide.id}
-              className={`h-2 rounded-full transition-all duration-500 ${i === currentSlide ? 'w-10 bg-primary' : 'w-2 bg-slate-800'}`}
+              className={`h-2 rounded-full transition-all duration-300 ${i === currentSlide ? 'w-8 bg-primary' : 'w-2 bg-slate-800'}`}
             />
           ))}
         </div>
 
-        <div className="flex w-full md:w-auto gap-6">
+        <div className="flex w-full gap-3 md:w-auto">
           <Button
             variant="ghost"
             onClick={() => complete()}
-            className="flex-1 md:flex-none h-14 px-8 text-slate-500 hover:text-slate-300 uppercase tracking-[0.3em] text-[10px] font-black"
+            className="h-12 flex-1 px-6 text-xs font-semibold text-slate-400 hover:text-slate-200 md:flex-none"
           >
-            {language === 'vi' ? 'BỎ QUA' : 'BYPASS'}
+            {language === 'vi' ? 'Bỏ qua' : 'Skip'}
           </Button>
 
           <Button
@@ -99,12 +98,12 @@ export default function Onboarding({ onComplete }: { readonly onComplete: () => 
               if (currentSlide === slides.length - 1) complete();
               else setCurrentSlide(s => s + 1);
             }}
-            className="h-14 flex-1 md:w-56 uppercase tracking-[0.2em] text-[10px] font-black group"
+            className="h-12 flex-1 gap-2 px-6 text-xs font-semibold md:w-48"
           >
             {currentSlide === slides.length - 1 ? (
-              <>{language === 'vi' ? 'HOÀN TẤT' : 'INITIALIZE'} <FiCheck className="text-lg group-hover:scale-125 transition-transform" /></>
+              <>{language === 'vi' ? 'Hoàn tất' : 'Finish'} <FiCheck className="text-base" /></>
             ) : (
-              <>{language === 'vi' ? 'TIẾP TỤC' : 'PROCEED'} <FiArrowRight className="text-lg group-hover:translate-x-1 transition-transform" /></>
+              <>{language === 'vi' ? 'Tiếp tục' : 'Continue'} <FiArrowRight className="text-base" /></>
             )}
           </Button>
         </div>

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiIntent, normalizeSearchText } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
-import { toolSuccess, toolError } from '../ai-tool-results';
+import { toolSuccess, toolError } from '../ai-tool-runtime';
 
 type FootballDateRange = {
   dateFrom: string;
@@ -38,7 +38,7 @@ export class FootballSkill implements AiSkill {
     return intent === 'football';
   }
 
-  getSystemPrompt(context: AiSkillContext): string {
+  getSystemPrompt(_context: AiSkillContext): string {
     return `⚽ FOOTBALL ASSISTANT:
 - You show football match schedules and standings.
 - Keep output formatted EXACTLY like this:

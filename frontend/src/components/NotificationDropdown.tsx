@@ -54,7 +54,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
     ].join(" ");
 
     const titleClasses = [
-        "text-sm font-black truncate",
+        "text-sm font-bold truncate",
         n.isRead ? "text-slate-500 dark:text-slate-400" : "text-slate-800 dark:text-slate-100"
     ].join(" ");
 
@@ -81,7 +81,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
             <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start gap-2">
                     <h4 className={titleClasses}>{n.title}</h4>
-                    <span className="text-[9px] font-bold text-slate-400 shrink-0">
+                    <span className="text-xs font-bold text-slate-400 shrink-0">
                         {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                 </div>
@@ -91,7 +91,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                         <button
                             type="button"
                             onClick={handleMarkRead}
-                            className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 px-2 py-1 rounded-lg transition-all"
+                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400  flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 px-2 py-1 rounded-lg transition-all"
                         >
                             <FiCheck size={14} /> {language === 'vi' ? 'Đã đọc' : 'Mark read'}
                         </button>
@@ -99,7 +99,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                     <button
                         type="button"
                         onClick={handleDelete}
-                        className="text-xs font-black text-rose-500 hover:text-rose-600 uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/30 px-2 py-1 rounded-lg transition-all"
+                        className="text-xs font-bold text-rose-500 hover:text-rose-600  flex items-center gap-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/30 px-2 py-1 rounded-lg transition-all"
                         title={language === 'vi' ? 'Xóa' : 'Delete'}
                     >
                         <FiTrash2 size={14} /> {language === 'vi' ? 'Xóa' : 'Delete'}
@@ -111,7 +111,7 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                                 e.stopPropagation();
                                 if(!n.isRead) markAsRead(n.id);
                             }}
-                            className="text-xs font-black text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all"
+                            className="text-xs font-bold text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400  flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all"
                         >
                             {language === 'vi' ? 'Xem chi tiết' : 'View Details'} <FiChevronRight size={14} />
                         </Link>
@@ -163,21 +163,21 @@ export default function NotificationDropdown() {
       >
         <FiBell size={20} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 border-2 border-white rounded-full text-[10px] font-black text-white flex items-center justify-center animate-pulse shadow-sm">
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 border-2 border-white rounded-full text-xs font-bold text-white flex items-center justify-center animate-pulse shadow-sm">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-4 w-[320px] md:w-[400px] bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden z-[300] animate-in slide-in-from-top-2 duration-300">
+        <div className="absolute right-0 mt-4 w-[320px] md:w-[400px] bg-card rounded-2xl shadow-md border border-border overflow-hidden z-[300] animate-in slide-in-from-top-2 duration-300">
           <div className="p-6 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
             <div>
-              <h3 className="font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest text-xs">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100  text-xs">
                 {t('settings.notifications')}
               </h3>
               {unreadCount > 0 && (
-                <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-1">
                   {unreadCount} {language === 'vi' ? 'thông báo mới' : 'new notifications'}
                 </p>
               )}
@@ -234,7 +234,7 @@ export default function NotificationDropdown() {
           <div className="p-4 bg-slate-50/50 dark:bg-slate-800/30 text-center">
              <button
                 onClick={() => setIsOpen(false)}
-                className="text-[10px] font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 uppercase tracking-widest transition-all"
+                className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200  transition-all"
              >
                 {language === 'vi' ? 'Đóng' : 'Close'}
              </button>
@@ -249,7 +249,7 @@ export default function NotificationDropdown() {
             onClick={() => setSelectedNotification(null)}
             aria-label="Close modal"
           />
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-800 p-8 animate-in zoom-in-95 fade-in duration-300">
+          <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-md border border-border p-8 animate-in zoom-in-95 fade-in duration-300">
             <button
               onClick={() => setSelectedNotification(null)}
               className="absolute top-6 right-6 w-10 h-10 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center transition-all active:scale-90"
@@ -258,15 +258,15 @@ export default function NotificationDropdown() {
             </button>
 
             <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 rounded-[2rem] bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-3xl mb-6 shadow-inner ring-8 ring-indigo-50/50 dark:ring-indigo-900/10">
+              <div className="w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-3xl mb-6 shadow-inner ring-8 ring-indigo-50/50 dark:ring-indigo-900/10">
                 {getIcon(selectedNotification.type)}
               </div>
 
-              <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 leading-tight">
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2 leading-tight">
                 {selectedNotification.title}
               </h3>
 
-              <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em] mb-6">
+              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400  mb-6">
                 {new Date(selectedNotification.createdAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US', {
                     day: 'numeric',
                     month: 'long',
@@ -290,7 +290,7 @@ export default function NotificationDropdown() {
                         setSelectedNotification(null);
                         setIsOpen(false);
                       }}
-                      className="w-full p-4 rounded-2xl bg-indigo-600 dark:bg-indigo-500 text-white font-black text-sm shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                      className="w-full p-4 rounded-2xl bg-indigo-600 dark:bg-indigo-500 text-white font-bold text-sm shadow-md shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                     >
                       {language === 'vi' ? 'Đi đến mục liên quan' : 'Go to Action'} <FiChevronRight />
                     </button>
@@ -301,14 +301,14 @@ export default function NotificationDropdown() {
                     deleteNotification(selectedNotification.id);
                     setSelectedNotification(null);
                   }}
-                  className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-black text-sm hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all active:scale-[0.98] flex items-center justify-center"
+                  className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold text-sm hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all active:scale-[0.98] flex items-center justify-center"
                   title={language === 'vi' ? 'Xóa thông báo' : 'Delete notification'}
                 >
                   <FiTrash2 size={20} />
                 </button>
                 <button
                   onClick={() => setSelectedNotification(null)}
-                  className={`p-4 rounded-2xl font-black text-sm transition-all active:scale-[0.98] ${selectedNotification.metadata?.path ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
+                  className={`p-4 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] ${selectedNotification.metadata?.path ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
                 >
                   {language === 'vi' ? 'Đóng' : 'Close'}
                 </button>

@@ -1,8 +1,8 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Telegraf, Context } from 'telegraf';
 import { AiAgentService } from '../../ai-agent/services/ai-agent.service';
+import { AiActionProposalService } from '../../ai-agent/services/ai-action-proposal.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { TelegramSender } from '../services/telegram-sender';
 import { TelegramContextService } from '../services/telegram-context.service';
 import { TelegramAiResponder } from '../services/telegram-ai-responder.service';
 import { TelegramFamilyNoteService } from '../services/telegram-family-note.service';
@@ -19,10 +19,10 @@ export class TelegramActionHandlers {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly sender: TelegramSender,
     private readonly context: TelegramContextService,
     private readonly aiResponder: TelegramAiResponder,
     private readonly noteService: TelegramFamilyNoteService,
+    private readonly actionProposalService: AiActionProposalService,
     @Inject(forwardRef(() => AiAgentService))
     private readonly aiAgentService: AiAgentService,
   ) {}
@@ -43,6 +43,8 @@ export class TelegramActionHandlers {
     bot.action(/^note_skip:(.+)$/, (ctx) => this.handleNoteSkip(ctx as any));
     bot.action(/^ai_feedback:([^:]+):(.+)$/, (ctx) => this.handleAiFeedback(ctx as any));
     bot.action(/^daily_task_done:(.+)$/, (ctx) => this.handleDailyTaskDone(ctx as any));
+    bot.action(/^proposal_confirm:(.+)$/, (ctx) => this.handleProposalConfirm(ctx as any));
+    bot.action(/^proposal_reject:(.+)$/, (ctx) => this.handleProposalReject(ctx as any));
   }
 
   private async handleMenuFootball(ctx: Context) {
@@ -184,5 +186,35 @@ export class TelegramActionHandlers {
 
     await ctx.answerCbQuery('Đã đánh dấu hoàn thành hôm nay');
     await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+  }
+
+  private async handleProposalConfirm(ctx: any) {
+    await this.handleProposalAction(ctx, 'confirm');
+  }
+
+  private async handleProposalReject(ctx: any) {
+    await this.handleProposalAction(ctx, 'reject');
+  }
+
+  private async handleProposalAction(ctx: any, action: 'confirm' | 'reject') {
+    const proposalId = ctx.match?.[1];
+    const user = await this.context.getLinkedUser(ctx.from?.id?.toString() || '');
+    if (!proposalId || !user?.id) {
+      await ctx.answerCbQuery('Không tìm thấy tài khoản hoặc thao tác');
+      return;
+    }
+
+    try {
+      if (action === 'confirm') {
+        await this.actionProposalService.confirm(proposalId, user.id);
+      } else {
+        await this.actionProposalService.reject(proposalId, user.id);
+      }
+      await ctx.answerCbQuery(action === 'confirm' ? 'Đã xác nhận' : 'Đã hủy');
+      await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    } catch (error: any) {
+      this.logger.warn(`Proposal ${action} failed: ${error?.message || error}`);
+      await ctx.answerCbQuery('Thao tác đã hết hạn hoặc không hợp lệ');
+    }
   }
 }

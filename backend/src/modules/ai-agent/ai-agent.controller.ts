@@ -5,6 +5,7 @@ import { AiAgentService } from './services/ai-agent.service';
 import { ChatService } from './services/chat.service';
 import { RagService } from './services/rag.service';
 import { VisionExtractionService } from './services/vision-extraction.service';
+import { AiActionProposalService } from './services/ai-action-proposal.service';
 import { ChatMessageDto } from './dto/chat.dto';
 
 @Controller('api/chat')
@@ -15,6 +16,7 @@ export class AiAgentController {
     private readonly chatService: ChatService,
     private readonly ragService: RagService,
     private readonly visionExtractionService: VisionExtractionService,
+    private readonly actionProposalService: AiActionProposalService,
   ) {}
 
   @Post('message')
@@ -183,6 +185,22 @@ export class AiAgentController {
     @Query('sessionId') sessionId?: string,
   ) {
     return this.chatService.clearHistory(familyId, sessionId);
+  }
+
+  @Post('proposals/:id/confirm')
+  async confirmProposal(
+    @Param('id') id: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.actionProposalService.confirm(id, userId);
+  }
+
+  @Post('proposals/:id/reject')
+  async rejectProposal(
+    @Param('id') id: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.actionProposalService.reject(id, userId);
   }
 
   @SkipThrottle()

@@ -41,7 +41,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "flex w-full items-center justify-between gap-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md py-3 px-4 text-sm font-medium transition-all hover:bg-white/80 dark:hover:bg-slate-800/80 outline-none focus:ring-2 focus:ring-primary/20",
+        "flex w-full items-center justify-between gap-2 rounded-xl border border-input bg-card py-3 px-4 text-sm font-medium transition-all hover:bg-muted/60 outline-none focus:ring-2 focus:ring-primary/20",
         className
       )}
       {...props}
@@ -84,7 +84,7 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-[200px] overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200", 
+            "relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-[200px] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg animate-in fade-in-0 zoom-in-95 duration-200",
             className 
           )}
           {...props}

@@ -203,6 +203,30 @@ export default function Chatbot() {
     }
   };
 
+  const handleProposalAction = async (messageIndex: number, action: 'confirm' | 'reject') => {
+    const message = messages[messageIndex];
+    if (!message?.proposal || !user?.id || message.proposalStatus) return;
+
+    try {
+      if (action === 'confirm') {
+        await chatAPI.confirmProposal(message.proposal.proposalId, user.id);
+      } else {
+        await chatAPI.rejectProposal(message.proposal.proposalId, user.id);
+      }
+      setMessages((prev) => prev.map((item, index) => (
+        index === messageIndex
+          ? { ...item, proposalStatus: action === 'confirm' ? 'confirmed' : 'rejected' }
+          : item
+      )));
+      toast.success(action === 'confirm'
+        ? (language === 'vi' ? 'ÄÃ£ xÃ¡c nháº­n thao tÃ¡c' : 'Action confirmed')
+        : (language === 'vi' ? 'ÄÃ£ há»§y thao tÃ¡c' : 'Action rejected'));
+    } catch (error) {
+      console.error('Failed to update proposal:', error);
+      toast.error(language === 'vi' ? 'KhÃ´ng thá»ƒ cáº­p nháº­t thao tÃ¡c' : 'Could not update action');
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     await sendMessage(input);
@@ -236,7 +260,7 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="flex h-[min(760px,calc(100dvh-104px))] min-h-[560px] md:h-[calc(100dvh-190px)] md:min-h-[720px] glass rounded-2xl overflow-hidden relative border border-black/5 dark:border-white/5 transition-all">
+    <div className="flex h-[min(780px,calc(100dvh-92px))] min-h-[560px] md:h-[calc(100dvh-116px)] md:min-h-[680px] bg-card rounded-2xl overflow-hidden relative border border-border transition-all shadow-sm">
       {isSidebarOpen && (
         <div
           className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-40 md:hidden"
@@ -255,7 +279,7 @@ export default function Chatbot() {
         onStartNewSession={startNewSession}
       />
 
-      <div className="flex-1 flex flex-col relative bg-white dark:bg-slate-900/40">
+      <div className="flex-1 flex flex-col relative bg-white dark:bg-slate-900/60">
         <ChatbotHeader
           activeUsage={activeUsage}
           isSidebarOpen={isSidebarOpen}
@@ -272,6 +296,7 @@ export default function Chatbot() {
           scrollContainerRef={scrollContainerRef}
           streamStatus={streamStatus}
           onFeedback={handleFeedback}
+          onProposalAction={handleProposalAction}
           onSetInput={setInput}
         />
 

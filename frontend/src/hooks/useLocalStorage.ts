@@ -14,7 +14,7 @@ export function useLocalStorage<T>(
         setStoredValue(JSON.parse(item));
       }
     } catch (error) {
-      console.log(error);
+      console.warn(`Failed to read localStorage key "${key}"`, error);
     }
     setIsReady(true);
   }, [key]);
@@ -26,7 +26,7 @@ export function useLocalStorage<T>(
       setStoredValue(valueToStore);
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
-      console.log(error);
+      console.warn(`Failed to write localStorage key "${key}"`, error);
     }
   };
 

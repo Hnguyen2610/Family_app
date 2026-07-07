@@ -9,8 +9,8 @@
   --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
-  --primary: 330 81% 60%;
-  /* Soft Pink */
+  --primary: 221.2 83.2% 53.3%;
+  /* Modern Blue */
   --primary-foreground: 210 40% 98%;
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222 47% 11.2%;
@@ -22,7 +22,7 @@
   --destructive-foreground: 210 40% 98%;
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
-  --ring: 330 81% 60%;
+  --ring: 221.2 83.2% 53.3%;
   --radius: 0.75rem;
   /* More precise, less rounded */
 }
@@ -35,8 +35,8 @@
   --card-foreground: 213 31% 91%;
   --popover: 222 47% 10%;
   --popover-foreground: 213 31% 91%;
-  --primary: 330 81% 64%;
-  /* Soft Pink */
+  --primary: 199 89% 48%;
+  /* Electric Cyan */
   --primary-foreground: 222 47% 7%;
   --secondary: 222 47% 15%;
   --secondary-foreground: 213 31% 91%;
@@ -48,7 +48,7 @@
   --destructive-foreground: 213 31% 91%;
   --border: 222 47% 15%;
   --input: 222 47% 15%;
-  --ring: 330 81% 64%;
+  --ring: 199 89% 48%;
 }
 
 @layer base {
@@ -64,29 +64,29 @@
 
 @layer components {
   .glass {
-    @apply bg-white/60 dark:bg-slate-950/60 backdrop-blur-xl border border-white/20 dark:border-white/5;
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+    @apply bg-card/95 dark:bg-slate-950/80 border border-border/70;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
   }
 
   .glass-dark {
-    @apply bg-slate-100/40 dark:bg-slate-900/60 backdrop-blur-xl border border-black/5 dark:border-white/5;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+    @apply bg-slate-50/90 dark:bg-slate-900/80 border border-border/70;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
   }
 
   .card-hover {
-    @apply transition-all duration-500 hover:-translate-y-1 hover:border-primary/20 hover:bg-white/90 dark:hover:bg-slate-900/80;
+    @apply transition-all duration-200 hover:border-primary/20 hover:bg-white/95 dark:hover:bg-slate-900/90;
 
     &:hover {
-      box-shadow: 0 20px 50px rgba(8, 112, 184, 0.05);
+      box-shadow: 0 12px 30px rgba(8, 112, 184, 0.05);
     }
   }
 
   .btn-primary {
-    @apply bg-primary text-primary-foreground px-8 py-3 rounded-lg font-bold shadow-lg shadow-primary/20 hover:brightness-110 hover:shadow-primary/30 transition-all active:scale-[0.98] disabled:opacity-50 uppercase tracking-widest text-[10px];
+    @apply bg-primary text-primary-foreground px-6 py-3 rounded-lg font-bold shadow-md shadow-primary/15 hover:brightness-105 transition-all active:scale-[0.98] disabled:opacity-50 text-sm;
   }
 
   .input-field {
-    @apply w-full px-4 py-4 rounded-xl border border-black/5 dark:border-white/5 bg-slate-50/50 dark:bg-slate-950/50 backdrop-blur-xl focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 text-sm text-slate-800 dark:text-slate-100;
+    @apply w-full px-4 py-3 rounded-xl border border-input bg-card focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 text-sm text-slate-800 dark:text-slate-100;
   }
 }
 
@@ -123,7 +123,7 @@
 }
 
 .gradient-text {
-  @apply bg-clip-text text-transparent bg-gradient-to-br from-primary to-primary/60 font-black tracking-tight;
+  @apply bg-clip-text text-transparent bg-gradient-to-br from-primary to-primary/70 font-bold tracking-tight;
 }
 
 .tech-grid {

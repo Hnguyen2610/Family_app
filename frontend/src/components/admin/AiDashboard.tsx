@@ -125,7 +125,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
           <CacheHealthSection language={language} stats={stats} />
 
           {lastFetch && (
-            <p className="text-center text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">
+            <p className="text-center text-xs text-slate-600 font-bold ">
               {language === 'vi' ? 'Cập nhật lần cuối' : 'Last updated'}: {lastFetch.toLocaleTimeString()}
             </p>
           )}
@@ -161,17 +161,17 @@ function DashboardHeader({
         </button>
       )}
       <div className="flex-1">
-        <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic">
+        <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight italic">
           AI <span className="text-primary not-italic">Dashboard</span>
         </h2>
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mt-0.5">
+        <p className="text-xs font-bold text-slate-500  mt-0.5">
           {language === 'vi' ? 'Giám sát hệ thống AI · Cập nhật mỗi 30 giây' : 'AI System Monitor · Auto-refresh every 30s'}
         </p>
       </div>
       <button
         onClick={onRefresh}
         disabled={loading}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all disabled:opacity-50"
+        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-bold hover:bg-primary/20 transition-all disabled:opacity-50"
       >
         <FiRefreshCw className={loading ? 'animate-spin' : ''} size={14} />
         {loading ? (language === 'vi' ? 'Đang tải...' : 'Loading...') : (language === 'vi' ? 'Làm mới' : 'Refresh')}

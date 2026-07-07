@@ -2,7 +2,7 @@ import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { AiIntent, normalizeSearchText } from '../ai-intent-router';
 import { MealsService } from '../../meals/meals.service';
-import { formatMenuForUser, toolSuccess, toolError } from '../ai-tool-results';
+import { formatMenuForUser, toolSuccess, toolError } from '../ai-tool-runtime';
 
 @Injectable()
 export class MealSkill implements AiSkill {

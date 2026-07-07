@@ -67,27 +67,27 @@ export default function WeatherBadge({ variant = 'compact' }: WeatherBadgeProps)
 
   return (
     <div
-      className={`group relative flex items-center gap-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 px-3 py-2 shadow-sm backdrop-blur-md ${
+      className={`group relative flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-sm backdrop-blur-sm ${
         isAvailable ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'
       }`}
       title={`${location}: ${condition}`}
     >
       <span className="text-primary">{icon}</span>
       <div className="leading-none">
-        <div className="flex items-center gap-1 text-xs font-black">
+        <div className="flex items-center gap-1 text-xs font-bold">
           <span>{temp}°C</span>
           {showFull && <span className="hidden lg:inline text-slate-400">/</span>}
           {showFull && <span className="hidden lg:inline">{location}</span>}
         </div>
         {showFull && (
-          <p className="hidden lg:block mt-1 max-w-28 truncate text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+          <p className="hidden lg:block mt-1 max-w-28 truncate text-xs font-bold text-slate-500 dark:text-slate-400">
             {condition}
           </p>
         )}
       </div>
 
-      <div className="pointer-events-none absolute right-0 top-full z-[350] mt-2 w-64 rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-slate-950 p-4 text-xs text-slate-600 dark:text-slate-300 opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
-        <div className="font-black text-slate-900 dark:text-white">{location}</div>
+      <div className="pointer-events-none absolute right-0 top-full z-[350] mt-2 w-64 rounded-2xl border border-border bg-card p-4 text-xs text-slate-600 dark:text-slate-300 opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+        <div className="font-bold text-slate-900 dark:text-white">{location}</div>
         <div className="mt-2 space-y-1 font-semibold">
           {!isAvailable && (
             <p>{condition}. Hãy kiểm tra backend đã restart và env WeatherAPI đã có trên môi trường đang chạy.</p>

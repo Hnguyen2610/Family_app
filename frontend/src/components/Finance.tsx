@@ -120,7 +120,7 @@ export default function Finance() {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">Syncing data...</p>
+        <p className="text-slate-500 font-bold text-xs animate-pulse">Syncing data...</p>
       </div>
     );
   }
@@ -132,11 +132,11 @@ export default function Finance() {
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-white/5 pb-8">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-md text-[9px] font-black uppercase tracking-[0.2em] border border-primary/20 mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-md text-xs font-bold border border-primary/20 mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
             {t('finance.title')} Dashboard
           </div>
-          <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
+          <h2 className="text-3xl md:text-5xl font-bold text-slate-900 dark:text-slate-100 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 pb-4 leading-[1.2]">
             {t('finance.title')} <span className="text-primary">{t('finance.subtitle')}</span>
           </h2>
           <p className="text-slate-500 mt-2 font-medium">{t('finance.desc')}</p>
@@ -152,7 +152,7 @@ export default function Finance() {
 
       {/* Daily Progress Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className={`col-span-1 lg:col-span-2 glass rounded-2xl p-8 md:p-10 border transition-all duration-500 ${isOver ? 'border-rose-500/30 bg-rose-500/5' : 'border-black/5 dark:border-white/5 bg-slate-100/40 dark:bg-slate-900/40'}`}>
+        <div className={`col-span-1 lg:col-span-2 rounded-2xl border border-border bg-card shadow-sm p-8 md:p-10 border transition-all duration-500 ${isOver ? 'border-rose-500/30 bg-rose-500/5' : 'border-black/5 dark:border-white/5 bg-slate-100/40 dark:bg-slate-900/40'}`}>
           <div className="flex flex-col md:flex-row items-center gap-12">
             {/* Circular Progress */}
             <div className="relative w-48 h-48 flex items-center justify-center">
@@ -164,7 +164,7 @@ export default function Finance() {
                 />
                 <circle
                   cx="96" cy="96" r="88"
-                  className={`fill-none transition-all duration-1000 ease-out ${isOver ? 'stroke-rose-500' : 'stroke-primary'}`}
+                  className={`fill-none transition-all duration-300 ease-out ${isOver ? 'stroke-rose-500' : 'stroke-primary'}`}
                   strokeWidth="6"
                   strokeDasharray={2 * Math.PI * 88}
                   strokeDashoffset={2 * Math.PI * 88 * (1 - Math.min(percentSpent, 100) / 100)}
@@ -172,8 +172,8 @@ export default function Finance() {
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1">{t('finance.remaining')}</span>
-                <span className={`text-2xl font-black tracking-tighter ${isOver ? 'text-rose-500' : 'text-primary'}`}>
+                <span className="text-xs font-bold text-slate-500 mb-1">{t('finance.remaining')}</span>
+                <span className={`text-2xl font-bold tracking-tight ${isOver ? 'text-rose-500' : 'text-primary'}`}>
                   {formatCurrency(status?.balance || 0)}
                 </span>
               </div>
@@ -183,30 +183,30 @@ export default function Finance() {
             <div className="flex-1 space-y-8 w-full text-center md:text-left">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t('finance.dailyBudget')}</p>
-                  <p className="text-xl font-black text-slate-900 dark:text-slate-100">{formatCurrency(status?.dailyBudget || 0)}</p>
+                  <p className="text-xs font-bold text-slate-500 ">{t('finance.dailyBudget')}</p>
+                  <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(status?.dailyBudget || 0)}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t('finance.spentToday')}</p>
-                  <p className={`text-xl font-black ${isOver ? 'text-rose-500' : 'text-slate-900 dark:text-slate-100'}`}>
+                  <p className="text-xs font-bold text-slate-500 ">{t('finance.spentToday')}</p>
+                  <p className={`text-xl font-bold ${isOver ? 'text-rose-500' : 'text-slate-900 dark:text-slate-100'}`}>
                     {formatCurrency(status?.totalSpentToday || 0)}
                   </p>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <div className="flex justify-between text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                <div className="flex justify-between text-xs font-bold text-slate-500 ">
                   <span>Usage Intensity</span>
                   <span className={isOver ? 'text-rose-500' : 'text-primary'}>{Math.round(percentSpent)}%</span>
                 </div>
                 <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-1000 ease-out ${isOver ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' : 'bg-primary shadow-[0_0_10px_rgba(14,165,233,0.5)]'}`}
+                    className={`h-full rounded-full transition-all duration-300 ease-out ${isOver ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' : 'bg-primary shadow-[0_0_10px_rgba(14,165,233,0.5)]'}`}
                     style={{ width: `${Math.min(percentSpent, 100)}%` }}
                   />
                 </div>
                 {isOver && (
-                  <div className="flex items-center gap-2 text-[9px] text-rose-500 font-bold uppercase tracking-wider animate-pulse pt-1">
+                  <div className="flex items-center gap-2 text-xs text-rose-500 font-bold animate-pulse pt-1">
                     <FiInfo />
                     Alert: Current spending exceeds dynamic allocation
                   </div>
@@ -217,7 +217,7 @@ export default function Finance() {
         </div>
 
         {/* AI Insight Card */}
-        <div className="glass rounded-2xl p-8 border border-primary/20 bg-white/80 dark:bg-slate-900/40 flex flex-col justify-between relative overflow-hidden group">
+        <div className="rounded-2xl border border-primary/20 bg-card shadow-sm p-8 flex flex-col justify-between relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
             <FiActivity size={120} />
           </div>
@@ -226,7 +226,7 @@ export default function Finance() {
               <FiTrendingUp size={24} />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 leading-tight mb-2">{t('finance.insight')}</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight mb-2">{t('finance.insight')}</h3>
               <p className="text-xs text-slate-400 font-medium leading-relaxed">
                 {isOver
                   ? (language === 'vi' ? "Dòng tiền hiện tại đang mất cân đối. Hệ thống AI đề xuất tối ưu hóa các khoản 'Mua sắm' để đảm bảo thanh khoản cho chu kỳ tới." : "Current cash flow is imbalanced. AI suggests optimizing 'Shopping' expenses to ensure liquidity for the next cycle.")
@@ -234,7 +234,7 @@ export default function Finance() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-600 mt-8">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-600 mt-8">
             <span className="w-1 h-1 rounded-full bg-primary animate-ping"></span>
             {language === 'vi' ? 'Gemini Core đang hoạt động' : 'Gemini Core Active'}
           </div>
@@ -243,23 +243,23 @@ export default function Finance() {
 
       {/* Monthly Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="glass rounded-xl p-6 border border-black/5 dark:border-white/5">
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">{t('finance.income')}</p>
-          <p className="text-xl font-black text-primary">+{formatCurrency(monthlyReport?.totalIncome || 0)}</p>
+        <div className="rounded-xl border border-border bg-card shadow-sm p-6 border border-black/5 dark:border-white/5">
+          <p className="text-xs font-bold text-slate-500 mb-1">{t('finance.income')}</p>
+          <p className="text-xl font-bold text-primary">+{formatCurrency(monthlyReport?.totalIncome || 0)}</p>
         </div>
-        <div className="glass rounded-xl p-6 border border-black/5 dark:border-white/5">
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">{t('finance.expense')}</p>
-          <p className="text-xl font-black text-rose-500">-{formatCurrency(monthlyReport?.totalExpense || 0)}</p>
+        <div className="rounded-xl border border-border bg-card shadow-sm p-6 border border-black/5 dark:border-white/5">
+          <p className="text-xs font-bold text-slate-500 mb-1">{t('finance.expense')}</p>
+          <p className="text-xl font-bold text-rose-500">-{formatCurrency(monthlyReport?.totalExpense || 0)}</p>
         </div>
-        <div className="glass rounded-xl p-6 border border-black/5 dark:border-white/5">
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">{t('finance.savings')}</p>
-          <p className={`text-xl font-black ${(monthlyReport?.netSavings || 0) >= 0 ? 'text-primary' : 'text-rose-500'}`}>
+        <div className="rounded-xl border border-border bg-card shadow-sm p-6 border border-black/5 dark:border-white/5">
+          <p className="text-xs font-bold text-slate-500 mb-1">{t('finance.savings')}</p>
+          <p className={`text-xl font-bold ${(monthlyReport?.netSavings || 0) >= 0 ? 'text-primary' : 'text-rose-500'}`}>
             {formatCurrency(monthlyReport?.netSavings || 0)}
           </p>
         </div>
         <button
           onClick={() => setIsViewingReport(true)}
-          className="glass rounded-xl p-6 flex items-center justify-center gap-2 hover:bg-primary/10 transition-all font-black text-[9px] uppercase tracking-widest group border border-black/5 dark:border-primary/20 bg-slate-100/40 dark:bg-transparent"
+          className="rounded-xl border border-border bg-card shadow-sm p-6 flex items-center justify-center gap-2 hover:bg-primary/10 transition-all font-bold text-xs group"
         >
           <span>{t('finance.analysisReport')}</span>
           <FiArrowUpRight className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform text-primary" />
@@ -267,12 +267,12 @@ export default function Finance() {
       </div>
 
       {/* Recent Transactions */}
-      <div className="glass rounded-2xl overflow-hidden border border-black/5 dark:border-white/5 bg-white/80 dark:bg-slate-900/40">
+      <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden border border-black/5 dark:border-white/5 bg-white/80 dark:bg-slate-900/40">
         <div className="px-8 py-6 border-b border-black/5 dark:border-white/5 flex justify-between items-center bg-slate-50/30 dark:bg-white/[0.02]">
-          <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">{t('finance.ledger')}</h3>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{t('finance.ledger')}</h3>
           <div className="flex items-center gap-2 px-3 py-1 bg-slate-200 dark:bg-slate-800 rounded-md border border-black/5 dark:border-white/5">
              <span className="w-1 h-1 rounded-full bg-primary animate-pulse"></span>
-             <span className="text-[9px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('finance.realTimeSync')}</span>
+             <span className="text-xs font-bold text-slate-600 dark:text-slate-400 ">{t('finance.realTimeSync')}</span>
           </div>
         </div>
         <div className="divide-y divide-white/5">
@@ -286,10 +286,10 @@ export default function Finance() {
                   <div>
                     <h4 className="font-bold text-slate-900 dark:text-slate-100">{tx.description || t('finance.systemEntry')}</h4>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 bg-slate-800 px-2 py-0.5 rounded border border-white/5">
+                      <span className="text-xs font-bold text-slate-500 bg-slate-800 px-2 py-0.5 rounded border border-white/5">
                         {tx.category}
                       </span>
-                      <span className="text-[9px] text-slate-600 font-bold flex items-center gap-1">
+                      <span className="text-xs text-slate-600 font-bold flex items-center gap-1">
                         <FiCalendar size={10} />
                         {new Date(tx.date).toLocaleDateString('vi-VN')}
                       </span>
@@ -297,7 +297,7 @@ export default function Finance() {
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
-                  <div className={`text-right font-black text-lg tracking-tighter ${tx.type === 'INCOME' ? 'text-primary' : 'text-slate-100'}`}>
+                  <div className={`text-right font-bold text-lg tracking-tight ${tx.type === 'INCOME' ? 'text-primary' : 'text-slate-100'}`}>
                     {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount)}
                   </div>
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -323,7 +323,7 @@ export default function Finance() {
           ) : (
             <div className="py-20 text-center space-y-4">
               <FiCreditCard size={40} className="mx-auto text-slate-300 dark:text-slate-800" />
-              <p className="text-slate-500 font-black uppercase tracking-widest text-[9px]">{language === 'vi' ? 'Chưa có giao dịch nào' : 'Zero transaction records detected'}</p>
+              <p className="text-slate-500 font-bold text-xs">{language === 'vi' ? 'Chưa có giao dịch nào' : 'Zero transaction records detected'}</p>
             </div>
           )}
         </div>
@@ -333,24 +333,24 @@ export default function Finance() {
       <Dialog open={isEditingBudget} onOpenChange={setIsEditingBudget}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle className="text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+            <DialogTitle className="text-3xl font-bold text-slate-900 dark:text-slate-100 italic tracking-tight">
               {language === 'vi' ? 'Cấu hình ' : 'Budget '}
               <span className="text-primary not-italic">{language === 'vi' ? 'Ngân sách' : 'Config'}</span>
             </DialogTitle>
           </DialogHeader>
-          <p className="text-slate-500 mb-4 font-medium text-xs uppercase tracking-widest leading-relaxed">
+          <p className="text-slate-500 mb-4 font-medium text-xs leading-relaxed">
             Define monthly inflow parameters for automated liquidity analysis.
           </p>
 
           <div className="space-y-6">
             <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">
+              <Label className="text-xs font-bold text-slate-500 ml-1">
                 Total Monthly Yield (VNĐ)
               </Label>
               <Input
                 type="number"
                 placeholder="25,000,000"
-                className="text-xl font-black h-16"
+                className="text-xl font-bold h-16"
                 value={newMonthlyIncome}
                 onChange={(e) => setNewMonthlyIncome(e.target.value)}
               />
@@ -379,7 +379,7 @@ export default function Finance() {
       <Dialog open={isEditingTransaction} onOpenChange={setIsEditingTransaction}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle className="text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+            <DialogTitle className="text-3xl font-bold text-slate-900 dark:text-slate-100 italic tracking-tight">
               {language === 'vi' ? 'Sửa ' : 'Edit '}
               <span className="text-primary not-italic">{language === 'vi' ? 'Sổ cái' : 'Ledger'}</span> Entry
             </DialogTitle>
@@ -388,7 +388,7 @@ export default function Finance() {
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Yield / Cost (VNĐ)</Label>
+                <Label className="text-xs font-bold text-slate-500 ml-1">Yield / Cost (VNĐ)</Label>
                   <Input
                     type="number"
                     value={editingTransaction?.amount || 0}
@@ -396,7 +396,7 @@ export default function Finance() {
                   />
               </div>
               <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Type</Label>
+                <Label className="text-xs font-bold text-slate-500 ml-1">Type</Label>
                 <Select
                   value={editingTransaction?.type || 'EXPENSE'}
                   onValueChange={(val: any) => editingTransaction && setEditingTransaction({ ...editingTransaction, type: val as 'INCOME' | 'EXPENSE' })}
@@ -413,7 +413,7 @@ export default function Finance() {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Classification</Label>
+              <Label className="text-xs font-bold text-slate-500 ml-1">Classification</Label>
               <Select
                 value={editingTransaction?.category || ''}
                 onValueChange={(val) => editingTransaction && setEditingTransaction({ ...editingTransaction, category: val as string })}
@@ -439,7 +439,7 @@ export default function Finance() {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Entry Context</Label>
+              <Label className="text-xs font-bold text-slate-500 ml-1">Entry Context</Label>
               <Input
                 type="text"
                 placeholder="System details..."
@@ -449,7 +449,7 @@ export default function Finance() {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Date</Label>
+              <Label className="text-xs font-bold text-slate-500 ml-1">Date</Label>
               <Input
                 type="date"
                 value={editingTransaction?.date ? new Date(editingTransaction.date).toISOString().split('T')[0] : ''}
@@ -480,13 +480,13 @@ export default function Finance() {
       {isViewingReport && monthlyReport && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsViewingReport(false)} />
-          <div className="relative glass border border-black/10 dark:border-white/5 p-10 md:p-14 w-full max-w-4xl animate-in zoom-in-95 duration-300 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
+          <div className="relative glass border border-black/10 dark:border-white/5 p-10 md:p-14 w-full max-w-4xl animate-in zoom-in-95 duration-300 rounded-2xl bg-white dark:bg-slate-900 shadow-md">
             <div className="flex justify-between items-start mb-12">
               <div>
-                <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/20 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-3">
+                <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/20 text-primary rounded text-xs font-bold mb-3">
                    Fiscal Analysis
                 </div>
-                <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 italic tracking-tighter">
+                <h3 className="text-3xl font-bold text-slate-900 dark:text-slate-100 italic tracking-tight">
                   Ledger Report: <span className="text-primary not-italic">{monthlyReport.month}/{monthlyReport.year}</span>
                 </h3>
               </div>
@@ -501,11 +501,11 @@ export default function Finance() {
             <div className="space-y-12 max-h-[65vh] overflow-y-auto pr-6 custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                 <div className="space-y-8">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-900 dark:text-slate-100 pb-4 border-b border-black/5 dark:border-white/5">Classification Delta</h4>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 pb-4 border-b border-black/5 dark:border-white/5">Classification Delta</h4>
                   <div className="space-y-6">
                     {monthlyReport.categories.map((cat) => (
                       <div key={cat.category} className="space-y-3">
-                        <div className="flex justify-between text-[11px] font-black uppercase tracking-widest text-slate-400">
+                        <div className="flex justify-between text-[11px] font-bold text-slate-400">
                           <span className="flex items-center gap-3">
                             <span className="text-primary">{getCategoryIcon(cat.category)}</span>
                             <span>{cat.category}</span>
@@ -518,31 +518,31 @@ export default function Finance() {
                             style={{ width: `${cat.percentage}%` }}
                           />
                         </div>
-                        <p className="text-[9px] text-right font-black text-slate-500 tracking-widest">{formatCurrency(cat.amount)}</p>
+                      <p className="text-xs text-right font-bold text-slate-500">{formatCurrency(cat.amount)}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 <div className="space-y-8">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-100 pb-4 border-b border-white/5">Neural Summary</h4>
-                  <div className="glass-dark p-8 rounded-2xl space-y-6 border border-white/5">
+                  <h4 className="text-xs font-bold text-slate-100 pb-4 border-b border-white/5">Neural Summary</h4>
+                  <div className="p-8 border border-border bg-card rounded-2xl space-y-6 border border-white/5">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Operation Count</span>
-                      <span className="text-xs font-black text-slate-100">{monthlyReport.transactionCount}</span>
+                      <span className="text-xs text-slate-500 font-bold ">Operation Count</span>
+                      <span className="text-xs font-bold text-slate-100">{monthlyReport.transactionCount}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Global Inflow</span>
-                      <span className="text-xs font-black text-primary">+{formatCurrency(monthlyReport.totalIncome)}</span>
+                      <span className="text-xs text-slate-500 font-bold ">Global Inflow</span>
+                      <span className="text-xs font-bold text-primary">+{formatCurrency(monthlyReport.totalIncome)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Global Outflow</span>
-                      <span className="text-xs font-black text-rose-500">-{formatCurrency(monthlyReport.totalExpense)}</span>
+                      <span className="text-xs text-slate-500 font-bold ">Global Outflow</span>
+                      <span className="text-xs font-bold text-rose-500">-{formatCurrency(monthlyReport.totalExpense)}</span>
                     </div>
                     <div className="h-px bg-white/5 my-2" />
                     <div className="flex justify-between items-baseline">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-100">Net Position</span>
-                      <span className={`text-2xl font-black italic tracking-tighter ${monthlyReport.netSavings >= 0 ? 'text-primary' : 'text-rose-500'}`}>
+                      <span className="text-xs font-bold text-slate-100">Net Position</span>
+                      <span className={`text-2xl font-bold italic tracking-tight ${monthlyReport.netSavings >= 0 ? 'text-primary' : 'text-rose-500'}`}>
                         {formatCurrency(monthlyReport.netSavings)}
                       </span>
                     </div>
@@ -552,7 +552,7 @@ export default function Finance() {
                     <div className="absolute top-0 right-0 p-4 opacity-5">
                       <FiActivity size={60} />
                     </div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-primary mb-4 flex items-center gap-2">
+                    <p className="text-xs font-bold text-primary mb-4 flex items-center gap-2">
                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
                        Insight Analysis
                     </p>

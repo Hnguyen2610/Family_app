@@ -97,10 +97,6 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       <ThemeManager />
       {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
 
-      {/* Background Decorative Elements */}
-      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-100/30 dark:bg-indigo-900/10 rounded-full blur-[120px] -z-10" />
-      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-[120px] -z-10" />
-
       {/* Main static header area */}
       <div className="hidden">
         <div className="hidden md:block absolute top-3 left-2 md:top-8 md:left-8 z-50">
@@ -120,19 +116,19 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               <div ref={familyDropdownRef} className="relative">
                 <button
                   onClick={() => setIsFamilyDropdownOpen(!isFamilyDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-2 glass border border-black/10 dark:border-white/10 rounded-xl text-xs font-black text-slate-700 dark:text-slate-200 hover:border-primary/40 hover:text-primary transition-all backdrop-blur-md shadow-sm"
+                    className="flex items-center gap-2 px-3 py-2 bg-card border border-border rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-primary/40 hover:text-primary transition-all shadow-sm"
                 >
                   <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                   <span>{currentFamily?.name || t('nav.family')}</span>
                   <FiChevronDown size={12} className={`transition-transform duration-200 ${isFamilyDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isFamilyDropdownOpen && (
-                  <div className="absolute top-full right-0 mt-2 w-52 glass bg-white/95 dark:bg-slate-900/95 border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 backdrop-blur-xl">
+                  <div className="absolute top-full right-0 mt-2 w-52 bg-card border border-border rounded-2xl shadow-lg overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
                     <div className="p-2 space-y-0.5">
                       {/* All families option */}
                       <button
                         onClick={() => { setCurrentFamilyId('all'); setIsFamilyDropdownOpen(false); }}
-                        className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-black transition-all ${
+                        className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                           currentFamilyId === 'all'
                             ? 'bg-primary/10 text-primary'
                             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -150,7 +146,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
                         <button
                           key={f.id}
                           onClick={() => { setCurrentFamilyId(f.id); setIsFamilyDropdownOpen(false); }}
-                          className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-black transition-all ${
+                          className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                             currentFamilyId === f.id
                               ? 'bg-primary/10 text-primary'
                               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -172,11 +168,11 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               <FiHome />
             </div>
             <div className="text-left">
-              <h1 className="text-sm font-black tracking-tight text-slate-900 dark:text-slate-100">
+              <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
                 Family<span className="text-primary">Hub</span>
               </h1>
               {user && (
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+                <p className="text-xs font-semibold text-slate-500">
                   {t('nav.welcome')} {user.name}
                   {currentFamily ? ` · ${currentFamily.name}` : ''}
                 </p>
@@ -189,7 +185,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
                 {t('nav.welcome')} {user.name}
               </p>
               {currentFamily && (
-                <span className="text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-[0.2em]">
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold text-xs">
                    {currentFamily.name}
                 </span>
               )}
@@ -199,13 +195,13 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </div>
 
       {/* Sticky Bar */}
-      <div className="fixed top-0 left-0 right-0 z-[100] translate-y-0 opacity-100 transition-all duration-300 border-b border-border/60">
-        <header className="bg-background/80 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-2 md:px-8 py-2 md:py-2.5 flex justify-between items-center gap-2 md:gap-4">
+      <div className="fixed top-0 left-0 right-0 z-[100] translate-y-0 opacity-100 transition-all duration-300 border-b border-border/70">
+        <header className="bg-background/95 backdrop-blur-md">
+          <div className="max-w-7xl mx-auto px-3 md:px-8 py-2 flex justify-between items-center gap-2 md:gap-4 min-h-14">
             {/* Menu Left (Sticky) */}
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="w-11 h-11 bg-card/60 backdrop-blur-md rounded-xl flex items-center justify-center text-xl hover:bg-card/90 active:scale-95 transition-all border border-border/40 shrink-0"
+              className="w-10 h-10 bg-card rounded-xl flex items-center justify-center text-xl hover:bg-muted active:scale-95 transition-all border border-border shrink-0"
             >
               <FiMenu />
             </button>
@@ -219,11 +215,11 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               }}
             >
               <div className="flex items-center gap-2">
-                <div className="w-9 h-9 bg-slate-200 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-black/5 dark:border-white/5">
+                <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20">
                   <FiHome className="text-primary text-lg" />
                 </div>
                 <div className="hidden sm:block text-left">
-                  <h1 className="text-lg font-extrabold tracking-tighter text-slate-900 dark:text-slate-100">
+                  <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
                     Family <span className="text-primary">Hub</span>
                   </h1>
                 </div>
@@ -237,19 +233,19 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
                 <div ref={stickyFamilyDropdownRef} className="relative">
                   <button
                     onClick={() => setIsFamilyDropdownOpen(!isFamilyDropdownOpen)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/10 rounded-lg text-[10px] font-black text-slate-700 dark:text-slate-300 hover:border-primary/40 hover:text-primary transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-primary/40 hover:text-primary transition-all"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                     <span>{currentFamily?.name || t('nav.family')}</span>
                     <FiChevronDown size={10} className={`transition-transform duration-200 ${isFamilyDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {isFamilyDropdownOpen && (
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-black/10 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-border rounded-xl shadow-lg overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
                       <div className="p-1.5 space-y-0.5">
                         {/* All families option */}
                         <button
                           onClick={() => { setCurrentFamilyId('all'); setIsFamilyDropdownOpen(false); }}
-                          className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-black transition-all ${
+                          className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                             currentFamilyId === 'all'
                               ? 'bg-primary/10 text-primary'
                               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -266,7 +262,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
                           <button
                             key={f.id}
                             onClick={() => { setCurrentFamilyId(f.id); setIsFamilyDropdownOpen(false); }}
-                            className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-black transition-all ${
+                          className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                               currentFamilyId === f.id
                                 ? 'bg-primary/10 text-primary'
                                 : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -288,9 +284,9 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       </div>
 
       {/* Content Area */}
-      <main className={`${activeTab === 'chat' ? 'max-w-[1800px] px-2 md:px-6 xl:px-10' : 'max-w-6xl px-3 md:px-8'} mx-auto pt-16 md:pt-20 pb-4 md:pb-6 min-h-[calc(100dvh-64px)]`}>
+      <main className={`${activeTab === 'chat' ? 'max-w-[1800px] px-2 md:px-6 xl:px-10' : 'max-w-6xl px-3 md:px-8'} mx-auto pt-16 pb-3 md:pb-4 min-h-[calc(100dvh-56px)]`}>
         <NewMonthModal />
-        <div className={`glass rounded-[2.5rem] ${activeTab === 'chat' ? 'p-2 md:p-6 xl:p-8' : 'p-4 md:p-12'} min-h-[calc(100dvh-96px)] md:min-h-[calc(100dvh-112px)] border-white/40 dark:border-slate-800/40 shadow-2xl`}>
+        <div className={`bg-card border border-border/70 shadow-md ${activeTab === 'chat' ? 'rounded-2xl p-2 md:p-4 xl:p-6' : 'rounded-2xl p-4 md:p-8'} min-h-[calc(100dvh-84px)] md:min-h-[calc(100dvh-96px)]`}>
           {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} />}
           {activeTab === 'calendar' && <Calendar />}
           {activeTab === 'chat' && <Chatbot />}
@@ -310,7 +306,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       {/* Footer */}
       <footer className="hidden">
         <div className="max-w-5xl mx-auto px-6 text-center">
-          <p className="text-muted-foreground font-bold text-xs md:text-sm uppercase tracking-widest">
+          <p className="text-muted-foreground font-semibold text-xs md:text-sm">
             © Family Calendar. Made with ❤️ for your home.
           </p>
         </div>
@@ -323,7 +319,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           <div className="flex flex-col items-end gap-3 mb-2 animate-in slide-in-from-bottom-10 fade-in duration-300">
             <button
               onClick={() => { setActiveTab('finance'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-widest"
+              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-emerald-300 transition-all text-emerald-600 dark:text-emerald-400 font-semibold text-sm"
             >
               <span>{language === 'vi' ? 'Sổ chi tiêu' : 'Finance'}</span>
               <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
@@ -332,7 +328,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             </button>
             <button
               onClick={() => { setActiveTab('calendar'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-primary font-black text-xs uppercase tracking-widest"
+              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-primary/40 transition-all text-primary font-semibold text-sm"
             >
               <span>{language === 'vi' ? 'Sự kiện' : 'New Event'}</span>
               <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -341,7 +337,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             </button>
             <button
               onClick={() => { setActiveTab('chat'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest"
+              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-indigo-300 transition-all text-indigo-600 dark:text-indigo-400 font-semibold text-sm"
             >
               <span>AI Chat</span>
               <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center relative">
@@ -351,7 +347,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
             </button>
             <button
               onClick={() => { setActiveTab('meals'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 glass bg-white/90 dark:bg-slate-900/90 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 hover:scale-105 transition-all text-amber-600 dark:text-amber-400 font-black text-xs uppercase tracking-widest"
+              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-amber-300 transition-all text-amber-600 dark:text-amber-400 font-semibold text-sm"
             >
               <span>{language === 'vi' ? 'Bữa ăn' : 'Meals'}</span>
               <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
@@ -364,9 +360,9 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
         {/* Main Tigger Button */}
         <button
           onClick={() => setIsFabOpen(!isFabOpen)}
-          className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl md:rounded-3xl flex items-center justify-center text-2xl md:text-3xl text-white shadow-2xl transition-all duration-500 active:scale-95 ${
+          className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl text-white shadow-lg transition-all duration-300 active:scale-95 ${
             isFabOpen
-              ? 'bg-slate-900 dark:bg-white dark:text-slate-950 rotate-[135deg] scale-110'
+              ? 'bg-slate-900 dark:bg-white dark:text-slate-950 rotate-[135deg]'
               : 'bg-primary hover:bg-primary/90 shadow-primary/40'
           }`}
         >
@@ -378,17 +374,17 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
       <div className={`fixed inset-0 z-[200] transition-all duration-500 ${isSidebarOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
         {/* Backdrop */}
         <div
-          className={`absolute inset-0 bg-background/40 backdrop-blur-md transition-opacity duration-500 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 bg-slate-950/20 backdrop-blur-sm transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}
           onClick={() => setIsSidebarOpen(false)}
         />
 
         {/* Sidebar Panel */}
         <aside
-          className={`absolute top-0 left-0 h-full w-72 md:w-80 bg-background/80 backdrop-blur-2xl border-r border-white/20 dark:border-slate-800/20 shadow-[20px_0_50px_rgba(0,0,0,0.1)] transition-transform duration-500 ease-out flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          className={`absolute top-0 left-0 h-full w-72 md:w-80 bg-background/95 backdrop-blur-md border-r border-border shadow-xl transition-transform duration-300 ease-out flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         >
           {/* Sidebar Header */}
-          <div className="p-8 pb-4 flex justify-between items-center">
-            <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic uppercase">
+          <div className="p-6 pb-4 flex justify-between items-center">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
               {language === 'vi' ? 'Trung tâm ' : 'Menu '}<span className="text-primary not-italic">{language === 'vi' ? 'Hệ thống' : 'Hub'}</span>
             </h3>
             <button
@@ -400,14 +396,14 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           </div>
 
           {/* User Profile Summary */}
-          <div className="px-8 py-6 border-b border-black/5 dark:border-white/5">
+          <div className="px-6 py-5 border-b border-border">
             <div className="flex items-center gap-3 mt-4">
               <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 rounded-lg flex items-center justify-center text-xl text-primary shadow-lg">
                 <FiUser />
               </div>
               <div className="flex flex-col">
-                <span className="font-black text-sm text-slate-900 dark:text-slate-100">{user?.name}</span>
-                <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest">{currentFamily?.name}</span>
+                <span className="font-bold text-sm text-slate-900 dark:text-slate-100">{user?.name}</span>
+                <span className="text-xs text-slate-500 font-semibold">{currentFamily?.name}</span>
               </div>
             </div>
           </div>
@@ -487,8 +483,8 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           </nav>
 
           {/* Sidebar Footer */}
-          <div className="p-8 text-center opacity-40">
-             <p className="text-[10px] font-black uppercase tracking-[0.2em]">Family v2.0</p>
+          <div className="p-6 text-center opacity-50">
+             <p className="text-xs font-semibold">Family v2.0</p>
           </div>
         </aside>
       </div>
@@ -510,14 +506,14 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl font-black transition-all duration-300 group border ${
+      className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-xl font-semibold transition-all duration-200 group border ${
         active
-          ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20 translate-x-2'
-          : 'bg-slate-100/40 dark:bg-slate-900/40 text-slate-500 dark:text-slate-500 border-black/5 dark:border-white/5 hover:border-primary/20 hover:text-slate-900 dark:hover:text-slate-200 hover:translate-x-1'
+          ? 'bg-primary text-primary-foreground border-primary shadow-md shadow-primary/15'
+          : 'bg-card text-slate-500 dark:text-slate-500 border-border hover:border-primary/20 hover:text-slate-900 dark:hover:text-slate-200'
       }`}
     >
       <span className="text-xl group-active:scale-125 transition-transform">{icon}</span>
-      <span className="text-[11px] uppercase tracking-widest leading-none">{label}</span>
+      <span className="text-sm leading-none">{label}</span>
     </button>
   );
 }

@@ -19,9 +19,9 @@ export const StatCard = ({ icon, label, value, sub, color = 'text-primary' }: St
       {icon}
     </div>
     <div className="min-w-0">
-      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1">{label}</p>
-      <p className={`text-2xl font-black tracking-tighter ${color}`}>{value}</p>
-      {sub && <p className="text-[10px] text-slate-500 font-bold mt-0.5 truncate">{sub}</p>}
+      <p className="text-xs font-bold text-slate-500 mb-1">{label}</p>
+      <p className={`text-2xl font-bold tracking-tight ${color}`}>{value}</p>
+      {sub && <p className="text-xs text-slate-500 font-bold mt-0.5 truncate">{sub}</p>}
     </div>
   </div>
 );
@@ -42,7 +42,7 @@ export function ModelConfigSection({ language, stats }: { language: string; stat
     <div className="glass rounded-2xl border border-white/10 p-8">
       <div className="flex items-center gap-3 mb-6">
         <FiCpu className="text-primary text-xl" />
-        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
           {language === 'vi' ? 'Cấu hình Model' : 'Model Configuration'}
         </h3>
       </div>
@@ -78,7 +78,7 @@ export function FeedbackReportSection({ language, stats }: { language: string; s
     <div className="glass rounded-2xl border border-white/10 p-8">
       <div className="flex items-center gap-3 mb-6">
         <FiThumbsUp className="text-primary text-xl" />
-        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
           AI Feedback Report
         </h3>
       </div>
@@ -86,8 +86,8 @@ export function FeedbackReportSection({ language, stats }: { language: string; s
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {['correct', 'wrong', 'missing_context', 'wrong_family', 'wrong_datetime'].map((value) => (
           <div key={value} className="rounded-xl bg-white/5 border border-white/10 p-3">
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">{value}</p>
-            <p className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">{stats.feedback?.byValue?.[value] || 0}</p>
+            <p className="text-xs font-bold text-slate-500">{value}</p>
+            <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">{stats.feedback?.byValue?.[value] || 0}</p>
           </div>
         ))}
       </div>
@@ -98,15 +98,15 @@ export function FeedbackReportSection({ language, stats }: { language: string; s
             <div key={`${feedback.requestLogId}-${feedback.timestamp}-${index}`} className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-violet-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-violet-400">{feedback.value}</span>
-                  <span className="text-[9px] font-mono text-slate-500">{feedback.requestLogId}</span>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{feedback.source}</span>
+                  <span className="rounded bg-violet-500/10 px-2 py-0.5 text-xs font-bold text-violet-400">{feedback.value}</span>
+                  <span className="text-xs font-mono text-slate-500">{feedback.requestLogId}</span>
+                  <span className="text-xs font-bold text-slate-500">{feedback.source}</span>
                 </div>
                 <p className="mt-2 text-[11px] font-mono text-slate-400 truncate">
                   {feedback.intent} / {feedback.skill || '-'} / {feedback.model} / family {feedback.familyId || '-'}
                 </p>
               </div>
-              <span className="text-[10px] font-mono text-slate-500">{new Date(feedback.timestamp).toLocaleTimeString()}</span>
+              <span className="text-xs font-mono text-slate-500">{new Date(feedback.timestamp).toLocaleTimeString()}</span>
             </div>
           ))}
         </div>
@@ -124,7 +124,7 @@ export function RagQualitySection({ language, stats }: { language: string; stats
     <div className="glass rounded-2xl border border-white/10 p-8">
       <div className="flex items-center gap-3 mb-6">
         <FiDatabase className="text-primary text-xl" />
-        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
           RAG Quality
         </h3>
       </div>
@@ -135,14 +135,14 @@ export function RagQualitySection({ language, stats }: { language: string; stats
             <div key={source.documentId} className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col md:flex-row md:items-center gap-3 justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-primary">#{index + 1}</span>
-                  <p className="text-sm font-black text-slate-900 dark:text-slate-100 truncate">{source.title}</p>
+                  <span className="text-xs font-bold text-primary">#{index + 1}</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{source.title}</p>
                 </div>
-                <p className="mt-1 text-[9px] font-mono uppercase tracking-widest text-slate-500">
+                <p className="mt-1 text-xs font-mono  text-slate-500">
                   {source.category || 'uncategorized'} · {source.sourceType || 'unknown'} · {source.familyId || '-'}
                 </p>
               </div>
-              <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest">
+              <div className="flex items-center gap-3 text-xs font-bold ">
                 <span className="text-emerald-400">{source.hits} hits</span>
                 <span className="text-blue-400">best {Number(source.bestScore || 0).toFixed(3)}</span>
                 <span className="text-slate-500">{new Date(source.lastRetrievedAt).toLocaleTimeString()}</span>
@@ -162,7 +162,7 @@ export function RagQualitySection({ language, stats }: { language: string; stats
 export function CacheHealthSection({ language, stats }: { language: string; stats: SystemStats }) {
   return (
     <div className="glass rounded-2xl border border-white/10 p-8 space-y-5">
-      <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100 mb-2">
+      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-2">
         {language === 'vi' ? 'Trạng thái Cache' : 'Cache Health'}
       </h3>
       {[
@@ -170,7 +170,7 @@ export function CacheHealthSection({ language, stats }: { language: string; stat
         { label: 'Expired', value: stats.cache.expired, color: 'bg-amber-500' },
       ].map((bar) => (
         <div key={bar.label}>
-          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">
+          <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
             <span>{bar.label}</span>
             <span className="text-slate-300">{bar.value} / {stats.cache.total}</span>
           </div>
@@ -203,10 +203,10 @@ function ModelCard({
     <div className="space-y-3 p-5 rounded-xl bg-white/5 border border-white/5">
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${dot} animate-pulse`} />
-        <p className={`text-[10px] font-black uppercase tracking-widest ${accent}`}>{name}</p>
+        <p className={`text-xs font-bold ${accent}`}>{name}</p>
       </div>
       <p className="text-sm font-bold text-slate-200 truncate">{model}</p>
-      <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+      <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 font-bold ">
         {children}
       </div>
     </div>

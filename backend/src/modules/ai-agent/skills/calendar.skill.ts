@@ -2,7 +2,7 @@ import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { AiIntent } from '../ai-intent-router';
 import { EventsService } from '../../events/events.service';
-import { formatCalendarEventsForUser, toolSuccess, toolError } from '../ai-tool-results';
+import { formatCalendarEventsForUser, toolSuccess, toolError } from '../ai-tool-runtime';
 import { getSolarDateFromLunar as convertLunarToSolar } from '../../../utils/lunar-calendar.util';
 import { normalizeSearchText } from '../ai-intent-router';
 
@@ -68,6 +68,7 @@ export class CalendarSkill implements AiSkill {
               title: { type: 'string' },
               description: { type: 'string' },
               date: { type: 'string', description: 'YYYY-MM-DD' },
+              endDate: { type: 'string', description: 'Optional end date in YYYY-MM-DD for multi-day events.' },
               time: { type: 'string', description: 'HH:mm' },
               scope: { type: 'string', enum: ['PRIVATE', 'FAMILY'] },
               isRecurring: { type: 'boolean' },
@@ -92,6 +93,7 @@ export class CalendarSkill implements AiSkill {
               title: { type: 'string' },
               description: { type: 'string' },
               date: { type: 'string' },
+              endDate: { type: 'string', description: 'Optional end date in YYYY-MM-DD for multi-day events.' },
               time: { type: 'string' },
               type: { type: 'string', enum: ['BIRTHDAY', 'ANNIVERSARY', 'HOLIDAY', 'APPOINTMENT', 'TASK', 'GENERAL'] },
               isRecurring: { type: 'boolean' },
@@ -178,10 +180,7 @@ export class CalendarSkill implements AiSkill {
             return { needsClarification: true, message: 'TOOL_NEEDS_CLARIFICATION: Please ask the user which specific family they want to create this event in before calling this tool again.' };
           }
 
-          const fullDateMatch = (context.userMessage || '').match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
-          if (fullDateMatch) {
-            args.date = `${fullDateMatch[3]}-${fullDateMatch[2].padStart(2, '0')}-${fullDateMatch[1].padStart(2, '0')}`;
-          }
+          this.applyDateRangeFromMessage(args, context.userMessage || '');
 
           const normalizedMessage = normalizeSearchText(context.userMessage || '');
           const yearlySignal = /\b(hang nam|moi nam|yearly|anniversary)\b/i.test(normalizedMessage);
@@ -190,20 +189,26 @@ export class CalendarSkill implements AiSkill {
             args.isRecurring = true;
           }
 
-          this.logger.debug(`createEvent: familyId=${createFamilyId}, date=${args.date}, title=${args.title}, recurring=${args.recurring}`);
+          if (args.endDate && args.title) {
+            args.title = this.sanitizeRangeTitle(args.title, args.date, args.endDate);
+          }
+
+          this.logger.debug(`createEvent: familyId=${createFamilyId}, date=${args.date}, endDate=${args.endDate || '-'}, title=${args.title}, recurring=${args.recurring}`);
 
           let eventDate = new Date(args.date);
+          const eventEndDate = args.endDate ? new Date(args.endDate) : undefined;
           if (args.time) {
             const [hours, minutes] = args.time.split(':').map(Number);
             if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
               eventDate.setHours(hours, minutes, 0, 0);
             }
           }
-          const { dateList: _dateList, endDate: _endDate, ...eventArgs } = args;
+          const { dateList: _dateList, ...eventArgs } = args;
           const event = await this.eventsService.create(createFamilyId, context.userId, {
             ...eventArgs,
             familyId: createFamilyId,
             date: eventDate,
+            endDate: eventEndDate,
             time: args.time || '09:00',
             recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
               ? `LUNAR_${args.recurring}`
@@ -215,6 +220,7 @@ export class CalendarSkill implements AiSkill {
 
         case 'updateEvent': {
           let eventDate = args.date ? new Date(args.date) : undefined;
+          const eventEndDate = args.endDate ? new Date(args.endDate) : undefined;
           if (eventDate && args.time) {
             const [hours, minutes] = args.time.split(':').map(Number);
             if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
@@ -224,6 +230,7 @@ export class CalendarSkill implements AiSkill {
           const result = await this.eventsService.update(args.id, args.familyId || context.familyId, context.userId, {
             ...args,
             date: eventDate,
+            endDate: eventEndDate,
             recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
               ? `LUNAR_${args.recurring}`
               : args.recurring,
@@ -247,6 +254,39 @@ export class CalendarSkill implements AiSkill {
       return toolError(toolName, e.message);
     }
     return undefined;
+  }
+
+  private applyDateRangeFromMessage(args: any, message: string) {
+    const dateMatches = [...message.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/g)];
+    if (dateMatches.length === 0) return;
+
+    const defaultYear = new Date().getFullYear();
+    const toIsoDate = (match: RegExpMatchArray) => {
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      const year = match[3] || String(defaultYear);
+      return `${year}-${month}-${day}`;
+    };
+
+    if (dateMatches[0]) args.date = toIsoDate(dateMatches[0]);
+    if (dateMatches[1]) args.endDate = toIsoDate(dateMatches[1]);
+  }
+
+  private sanitizeRangeTitle(title: string, startDate?: string, endDate?: string) {
+    const compactStart = this.isoToDayMonth(startDate);
+    const compactEnd = this.isoToDayMonth(endDate);
+
+    return String(title)
+      .replace(new RegExp(`\\s*(tu|từ)\\s+(ngay\\s+)?${compactStart}\\s*(den|đến|-)\\s+(ngay\\s+)?${compactEnd}`, 'i'), '')
+      .replace(new RegExp(`\\s*(den|đến)\\s+(ngay\\s+)?${compactEnd}`, 'i'), '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  private isoToDayMonth(value?: string) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '';
+    return `${Number(match[3])}\\/${Number(match[2])}(?:\\/${match[1]})?`;
   }
 
   private getCalendarMonthFromMessage(message: string): { month: number; year: number } | undefined {

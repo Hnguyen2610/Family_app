@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiIntent } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
-import { toolSuccess, toolError } from '../ai-tool-results';
+import { toolSuccess, toolError } from '../ai-tool-runtime';
 import { FootballScheduleSearchHelper } from '../helpers/football-schedule-search.helper';
 
 type TavilyResult = {

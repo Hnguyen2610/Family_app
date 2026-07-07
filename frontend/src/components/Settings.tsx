@@ -28,14 +28,14 @@ const SettingItem = ({ icon, label, labelClassName, value, onClick }: SettingIte
   return (
     <button
       onClick={onClick}
-      className="group flex items-center justify-start w-full text-left gap-5 p-5 rounded-xl bg-slate-100/40 dark:bg-slate-900/60 border border-black/5 dark:border-white/5 hover:border-primary/30 transition-all cursor-pointer outline-none overflow-hidden relative shadow-sm"
+      className="group flex items-center justify-start w-full text-left gap-5 p-5 rounded-xl bg-card border border-border hover:border-primary/30 transition-all cursor-pointer outline-none overflow-hidden relative shadow-sm"
     >
-      <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-xl group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500">
+      <div className="w-12 h-12 rounded-lg bg-muted border border-border text-primary flex items-center justify-center text-xl group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-200">
         {icon}
       </div>
       <div className="flex-1">
-        <p className={`text-sm font-black uppercase tracking-widest leading-none mb-1 ${labelClassName || 'text-slate-900 dark:text-slate-100'}`}>{label}</p>
-        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter opacity-60">{value}</p>
+        <p className={`text-sm font-bold leading-none mb-1 ${labelClassName || 'text-slate-900 dark:text-slate-100'}`}>{label}</p>
+        <p className="text-xs text-slate-500 font-semibold opacity-75">{value}</p>
       </div>
 
       <FiChevronRight className="text-slate-400 dark:text-slate-700 group-hover:text-primary group-hover:translate-x-1 transition-all" />
@@ -99,7 +99,7 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
             variant="outline"
             onClick={() => { setIsEditing(false); setNewName(user?.name || ''); }}
             disabled={isSaving}
-            className="px-5 py-2 h-10 text-[10px] uppercase tracking-widest flex items-center gap-2"
+            className="px-5 py-2 h-10 text-xs flex items-center gap-2"
           >
             <FiX /> {t('settings.abort')}
           </Button>
@@ -111,7 +111,7 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
   return (
     <>
       <div className="flex items-center gap-4">
-        <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-slate-100 tracking-tighter italic capitalize">
+        <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight capitalize">
           {user?.name || 'Anonymous User'}
         </h2>
         <button
@@ -121,7 +121,7 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
           <FiEdit2 size={16} />
         </button>
       </div>
-      <p className="text-primary font-black text-[10px] uppercase tracking-[0.2em] mt-2 opacity-60">
+      <p className="text-primary font-semibold text-xs mt-2 opacity-75">
         {user?.email} // {user?.globalRole === 'SUPER_ADMIN' ? (language === 'vi' ? 'Quyền tối cao' : 'Root Access') : (language === 'vi' ? 'Thành viên' : 'Node User')}
       </p>
     </>
@@ -151,13 +151,10 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-20">
+    <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-300 pb-20">
       {/* Profile Header */}
-      <div className="flex flex-col md:flex-row items-center md:items-start gap-10 p-10 md:p-12 glass rounded-2xl border border-black/10 dark:border-white/5 relative overflow-hidden group">
-        <div className="absolute top-0 right-0 p-10 opacity-5">
-           <FiUser size={160} />
-        </div>
-        <div className="w-24 h-24 md:w-40 md:h-40 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 flex items-center justify-center text-6xl text-primary shadow-xl relative z-10">
+      <div className="flex flex-col md:flex-row items-center md:items-start gap-8 p-8 md:p-10 rounded-2xl border border-border bg-card relative overflow-hidden shadow-sm">
+        <div className="w-24 h-24 md:w-32 md:h-32 rounded-2xl bg-muted border border-border flex items-center justify-center text-5xl text-primary relative z-10">
           <FiUser />
         </div>
         <div className="relative z-10 flex-1 text-center md:text-left">
@@ -168,7 +165,7 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
       {/* Settings Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="space-y-6">
-          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
+          <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 ml-1">
              {language === 'vi' ? 'Truy cập hệ thống' : 'System Access'}
           </h3>
           <SettingItem icon={<FiUser />} label={t('settings.profile')} value={language === 'vi' ? 'Tài khoản & thay mật khẩu' : 'Credential Overhaul'} />
@@ -190,7 +187,7 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
         </div>
 
         <div className="space-y-6">
-          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
+          <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 ml-1">
              {language === 'vi' ? 'Liên lạc' : 'Communication'}
           </h3>
           <SettingItem
@@ -255,15 +252,15 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
       {/* Appearance & Language Sections */}
       <div className="space-y-8">
         {/* Theme Section */}
-        <div className="p-8 md:p-10 glass rounded-2xl border border-black/5 dark:border-white/5 relative overflow-hidden">
+        <div className="p-8 md:p-10 rounded-2xl border border-border bg-card relative overflow-hidden shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-10">
             <div className="flex items-center gap-6">
               <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-3xl">
                 {currentThemeIcon()}
               </div>
               <div>
-                <p className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase">{t('settings.appearance')}</p>
-                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{language === 'vi' ? 'Ma trận ánh sáng' : 'Luminosity Matrix'}</p>
+                <p className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{t('settings.appearance')}</p>
+                <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'vi' ? 'Ma trận ánh sáng' : 'Luminosity Matrix'}</p>
               </div>
             </div>
 
@@ -277,7 +274,7 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
                 <button
                   key={item.id}
                   onClick={() => setTheme(item.id as any)}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                     theme === item.id
                     ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                     : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
@@ -292,15 +289,15 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
         </div>
 
         {/* Language Section */}
-        <div className="p-8 md:p-10 glass rounded-2xl border border-black/5 dark:border-white/5">
+        <div className="p-8 md:p-10 rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-10">
             <div className="flex items-center gap-6">
               <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 border border-black/5 dark:border-white/5 text-primary flex items-center justify-center text-3xl">
                 <FiGlobe />
               </div>
               <div>
-                <p className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase">{t('settings.language')}</p>
-                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{language === 'vi' ? 'Lựa chọn ngôn ngữ' : 'Linguistic Overlay'}</p>
+                <p className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{t('settings.language')}</p>
+                <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'vi' ? 'Lựa chọn ngôn ngữ' : 'Linguistic Overlay'}</p>
               </div>
             </div>
 
@@ -312,7 +309,7 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
                 <button
                   key={lang.id}
                   onClick={() => setLanguage(lang.id as any)}
-                  className={`flex items-center gap-2 px-8 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                  className={`flex items-center gap-2 px-8 py-3 rounded-lg text-xs font-semibold transition-all ${
                     language === lang.id
                     ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                     : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
@@ -330,12 +327,12 @@ export default function Settings({ onNavigate }: { readonly onNavigate: (tab: an
       <div className="pt-10">
         <button
           onClick={logout}
-          className="w-full flex items-center justify-center gap-3 py-6 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all font-black text-sm uppercase tracking-[0.3em] group"
+          className="w-full flex items-center justify-center gap-3 py-5 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all font-bold text-sm group"
         >
           <FiLogOut className="text-xl group-hover:scale-110 transition-transform" />
           {t('settings.logoutBtn')}
         </button>
-        <p className="text-center mt-10 text-[9px] text-slate-400 dark:text-slate-700 font-black uppercase tracking-[0.3em]">
+        <p className="text-center mt-10 text-xs text-slate-400 dark:text-slate-700 font-semibold">
            {t('settings.version')} Family Hub
         </p>
       </div>

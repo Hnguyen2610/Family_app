@@ -99,12 +99,12 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
     const items = (profile[type] as string[]) || [];
     
     return (
-      <div className="glass rounded-2xl p-6 border border-black/5 dark:border-white/5 space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
             {icon}
           </div>
-          <h3 className="font-black text-sm uppercase tracking-widest text-slate-800 dark:text-slate-200">{title}</h3>
+          <h3 className="font-bold text-sm  text-slate-800 dark:text-slate-200">{title}</h3>
         </div>
         
         <div className="flex flex-wrap gap-2">
@@ -126,7 +126,7 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
           {extraItems.map((item, i) => (
             <div 
               key={`extra-${i}`} 
-              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black uppercase tracking-tighter border border-indigo-500/20 opacity-80"
+              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold er border border-indigo-500/20 opacity-80"
               title={t('settings.memory.fromMeals')}
             >
               <span>{item}</span>
@@ -134,7 +134,7 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
           ))}
 
           {items.length === 0 && extraItems.length === 0 && (
-            <p className="text-[10px] text-slate-400 italic">
+            <p className="text-xs text-slate-400 italic">
               {t('settings.memory.noInfo')}
             </p>
           )}
@@ -163,7 +163,7 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
@@ -173,19 +173,19 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
           <FiArrowLeft /> {t('settings.memory.back')}
         </Button>
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 text-2xl border border-indigo-500/20 shadow-xl shadow-indigo-500/10">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 text-2xl border border-indigo-500/20 shadow-md shadow-indigo-500/10">
             <FiBookOpen />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tighter uppercase italic">{t('settings.memory.title')}</h2>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight uppercase italic">{t('settings.memory.title')}</h2>
+            <p className="text-xs text-slate-500 font-bold opacity-60">
               {t('settings.memory.subtitle')}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="p-8 glass rounded-3xl border border-indigo-500/20 bg-indigo-500/5 relative overflow-hidden">
+      <div className="p-8 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 p-8 opacity-10 text-indigo-500 rotate-12">
             <FiBookOpen size={100} />
         </div>
@@ -223,7 +223,7 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
         />
       </div>
 
-      <div className="pt-6 flex justify-between items-center text-[10px] text-slate-400 font-black uppercase tracking-widest border-t border-black/5 dark:border-white/5">
+      <div className="pt-6 flex justify-between items-center text-xs text-slate-400 font-bold border-t border-black/5 dark:border-white/5">
         <span>{t('settings.memory.secure')}</span>
         {profile.enabled !== false && (
           <div className="flex items-center gap-2 text-indigo-500">

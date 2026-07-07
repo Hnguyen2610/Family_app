@@ -146,7 +146,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
   ];
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-right-4 duration-500 pb-20">
+    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <button 
@@ -157,7 +157,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
           <FiArrowLeft />
         </button>
         <div>
-          <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">{t('settings.notifications')}</h2>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('settings.notifications')}</h2>
           <p className="text-sm text-slate-500 font-medium">{t('settings.notificationsDesc')}</p>
         </div>
       </div>
@@ -171,15 +171,15 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
               key={type.id}
               type="button"
               onClick={() => !isSaving && toggleSetting(type.id)}
-              className="w-full flex items-center justify-between p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
+              className="w-full flex items-center justify-between p-5 rounded-2xl bg-card border border-border shadow-sm hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
             >
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                   {type.icon}
                 </div>
                 <div>
-                  <p className="text-sm font-black text-slate-700 dark:text-slate-200">{type.label}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{language === 'vi' ? 'Thông báo qua Email' : 'Email Notification'}</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{type.label}</p>
+                  <p className="text-xs text-slate-400 font-bold mt-0.5">{language === 'vi' ? 'Thông báo qua Email' : 'Email Notification'}</p>
                 </div>
               </div>
               
@@ -192,7 +192,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+        <p className="text-xs font-bold text-slate-400">
           {language === 'vi' ? 'Kênh nhận thông báo chủ động' : 'Proactive Assistant Channels'}
         </p>
         {[
@@ -205,11 +205,11 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
               key={channel.id}
               type="button"
               onClick={() => !isSaving && toggleProactiveChannel(channel.id)}
-              className="w-full flex items-center justify-between p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
+              className="w-full flex items-center justify-between p-5 rounded-2xl bg-card border border-border shadow-sm hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
             >
               <div>
-                <p className="text-sm font-black text-slate-700 dark:text-slate-200">{channel.label}</p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{language === 'vi' ? 'Kênh gửi' : 'Proactive assistant'}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{channel.label}</p>
+                <p className="text-xs text-slate-400 font-bold mt-0.5">{language === 'vi' ? 'Kênh gửi' : 'Proactive assistant'}</p>
               </div>
               <div className={`w-12 h-6 rounded-full transition-all relative ${isActive ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${isActive ? 'left-7' : 'left-1'}`} />
@@ -220,7 +220,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+        <p className="text-xs font-bold text-slate-400">
           {language === 'vi' ? 'Loại thông báo chủ động' : 'Proactive Assistant Types'}
         </p>
         {[
@@ -236,11 +236,11 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
               key={type.id}
               type="button"
               onClick={() => !isSaving && toggleProactiveType(type.id)}
-              className="w-full flex items-center justify-between p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800 hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
+              className="w-full flex items-center justify-between p-5 rounded-2xl bg-card border border-border shadow-sm hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer group text-left"
             >
               <div>
-                <p className="text-sm font-black text-slate-700 dark:text-slate-200">{type.label}</p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{language === 'vi' ? 'Tin tóm tắt hàng ngày' : 'Daily briefing'}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{type.label}</p>
+                <p className="text-xs text-slate-400 font-bold mt-0.5">{language === 'vi' ? 'Tin tóm tắt hàng ngày' : 'Daily briefing'}</p>
               </div>
               <div className={`w-12 h-6 rounded-full transition-all relative ${isActive ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${isActive ? 'left-7' : 'left-1'}`} />
@@ -250,7 +250,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
         })}
       </div>
 
-      <div className="p-5 rounded-[1.5rem] bg-white/60 dark:bg-slate-900/40 backdrop-blur-sm border border-slate-100 dark:border-slate-800">
+      <div className="p-5 rounded-2xl bg-card border border-border shadow-sm">
         <TimePicker
           value={settings.proactiveAssistantTime || '07:30'}
           onChange={updateProactiveTime}
@@ -261,7 +261,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
       </div>
 
       {/* Note Section */}
-      <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-[1.5rem] border border-indigo-100 dark:border-indigo-800/30">
+      <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/30">
         <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium leading-relaxed">
           {t('settings.notificationsNote')}
         </p>

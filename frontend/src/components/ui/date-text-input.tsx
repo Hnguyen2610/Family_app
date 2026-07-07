@@ -134,7 +134,7 @@ function DateTextInput({ value, onValueChange, className, onBlur, ...props }: Da
       />
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-2xl border border-black/10 bg-white p-3 shadow-2xl dark:border-white/10 dark:bg-slate-950">
+        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-xl border border-border bg-card p-3 shadow-lg">
           <div className="mb-3 flex items-center justify-between">
             <button
               type="button"
@@ -144,7 +144,7 @@ function DateTextInput({ value, onValueChange, className, onBlur, ...props }: Da
             >
               {"<"}
             </button>
-            <div className="text-sm font-black capitalize text-slate-900 dark:text-slate-100">
+            <div className="text-sm font-bold capitalize text-slate-900 dark:text-slate-100">
               {new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" }).format(viewDate)}
             </div>
             <button
@@ -157,7 +157,7 @@ function DateTextInput({ value, onValueChange, className, onBlur, ...props }: Da
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase tracking-widest text-slate-500">
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500">
             {["CN", "T2", "T3", "T4", "T5", "T6", "T7"].map((day) => (
               <div key={day} className="py-1">{day}</div>
             ))}
@@ -176,9 +176,9 @@ function DateTextInput({ value, onValueChange, className, onBlur, ...props }: Da
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => selectDate(date)}
                   className={cn(
-                    "h-9 rounded-xl text-xs font-black transition-all",
+                    "h-9 rounded-lg text-xs font-semibold transition-all",
                     isSelected
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/15"
                       : "hover:bg-primary/10 hover:text-primary",
                     isMuted ? "text-slate-300 dark:text-slate-700" : "text-slate-700 dark:text-slate-300",
                   )}
@@ -198,7 +198,7 @@ function DateTextInput({ value, onValueChange, className, onBlur, ...props }: Da
                 onValueChange("");
                 setIsOpen(false);
               }}
-              className="rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500"
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 hover:text-rose-500"
             >
               Xoa
             </button>
@@ -206,7 +206,7 @@ function DateTextInput({ value, onValueChange, className, onBlur, ...props }: Da
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => selectDate(new Date())}
-              className="rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/10"
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10"
             >
               Hom nay
             </button>

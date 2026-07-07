@@ -44,21 +44,21 @@ export function VisionDraftCard({
   const statusLabel = t(`vision.status.${draft.status.toLowerCase()}` as any);
 
   return (
-    <article className="glass rounded-2xl border border-black/5 dark:border-white/5 p-5 space-y-5 hover:border-primary/30 transition-all">
+    <article className="rounded-2xl border border-border bg-card p-5 space-y-5 hover:border-primary/30 transition-all shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="px-2 py-1 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-300 text-[9px] font-black uppercase tracking-widest">
+            <span className="px-2 py-1 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-300 text-xs font-semibold">
               {typeLabel}
             </span>
-            <span className="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-900 text-slate-500 text-[9px] font-black uppercase tracking-widest">
+            <span className="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-900 text-slate-500 text-xs font-semibold">
               {statusLabel}
             </span>
           </div>
-          <p className="font-black text-sm text-slate-900 dark:text-slate-100 line-clamp-2">
+          <p className="font-bold text-sm text-slate-900 dark:text-slate-100 line-clamp-2">
             {draft.summary || data.summary || t('vision.title')}
           </p>
-          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-2">
+          <p className="text-xs text-slate-400 font-semibold mt-2">
             {new Date(draft.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}
           </p>
         </div>
@@ -69,7 +69,7 @@ export function VisionDraftCard({
 
       {transaction && (
         <div className="rounded-xl border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-950/30 p-4 space-y-2">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
+          <p className="text-xs font-semibold text-slate-500 flex items-center gap-2">
             <FiCreditCard /> Transaction
           </p>
           <div className="grid grid-cols-2 gap-3 text-xs">
@@ -84,13 +84,13 @@ export function VisionDraftCard({
 
       {events.length > 0 && (
         <div className="rounded-xl border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-950/30 p-4 space-y-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-2">
+          <p className="text-xs font-semibold text-slate-500 flex items-center gap-2">
             <FiCalendar /> Events
           </p>
           {events.slice(0, 4).map((event, index) => (
             <div key={`${event.title || 'event'}-${index}`} className="flex items-start justify-between gap-3 text-xs">
               <span className="font-bold text-slate-700 dark:text-slate-200">{event.title || 'Untitled'}</span>
-              <span className="text-slate-500 font-black shrink-0">{event.date || '-'}</span>
+              <span className="text-slate-500 font-bold shrink-0">{event.date || '-'}</span>
             </div>
           ))}
           {events.length > 4 && (
@@ -101,10 +101,10 @@ export function VisionDraftCard({
 
       {data.medicineDraft?.medicines?.length ? (
         <div className="rounded-xl border border-black/5 dark:border-white/5 bg-white/60 dark:bg-slate-950/30 p-4 space-y-2">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Medicine</p>
+          <p className="text-xs font-semibold text-slate-500">Medicine</p>
           {data.medicineDraft.medicines.slice(0, 3).map((medicine, index) => (
             <p key={`${medicine.name || 'medicine'}-${index}`} className="text-xs text-slate-600 dark:text-slate-300">
-              <span className="font-black">{medicine.name || 'Unknown'}</span>
+              <span className="font-bold">{medicine.name || 'Unknown'}</span>
               {medicine.dosage ? ` - ${medicine.dosage}` : ''}
               {medicine.schedule ? ` - ${medicine.schedule}` : ''}
             </p>
@@ -122,32 +122,32 @@ export function VisionDraftCard({
 
       {(draft.rawText || data.rawText) && (
         <details className="text-xs text-slate-500">
-          <summary className="cursor-pointer font-black uppercase tracking-widest text-[9px]">{t('vision.rawText')}</summary>
+          <summary className="cursor-pointer font-semibold text-xs">{t('vision.rawText')}</summary>
           <p className="mt-3 whitespace-pre-wrap leading-relaxed">{draft.rawText || data.rawText}</p>
         </details>
       )}
 
       <div className="flex flex-wrap gap-2 pt-1">
         {transaction && (
-          <Button onClick={onSaveTransaction} disabled={!canAct} className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
+          <Button onClick={onSaveTransaction} disabled={!canAct} className="h-10 px-4 flex items-center gap-2 text-xs">
             <FiCheck />
             {busy ? 'Saving...' : labels.saveTransaction}
           </Button>
         )}
         {events.length > 0 && (
-          <Button onClick={onSaveEvents} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
+          <Button onClick={onSaveEvents} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-xs">
             <FiCalendar />
             {busy ? 'Saving...' : labels.saveEvents}
           </Button>
         )}
         {hasKnowledgeContent && (
-          <Button onClick={onSaveKnowledge} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest">
+          <Button onClick={onSaveKnowledge} disabled={!canAct} variant="outline" className="h-10 px-4 flex items-center gap-2 text-xs">
             <FiFileText />
             {busy ? 'Saving...' : 'Save note'}
           </Button>
         )}
         {draft.status === 'DRAFT' && (
-          <Button onClick={onDismiss} disabled={busy} variant="ghost" className="h-10 px-4 flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 hover:text-rose-500">
+          <Button onClick={onDismiss} disabled={busy} variant="ghost" className="h-10 px-4 flex items-center gap-2 text-xs text-slate-500 hover:text-rose-500">
             <FiTrash2 />
             {labels.dismiss}
           </Button>
@@ -160,8 +160,8 @@ export function VisionDraftCard({
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</p>
-      <p className="font-black text-slate-800 dark:text-slate-100 break-words">{value}</p>
+      <p className="text-xs font-semibold text-slate-400 mb-1">{label}</p>
+      <p className="font-bold text-slate-800 dark:text-slate-100 break-words">{value}</p>
     </div>
   );
 }

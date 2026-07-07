@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { AiIntent } from '../ai-intent-router';
-import { formatGoldPriceForUser, toolSuccess, toolError } from '../ai-tool-results';
+import { formatGoldPriceForUser, toolSuccess, toolError } from '../ai-tool-runtime';
 import { fetchGoldPrice } from '../helpers/gold-price.helper';
 import { normalizeSearchText } from '../ai-intent-router';
 

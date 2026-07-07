@@ -20,23 +20,26 @@ import { redactSensitiveData } from '../ai-redact';
 import {
   addRequestFeedback,
   appendDirectAiRequestLog,
+  appendConfusionCase,
   appendRequestLog,
   configureAiRequestLogPersistence,
+  getConfusionCases,
+  getConfusionStats,
   getAiRequestTelemetry,
   updateRequestLog,
   type AiFeedbackValue,
-} from '../ai-request-telemetry';
+} from '../ai-request-log';
 import { AiIntentClassifier } from '../ai-intent-classifier';
-import { appendConfusionCase } from '../ai-confusion-log';
 import { createSkillToolDispatcher, mergeUniqueTools } from '../ai-tool-dispatcher';
 import { AiFamilyResolver } from '../ai-family-resolver';
 import { AiStructuredActionHandler } from '../ai-structured-action-handler';
+import { AiActionProposalService } from './ai-action-proposal.service';
 import {
   buildSessionCacheKey,
   getSessionCachedResponse,
   getSessionCacheStats,
   setSessionCachedResponse,
-} from '../ai-session-cache';
+} from '../ai-cache';
 import { buildAiModelInput, getPrimaryUserId } from '../ai-chat-pipeline';
 import {
   buildFallbackExecuteTool,
@@ -65,6 +68,7 @@ export class AiAgentService {
     private readonly horoscopeService: HoroscopeService,
     private readonly familyResolver: AiFamilyResolver,
     private readonly structuredActionHandler: AiStructuredActionHandler,
+    private readonly actionProposalService: AiActionProposalService,
   ) {
     this.openai = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
     this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -74,8 +78,6 @@ export class AiAgentService {
     );
     configureAiRequestLogPersistence(this.prisma);
   }
-
-  // ─── Context Helpers ───────────────────────────────────────────────────────
 
   // ─── Model deps ─────────────────────────────────────────────────────────────
 
@@ -99,25 +101,27 @@ export class AiAgentService {
     return skillExtra ? `${base}\n\n${skillExtra}` : base;
   }
 
+  private isActionProposalResult(value: any) {
+    return value?.type === 'action_proposal' && value?.proposalId;
+  }
+
+  private getDirectResultContent(value: any) {
+    if (this.isActionProposalResult(value)) {
+      return value.message || 'Mình đã chuẩn bị thao tác này. Bạn xác nhận trước khi lưu nhé.';
+    }
+    return String(value || '');
+  }
+
+  private getDirectResultProposal(value: any) {
+    return this.isActionProposalResult(value) ? value : undefined;
+  }
+
   private async classifyIntentWithFallback(userMessage: string, hasImage: boolean): Promise<AiIntentRoute> {
     const ruleRoute = classifyAiIntent(userMessage, hasImage);
     if (!this.intentClassifier.shouldUseLlmFallback(ruleRoute, userMessage, hasImage)) {
       return ruleRoute;
     }
     return this.intentClassifier.classify(userMessage, ruleRoute);
-  }
-
-  /**
-   * If after all classification, the intent is still very uncertain, return a special
-   * clarification route so the chat layer can ask the user to rephrase.
-   */
-  private buildClarificationRoute(): AiIntentRoute {
-    return {
-      intent: 'general_chat',
-      requiresTools: false,
-      confidence: 0.3,
-      reason: 'too_ambiguous_needs_clarification',
-    };
   }
 
   private needsClarificationResponse(route: AiIntentRoute, userMessage: string): boolean {
@@ -159,7 +163,15 @@ export class AiAgentService {
 
   // ─── Chat ──────────────────────────────────────────────────────────────────
 
-  async chat(familyId: string, userMessage: string, userIds: string[] = [], image?: string, modelSelection?: string, sessionId?: string) {
+  async chat(
+    familyId: string,
+    userMessage: string,
+    userIds: string[] = [],
+    image?: string,
+    modelSelection?: string,
+    sessionId?: string,
+    source: 'web' | 'telegram' = 'web',
+  ) {
     const trace = createAiTrace('chat', modelSelection || 'groq');
 
     await this.chatService.saveMessage(familyId, 'user', userMessage, sessionId);
@@ -218,12 +230,14 @@ export class AiAgentService {
       trace,
       sessionId,
       historyLimit: this.historyLimit,
+      source,
     });
     const knowledgeSkill = this.skillRegistry.getAllSkills().find(s => s.name === 'FamilyKnowledgeSkill');
 
     const directStructuredAction = await this.structuredActionHandler.tryHandleStructuredMemoryEvent(skill, knowledgeSkill, skillContext);
     if (directStructuredAction) {
-      await this.chatService.saveMessage(familyId, 'assistant', directStructuredAction, sessionId);
+      const content = this.getDirectResultContent(directStructuredAction);
+      await this.chatService.saveMessage(familyId, 'assistant', content, sessionId);
       this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_structured_memory_event');
       const requestLog = appendDirectAiRequestLog({
         type: 'chat',
@@ -233,12 +247,13 @@ export class AiAgentService {
         familyId,
         sessionId,
       });
-      return { content: directStructuredAction, familyId, cached: false, direct: true, requestLogId: requestLog.id };
+      return { content, familyId, cached: false, direct: true, requestLogId: requestLog.id, proposal: this.getDirectResultProposal(directStructuredAction) };
     }
 
     const directCalendarMutation = await this.structuredActionHandler.tryHandleStructuredCalendarMutation(skill, skillContext);
     if (directCalendarMutation) {
-      await this.chatService.saveMessage(familyId, 'assistant', directCalendarMutation, sessionId);
+      const content = this.getDirectResultContent(directCalendarMutation);
+      await this.chatService.saveMessage(familyId, 'assistant', content, sessionId);
       this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_calendar_mutation');
       const requestLog = appendDirectAiRequestLog({
         type: 'chat',
@@ -248,7 +263,7 @@ export class AiAgentService {
         familyId,
         sessionId,
       });
-      return { content: directCalendarMutation, familyId, cached: false, direct: true, requestLogId: requestLog.id };
+      return { content, familyId, cached: false, direct: true, requestLogId: requestLog.id, proposal: this.getDirectResultProposal(directCalendarMutation) };
     }
 
     // Direct answer
@@ -298,6 +313,7 @@ export class AiAgentService {
       context: skillContext,
       baseExecuteTool: baseExecuteToolChat,
       shouldAllowSideEffectTool: (name) => shouldAllowSideEffectTool(name, skillContext),
+      createActionProposal: (toolName, args, context) => this.actionProposalService.createToolProposal(toolName, args, context),
     });
 
     const chatInput = buildAiModelInput({
@@ -401,7 +417,16 @@ export class AiAgentService {
 
   // ─── Stream ────────────────────────────────────────────────────────────────
 
-  async chatStream(familyId: string, userMessage: string, userIds: string[], res: any, sessionId?: string, image?: string, modelSelection?: string) {
+  async chatStream(
+    familyId: string,
+    userMessage: string,
+    userIds: string[],
+    res: any,
+    sessionId?: string,
+    image?: string,
+    modelSelection?: string,
+    source: 'web' | 'telegram' = 'web',
+  ) {
     const trace = createAiTrace('stream', modelSelection || 'groq', res);
 
 
@@ -472,12 +497,15 @@ export class AiAgentService {
       trace,
       sessionId,
       historyLimit: this.historyLimit,
+      source,
     });
     const knowledgeSkill = this.skillRegistry.getAllSkills().find(s => s.name === 'FamilyKnowledgeSkill');
 
     const directStructuredAction = await this.structuredActionHandler.tryHandleStructuredMemoryEvent(skill, knowledgeSkill, skillContext);
     if (directStructuredAction) {
-      await this.chatService.saveMessage(familyId, 'assistant', directStructuredAction, sessionId);
+      const content = this.getDirectResultContent(directStructuredAction);
+      const proposal = this.getDirectResultProposal(directStructuredAction);
+      await this.chatService.saveMessage(familyId, 'assistant', content, sessionId);
       const requestLog = appendDirectAiRequestLog({
         type: 'stream',
         intent: intentRoute.intent,
@@ -487,7 +515,8 @@ export class AiAgentService {
         sessionId,
       });
       res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
-      res.write(`data: ${JSON.stringify({ content: directStructuredAction })}\n\n`);
+      if (proposal) res.write(`data: ${JSON.stringify({ type: 'action_proposal', proposal })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
       this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_structured_memory_event');
@@ -496,7 +525,9 @@ export class AiAgentService {
 
     const directCalendarMutation = await this.structuredActionHandler.tryHandleStructuredCalendarMutation(skill, skillContext);
     if (directCalendarMutation) {
-      await this.chatService.saveMessage(familyId, 'assistant', directCalendarMutation, sessionId);
+      const content = this.getDirectResultContent(directCalendarMutation);
+      const proposal = this.getDirectResultProposal(directCalendarMutation);
+      await this.chatService.saveMessage(familyId, 'assistant', content, sessionId);
       const requestLog = appendDirectAiRequestLog({
         type: 'stream',
         intent: intentRoute.intent,
@@ -506,7 +537,8 @@ export class AiAgentService {
         sessionId,
       });
       res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
-      res.write(`data: ${JSON.stringify({ content: directCalendarMutation })}\n\n`);
+      if (proposal) res.write(`data: ${JSON.stringify({ type: 'action_proposal', proposal })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
       this.recordRoutingCase(userMessage, intentRoute, skill.name, 'direct_calendar_mutation');
@@ -560,6 +592,7 @@ export class AiAgentService {
       context: skillContext,
       baseExecuteTool,
       shouldAllowSideEffectTool: (name) => shouldAllowSideEffectTool(name, skillContext),
+      createActionProposal: (toolName, args, context) => this.actionProposalService.createToolProposal(toolName, args, context),
     });
 
     const streamInput = buildAiModelInput({
@@ -669,7 +702,6 @@ JSON duy nhất: {"category": "...", "type": "INCOME"|"EXPENSE"}`;
   }
 
   async getSystemStats(filters: { model?: string; skill?: string; status?: 'ok' | 'error' | 'cached'; familyId?: string; hasRag?: 'true' | 'false' } = {}) {
-    const { getConfusionStats, getConfusionCases } = require('../ai-confusion-log');
     const telemetry = await getAiRequestTelemetry(filters);
 
     return {

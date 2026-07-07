@@ -477,3 +477,96 @@ export async function getLogStats() {
 
   return { total: logs.length, cacheHits, errors, avgLatencyMs, byIntent, bySkill };
 }
+
+type DirectRequestLogInput = {
+  type: 'chat' | 'stream';
+  intent: string;
+  skill?: string;
+  model?: string;
+  cached?: boolean;
+  userId?: string;
+  familyId: string;
+  sessionId?: string;
+};
+
+export type AiTelemetryFilters = AiRequestLogFilters;
+
+export function appendDirectAiRequestLog(input: DirectRequestLogInput) {
+  return appendRequestLog({
+    type: input.type,
+    intent: input.intent,
+    skill: input.skill,
+    model: input.model || 'direct',
+    latencyMs: 0,
+    cached: input.cached || false,
+    redacted: false,
+    userId: input.userId,
+    familyId: input.familyId,
+    sessionId: input.sessionId,
+  });
+}
+
+export async function getAiRequestTelemetry(filters: AiTelemetryFilters) {
+  const [logStats, feedbackStats, requestLogs, topRetrievedRagSources] = await Promise.all([
+    getLogStats(),
+    getFeedbackStats(),
+    getFilteredRequestLogs(50, filters),
+    getTopRetrievedRagSources(10),
+  ]);
+
+  return {
+    logs: requestLogs,
+    logStats,
+    feedbackStats,
+    topRetrievedRagSources,
+  };
+}
+
+export type ConfusionCase = {
+  id: string;
+  timestamp: string;
+  userMessage: string;
+  ruleIntent: string;
+  ruleReason: string;
+  classifierIntent: string;
+  classifierConfidence: number;
+  classifierReason: string;
+  selectedSkill?: string;
+  outcome?: string;
+  error?: string;
+};
+
+const MAX_CONFUSION_CASES = 200;
+const confusionCases: ConfusionCase[] = [];
+let confusionCounter = 0;
+
+export function appendConfusionCase(entry: Omit<ConfusionCase, 'id' | 'timestamp'>) {
+  const record: ConfusionCase = {
+    id: `confusion-${++confusionCounter}`,
+    timestamp: new Date().toISOString(),
+    ...entry,
+  };
+
+  if (confusionCases.length >= MAX_CONFUSION_CASES) {
+    confusionCases.shift();
+  }
+  confusionCases.push(record);
+}
+
+export function getConfusionCases(limit = 50): ConfusionCase[] {
+  return confusionCases.slice(-limit).reverse();
+}
+
+export function getConfusionStats() {
+  if (confusionCases.length === 0) return { total: 0, byRuleIntent: {}, byClassifierIntent: {} };
+
+  const byRuleIntent: Record<string, number> = {};
+  const byClassifierIntent: Record<string, number> = {};
+
+  for (const confusionCase of confusionCases) {
+    byRuleIntent[confusionCase.ruleIntent] = (byRuleIntent[confusionCase.ruleIntent] || 0) + 1;
+    byClassifierIntent[confusionCase.classifierIntent] = (byClassifierIntent[confusionCase.classifierIntent] || 0) + 1;
+  }
+
+  return { total: confusionCases.length, byRuleIntent, byClassifierIntent };
+}

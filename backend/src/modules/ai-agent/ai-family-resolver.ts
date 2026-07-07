@@ -15,6 +15,7 @@ type BuildSkillContextInput = {
   trace?: any;
   sessionId?: string;
   historyLimit: number;
+  source?: 'web' | 'telegram';
 };
 
 @Injectable()
@@ -47,7 +48,7 @@ export class AiFamilyResolver {
   ) {}
 
   async buildSkillContext(input: BuildSkillContextInput): Promise<AiSkillContext> {
-    const { familyId, userMessage, userId, intent, image, trace, sessionId, historyLimit } = input;
+    const { familyId, userMessage, userId, intent, image, trace, sessionId, historyLimit, source } = input;
     const isFamilyAware = ['general_chat', 'calendar_query', 'event_mutation', 'meal_suggestion', 'horoscope', 'family_knowledge', 'football', 'web_search'].includes(intent);
 
     const userFamilies = familyId === 'all'
@@ -90,6 +91,7 @@ export class AiFamilyResolver {
       ragSources: this.toRagLogSources(ragResults),
       history,
       trace,
+      source,
     };
   }
 

@@ -17,6 +17,14 @@ type VisionDraftKind = 'auto' | 'receipt' | 'medicine' | 'school_plan';
 type VisionDraftStatus = 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
 export type AiFeedbackValue = 'correct' | 'wrong' | 'missing_context' | 'wrong_family' | 'wrong_datetime';
 
+export type AiActionProposal = {
+  type: 'action_proposal';
+  proposalId: string;
+  action: string;
+  payload: Record<string, any>;
+  message?: string;
+};
+
 export type ChatUsage = {
   provider: 'groq' | 'gemini';
   model: string;
@@ -274,6 +282,8 @@ export const chatAPI = {
               onStatus?.('replace_content', parsed);
             } else if (parsed.type === 'memory_consent_request') {
               onStatus?.('memory_consent_request', parsed);
+            } else if (parsed.type === 'action_proposal') {
+              onStatus?.('action_proposal', parsed);
             }
           } catch (e) {
             // ignore split JSON chunks
@@ -333,6 +343,10 @@ export const chatAPI = {
     userId?: string;
     comment?: string;
   }) => apiClient.post('/api/chat/feedback', data),
+  confirmProposal: (id: string, userId: string) =>
+    apiClient.post(`/api/chat/proposals/${id}/confirm`, { userId }),
+  rejectProposal: (id: string, userId: string) =>
+    apiClient.post(`/api/chat/proposals/${id}/reject`, { userId }),
   getAdminStats: (adminSecret: string, filters?: { model?: string; skill?: string; status?: string; familyId?: string; hasRag?: string }) =>
     apiClient.get('/api/chat/admin/stats', {
       headers: { 'x-admin-secret': adminSecret },
@@ -412,9 +426,25 @@ export const notificationsAPI = {
 export const dailyTasksAPI = {
   getAll: (userId: string) =>
     apiClient.get('/api/daily-tasks', { params: { userId } }),
-  create: (data: { userId: string; title: string; priority?: number; intervalMinutes?: number }) =>
+  create: (data: {
+    userId: string;
+    title: string;
+    priority?: number;
+    intervalMinutes?: number;
+    repeatWeekdays?: number[];
+    activeStartTime?: string;
+    activeEndTime?: string;
+  }) =>
     apiClient.post('/api/daily-tasks', data),
-  update: (id: string, data: { title?: string; priority?: number; intervalMinutes?: number; isActive?: boolean }) =>
+  update: (id: string, data: {
+    title?: string;
+    priority?: number;
+    intervalMinutes?: number;
+    repeatWeekdays?: number[];
+    activeStartTime?: string;
+    activeEndTime?: string;
+    isActive?: boolean;
+  }) =>
     apiClient.patch(`/api/daily-tasks/${id}`, data),
   reorder: (items: { id: string; priority: number }[]) =>
     apiClient.patch('/api/daily-tasks/reorder', items),

@@ -64,6 +64,7 @@ model Event {
   title       String
   description String?
   date        DateTime // Solar date
+  endDate     DateTime?
   time        String? // Ex: "09:00"
   lunarDate   String? // Ex: "30/12" (day/month in lunar calendar)
   type        EventType @default(GENERAL)
@@ -285,6 +286,24 @@ model AiRequestFeedback {
   @@index([createdAt])
 }
 
+model AiActionProposal {
+  id        String   @id @default(cuid())
+  userId    String
+  familyId  String?
+  source    String
+  action    String
+  payload   Json
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
 // ============================================
 // Notifications
 // ============================================
@@ -392,6 +411,10 @@ model DailyTask {
   title           String
   priority        Int       @default(0) // 0 = cao nhất, tăng dần = thấp hơn
   intervalMinutes Int       @default(30) // số phút bất kỳ giữa các lần nhắc
+  repeatWeekdays  Json?
+  activeStartTime String?   @default("08:00")
+  activeEndTime   String?   @default("17:00")
+  nextReminderAt  DateTime?
   isActive        Boolean   @default(true)
   lastNotifiedAt  DateTime?
   completedAt     DateTime?

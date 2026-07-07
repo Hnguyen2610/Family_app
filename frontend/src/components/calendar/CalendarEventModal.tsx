@@ -62,10 +62,10 @@ export function CalendarEventModal({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader className="mb-2">
-          <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-black uppercase tracking-[0.2em] mb-2 w-fit">
+          <div className="inline-flex w-fit items-center gap-2 rounded bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
             {t('nav.protocol')}
           </div>
-          <DialogTitle className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tighter">
+          <DialogTitle className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             {editingEvent ? t('calendar.editEvent') : t('calendar.addEvent')}
           </DialogTitle>
         </DialogHeader>
@@ -78,30 +78,28 @@ export function CalendarEventModal({
           />
 
           <div className="space-y-2">
-            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+            <Label className="text-xs font-bold text-slate-500">
               {t('calendar.eventDesc')}
             </Label>
             <Textarea
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, description: event.target.value })}
               placeholder="..."
               className="min-h-[80px] resize-none"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <DateField
               label={language === 'vi' ? 'Từ ngày' : 'From date'}
               value={formData.date}
               onChange={(date) => setFormData({ ...formData, date, endDate: formData.endDate || date })}
             />
-            {!editingEvent && (
-              <DateField
-                label={language === 'vi' ? 'Đến ngày' : 'To date'}
-                value={formData.endDate}
-                onChange={(endDate) => setFormData({ ...formData, endDate })}
-              />
-            )}
+            <DateField
+              label={language === 'vi' ? 'Đến ngày' : 'To date'}
+              value={formData.endDate}
+              onChange={(endDate) => setFormData({ ...formData, endDate })}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -133,15 +131,15 @@ export function CalendarEventModal({
           </div>
 
           {(formData.recurring === 'MONTHLY' || formData.recurring === 'YEARLY') && (
-            <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/10 dark:border-primary/20">
+            <div className="flex items-center gap-3 rounded-xl border border-primary/10 bg-primary/5 p-4 dark:border-primary/20">
               <input
                 type="checkbox"
                 id="useLunar"
                 checked={formData.useLunar}
-                onChange={(e) => setFormData({ ...formData, useLunar: e.target.checked })}
-                className="w-4 h-4 rounded border-black/10 dark:border-white/10 text-primary focus:ring-primary"
+                onChange={(event) => setFormData({ ...formData, useLunar: event.target.checked })}
+                className="h-4 w-4 rounded border-black/10 text-primary focus:ring-primary dark:border-white/10"
               />
-              <label htmlFor="useLunar" className="text-[11px] font-black text-primary uppercase tracking-widest cursor-pointer">
+              <label htmlFor="useLunar" className="cursor-pointer text-[11px] font-bold text-primary">
                 {t('calendar.useLunar')}
               </label>
             </div>
@@ -155,7 +153,7 @@ export function CalendarEventModal({
           />
           <ScopeToggle formData={formData} setFormData={setFormData} t={t} />
 
-          <div className="pt-4 flex gap-3">
+          <div className="flex gap-3 pt-4">
             {isDeletable && (
               <Button
                 variant="destructive"
@@ -168,7 +166,7 @@ export function CalendarEventModal({
             )}
             <Button
               onClick={onSave}
-              className="flex-1 h-12 rounded-xl text-sm font-bold gap-2"
+              className="h-12 flex-1 gap-2 rounded-xl text-sm font-bold"
             >
               <FiCheck />
               {language === 'vi' ? 'Xác nhận thay đổi' : 'Commit Changes'}
@@ -183,10 +181,10 @@ export function CalendarEventModal({
 function TextField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
   return (
     <div className="space-y-2">
-      <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+      <Label className="text-xs font-bold text-slate-500">
         {label}
       </Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="..." />
+      <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder="..." />
     </div>
   );
 }
@@ -194,7 +192,7 @@ function TextField({ label, onChange, value }: { label: string; onChange: (value
 function DateField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
   return (
     <div className="space-y-2">
-      <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+      <Label className="text-xs font-bold text-slate-500">
         {label}
       </Label>
       <DateTextInput value={value} onValueChange={onChange} />
@@ -215,7 +213,7 @@ function SelectField({
 }) {
   return (
     <div className="space-y-2">
-      <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+      <Label className="text-xs font-bold text-slate-500">
         {label}
       </Label>
       <Select value={value} onValueChange={(nextValue) => onChange(nextValue as string)}>
@@ -235,15 +233,15 @@ function SelectField({
 function ScopeToggle({ formData, setFormData, t }: Pick<CalendarEventModalProps, 'formData' | 'setFormData' | 't'>) {
   return (
     <div className="space-y-2">
-      <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+      <Label className="text-xs font-bold text-slate-500">
         {t('calendar.eventScope')}
       </Label>
-      <div className="flex p-1 bg-slate-100 dark:bg-slate-900 border border-black/5 dark:border-white/5 rounded-xl">
+      <div className="flex rounded-xl border border-black/5 bg-slate-100 p-1 dark:border-white/5 dark:bg-slate-900">
         {['GLOBAL', 'FAMILY', 'PRIVATE'].map((scope) => (
           <button
             key={scope}
             onClick={() => setFormData({ ...formData, scope })}
-            className={`flex-1 py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+            className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
               formData.scope === scope
                 ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'
