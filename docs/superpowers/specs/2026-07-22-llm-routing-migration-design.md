@@ -43,12 +43,26 @@ it.
   intent.
 - Write one unified system prompt instead of concatenating each skill's
   `getSystemPrompt()`.
+- Simplify model routing (`ai-model-routing.ts`) and family-scope disambiguation
+  (`ai-family-resolver.ts`) to no longer depend on a pre-computed intent, since both
+  currently branch on it (see §4 table for exact replacements).
+- Remove two Telegram-side behaviors that also depended on `classifyAiIntent`: the
+  group-chat "only respond to calendar-looking messages" gate (replaced with an
+  explicit @-mention/command requirement) and the private-chat "looks like a memory
+  request → propose a note without calling the LLM" shortcut (removed; those messages
+  now go through the normal `AiAgentService` pipeline like everything else).
 
-**Out of scope (explicitly unchanged):**
+**Out of scope (behavior unchanged, entry mechanism adjusted):**
 - `CalendarSkill.tryDirectAnswer` — the calendar **read/query** path (e.g. "lịch hôm
-  nay có gì") stays exactly as-is. It is read-only, lower risk, very high frequency,
-  and the parser it uses (`parseCalendarDate`) is not being removed. Only the
-  **write** path (create/update/delete) is being handled by the LLM now.
+  nay có gì") keeps its logic and output as-is: it is read-only, lower risk, very
+  high frequency, and the parser it uses (`parseCalendarDate`) is not being removed.
+  Only the **write** path (create/update/delete) is being handled by the LLM now.
+  Its outer gate (currently `if (context.intent === 'calendar_query')`) is removed
+  since nothing computes that classification anymore — the method now always
+  attempts its existing internal checks (`looksLikeCalendarMutation` bail-out,
+  `parseCalendarDate`/`getCalendarMonthFromMessage`/`isPersonalEventQuery`) and
+  naturally returns `undefined` (falls through to the LLM) when none of them find
+  anything, so no new keyword gate is introduced to replace the old one.
 - The permission gates in `ai-tool-policy.ts` (`shouldAllowSideEffectTool`,
   `shouldAllowKnowledgeOrAutoWrite`, `shouldAllowKnowledgeWriteTool`,
   `shouldAllowGeneralMemoryTools`) — these stay and continue to filter which tools are
@@ -92,7 +106,7 @@ Every chat turn:
 
 | File | Change |
 |---|---|
-| `ai-intent-router.ts` | Remove `classifyAiIntent` and the routing logic around it. Keep `normalizeSearchText` (used broadly elsewhere) and the `AiIntent` type, now used only as a post-hoc label for logging (§5), never for routing. |
+| `ai-intent-router.ts` | Remove `classifyAiIntent` and the routing logic around it. Keep `normalizeSearchText` (used broadly elsewhere) and the `AiIntent` string-union type, kept only as the type of the post-hoc dashboard label (§5) — nothing computes it from keywords anymore. |
 | `ai-intent-classifier.ts` | Delete. Its only purpose was to resolve low-confidence cases from the rule router; with no rule router, there is nothing for it to back up. |
 | `ai-structured-action-handler.ts` | Remove `tryHandleStructuredCalendarMutation` and `tryHandleStructuredMemoryEvent`. |
 | `ai-calendar-mutation-parser.ts` | Keep the date/time/range extraction logic; drop the action-inference logic (create vs. update vs. delete). Expose the date logic as the `resolveVietnameseDate(text)` tool. |
@@ -101,8 +115,15 @@ Every chat turn:
 | `family-knowledge.skill.ts` / `rag.service.ts` | Add `searchFamilyNotes(query)` tool wrapping the existing pgvector + ILIKE retrieval (no new retrieval logic). |
 | `ai-agent-prompt.ts` | Replace per-skill prompt concatenation with one unified prompt (§4.1). |
 | `ai-agent.service.ts` | Remove the `getSkillForIntent` + `structuredActionHandler.tryHandleStructured*` branches; call the flattened-tool-list flow instead. |
-| `ai-request-log.ts`, `AiDashboardRequestLogs.tsx` | `intent` becomes a post-hoc derived label (§5), not a pre-computed routing decision. |
+| `ai-request-log.ts`, `AiDashboardRequestLogs.tsx` | `intent` becomes a post-hoc derived label (§5), not a pre-computed routing decision. Frontend needs no change — it keeps reading a string field named `intent`. |
 | `backend/scripts/eval-ai.ts`, `ai-action-evals.json` | Rewritten to call the real model and assert on the tool actually invoked (§5). |
+| `ai-model-routing.ts` | `routeAiModel` no longer takes `AiIntentRoute`. New signature: `routeAiModel(selection: string \| undefined, hasImage: boolean)`. Vision routing keys off `hasImage` directly (already known before any classification). The old `requiresTools` branch is now the default for every non-vision, non-explicit-selection turn (every turn can call tools now), so it always resolves to the tool-capable model. The old `horoscope` "reasoning model" special case is dropped — horoscope answers still work correctly on the default tool-capable model, just without that model preference. |
+| `ai-cache.ts` | Per-intent cache TTL/eligibility (`getSkillTtl`, `isResponseCacheable`, cache key `intent` bucketing) collapses to one default bucket, since there is no pre-computed intent to key off anymore. This is a caching optimization, not a correctness path — accepted minor regression (e.g. gold price/weather responses may be cached slightly longer than their old short TTL). |
+| `ai-family-resolver.ts` | `buildSkillContext`'s RAG auto-preload (`shouldRetrieveRag`, `searchRagAcrossScope`, `ragQuery`/`ragContext`/`ragMiss`/`ragSources` construction) is removed — RAG only enters a turn via the model calling `searchFamilyNotes`. `isFamilyAware` gate is removed; family member profile context (`getFamilyContext`) is now always included (cheap, low-risk, no longer needs an intent gate). `resolveFamilyId`'s `intent === 'calendar_query'` branch and `buildDisambiguationNotice`'s intent-based message switch are both removed and replaced with one unified disambiguation message that tells the model itself to decide: query freely across all families for read-only questions, but ask the user once before any tool call that mutates a specific family's data. `BuildSkillContextInput`/`AiSkillContext` drop the `intent: string` field entirely — nothing left in this file needs it. |
+| `interfaces/ai-skill.interface.ts`, all `*.skill.ts` files, `ai-skill-registry.ts` | Remove `canHandle(intent)` from the `AiSkill` interface and every implementation (`CalendarSkill`, `MealSkill`, `WeatherSkill`, `MarketSkill`, `FootballSkill`, `SearchSkill`, `FamilyKnowledgeSkill`, `GeneralChatSkill`, `HoroscopeSkill`) — nothing calls it once `getSkillForIntent` is gone. |
+| `ai-agent-tools.ts` | `shouldUseTools(userMessage)` currently calls `classifyAiIntent(...).requiresTools`. Since every turn can call tools now, this becomes a hardcoded `return true;` with no `classifyAiIntent` import. `getTools()` (the static legacy fallback tool list used only when `ai-model-handlers.ts` receives no `toolsOverride`) is left as-is — it is never reached by `AiAgentService` (which always passes `toolsOverride`), so it stays only as a defensive default for other/test callers. |
+| `telegram/handlers/telegram-message-handlers.ts` | In group chats, the old gate (`classifyAiIntent(text).intent !== 'event_mutation'` → ignore) is replaced with an explicit-address check: the bot only responds in a group when the message @-mentions the bot username or starts with a recognized command (e.g. `/lich`, `/ai`). Private chats are unaffected. |
+| `telegram/telegram-note-draft.ts` | `shouldProposeTelegramFamilyNote` and `buildTelegramNoteDraft` (the non-LLM "looks like a memory request → propose saving a note" shortcut) are deleted. Telegram private-chat messages that used to trigger this go through the normal `AiAgentService` pipeline instead, same as any other message — the LLM decides whether to call `createWikiEntry`/`autoSaveFamilyMemory`. |
 
 ### 4.1 Unified system prompt
 
@@ -135,17 +156,19 @@ repetitive prompt that can carry conflicting tone/instructions across skills. In
 
 ## 6. Rollout
 
-Add a temporary env flag `AI_ROUTING_MODE=llm|legacy` defaulting to `llm` once merged.
-During the flagged window, the legacy files listed in §4 (`ai-intent-classifier.ts`,
-the two `ai-structured-action-handler.ts` methods, `classifyAiIntent`) are **not
-deleted yet** — they stay in the codebase, dormant, only reachable when
-`AI_ROUTING_MODE=legacy` is set, so there is an immediate in-app rollback path if a
-serious regression surfaces against real family data (no redeploy/revert needed).
+**Revised during plan-writing:** the blast radius turned out to be much larger than
+originally scoped here — it also touches `ai-model-routing.ts`, `ai-cache.ts`,
+`ai-family-resolver.ts`, `calendar.skill.ts`'s direct-answer gate, and two Telegram
+files, not just the two calendar files originally listed. Maintaining a parallel
+`AI_ROUTING_MODE=llm|legacy` code path across all of that would roughly double the
+code and test surface of this migration. Given that, this is a clean cutover:
+§4's "Delete" / "Remove" entries mean deleted from the repo, in the commits that make
+each change. There is no runtime flag and no dormant legacy path.
 
-After roughly 1-2 weeks of stable production behavior on `llm` mode, do a follow-up
-cleanup change that deletes the flag and the legacy code path it guards for good.
-Until that cleanup lands, §4's "Delete" / "Remove" entries mean "moved behind the
-legacy flag," not "deleted from the repo."
+If a serious regression surfaces against real family data after merging, roll back
+with a normal `git revert` of the relevant commit(s) and redeploy — this is an
+ordinary deploy, not an emergency in-app toggle, but it does not require re-doing any
+work either.
 
 ## 7. Known risks
 
@@ -156,12 +179,24 @@ legacy flag," not "deleted from the repo."
   run to run.
 - `ai-request-log`/dashboard consumers that assumed `intent` was decided *before* the
   model ran now need to treat it as a post-hoc derived label.
+- Cache TTL/eligibility loses its per-intent tuning (e.g. gold price/weather no
+  longer get a deliberately short TTL) — a caching-optimization regression, not a
+  correctness one.
+- Horoscope answers lose their dedicated "reasoning model" routing preference and use
+  the same default tool-capable model as everything else.
+- User-visible behavior change in Telegram: the bot now only responds in group chats
+  when explicitly @-mentioned or addressed with a command, instead of silently
+  watching every message for calendar-looking phrasing. Private-chat "nhớ ..." messages
+  no longer get an instant note-save proposal — they go through the full pipeline like
+  any other message, so that path gets a little slower.
 
 ## 8. Non-goals
 
 - Not merging skill classes/files into one module — each skill stays a separate,
   independently testable unit.
-- Not changing `CalendarSkill.tryDirectAnswer` (read path), permission gates, the
-  ReAct/PEV loop, LoopGuard, sanitizer, or Action Proposal V2.
+- Not changing what `CalendarSkill.tryDirectAnswer` (read path) actually answers with
+  — only how it gets entered (see §2). Not changing permission gates, the ReAct/PEV
+  loop, LoopGuard, sanitizer, or Action Proposal V2.
 - Not adding a verify-after-parse hybrid for the write path (see §2, rejected
   alternative).
+- Not introducing a runtime rollback flag (see §6) — rollback is a plain `git revert`.
