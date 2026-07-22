@@ -32,6 +32,9 @@ export interface AiConversationStatePayload {
   lastShownNotes?: ListedNoteMetadata[];
   lastShownTasks?: ListedTaskMetadata[];
   lastSelectedFamilyId?: string;
+  // Repurposed: holds the name of the most recently invoked skill (e.g. 'CalendarSkill'), used to
+  // decide which skill's system-prompt persona to include next turn. No longer holds a classified
+  // "intent" — that concept was removed; kept the existing DB column instead of adding a new one.
   lastIntent?: string;
   lastAssistantSummary?: string;
   pendingReference?: Record<string, any>;

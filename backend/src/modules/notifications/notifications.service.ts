@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { EventsService } from '../events/events.service';
 import { WebPushService } from './web-push.service';
-import { AiAgentService } from '../ai-agent/services/ai-agent.service';
+import { HoroscopeService } from '../ai-agent/services/horoscope.service';
 import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
 import { TelegramService } from '../telegram/telegram.service';
@@ -30,7 +30,7 @@ export class NotificationsService {
     private readonly webPushService: WebPushService,
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
-    private readonly aiAgentService: AiAgentService,
+    private readonly horoscopeService: HoroscopeService,
     @Inject(forwardRef(() => FinanceService))
     private readonly financeService: FinanceService,
     private readonly telegramService: TelegramService,
@@ -133,7 +133,7 @@ export class NotificationsService {
           const context = `Lịch trình/Sự kiện của người dùng trong 7 ngày tới:\n${eventContext}\n\nVai trò trong gia đình: ${user.role || 'Thành viên'}.`;
 
           // 2. Generate Horoscope using AI (Gemini)
-          const horoscope = await this.aiAgentService.generateHoroscope(user.name, user.birthday || undefined, context);
+          const horoscope = await this.horoscopeService.generateWeeklyHoroscope(user.name, user.birthday || undefined, context);
 
           // 3. Send Email
           await this.mailService.sendHoroscopeEmail(user.email, user.name, horoscope);

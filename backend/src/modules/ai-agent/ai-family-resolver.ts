@@ -6,7 +6,7 @@ import { AiSkillContext } from './interfaces/ai-skill.interface';
 import { AiConversationStateService } from './services/ai-conversation-state.service';
 import { buildMemoryProfileContext, parseMemoryProfile, toStringList } from './ai-memory-profile';
 import { normalizeSearchText } from './ai-intent-router';
-import { buildFamilyScopeNotice, getRagSearchFamilyIds, resolveFamilyMode } from './ai-family-scope-policy';
+import { buildFamilyScopeNotice, resolveFamilyMode } from './ai-family-scope-policy';
 
 type BuildSkillContextInput = {
   familyId: string;
@@ -52,7 +52,6 @@ export class AiFamilyResolver {
 
   async buildSkillContext(input: BuildSkillContextInput): Promise<AiSkillContext> {
     const { familyId, userMessage, userId, intent, image, trace, sessionId, historyLimit, source } = input;
-    const isFamilyAware = ['general_chat', 'calendar_query', 'event_mutation', 'meal_suggestion', 'horoscope', 'family_knowledge', 'football', 'web_search'].includes(intent);
 
     const userFamilies = familyId === 'all'
       ? await this.getUserFamilies(userId)
@@ -64,36 +63,27 @@ export class AiFamilyResolver {
 
     const [memoryContext, familyRaw, history] = await Promise.all([
       this.getMemoryContext(userId),
-      isFamilyAware ? this.getFamilyContext(userId) : Promise.resolve(''),
+      this.getFamilyContext(userId),
       this.chatService.getHistory(familyId, sessionId, historyLimit),
     ]);
-    const ragQuery = this.buildRagQuery(userMessage, history, Boolean(resolvedFamilyId));
-    const shouldRetrieveRag = this.shouldRetrieveRag(intent, ragQuery);
-    const ragResults = shouldRetrieveRag
-      ? await this.searchRagAcrossScope(getRagSearchFamilyIds({ familyId, resolvedFamilyId, families: userFamilies }), ragQuery, 3)
-      : [];
-
-    this.logRagRetrieval(ragQuery, resolvedFamilyId || familyId, shouldRetrieveRag, ragResults);
-
-    const disambiguationNotice = buildFamilyScopeNotice({ familyId, families: userFamilies, intent, resolvedFamilyId });
-    const ragContext = this.ragService.formatRagContext(ragResults);
-    const ragFamilyContext = ragContext ? `FAMILY WIKI RETRIEVED CONTEXT:\n${ragContext}` : '';
-    const familyContext = [memoryContext, familyRaw, disambiguationNotice, ragFamilyContext].filter(Boolean).join('\n\n');
+    const disambiguationNotice = buildFamilyScopeNotice({ familyId, families: userFamilies, resolvedFamilyId });
+    const familyContext = [memoryContext, familyRaw, disambiguationNotice].filter(Boolean).join('\n\n');
 
     return {
       userId,
       familyId,
       resolvedFamilyId,
       resolvedFamilyMode,
+      userFamilyIds: userFamilies.map((family) => family.id),
       userMessage,
       intent,
       image,
       familyContext,
       memoryContext,
-      ragContext,
-      ragQuery: shouldRetrieveRag ? ragQuery : undefined,
-      ragMiss: shouldRetrieveRag && ragResults.length === 0,
-      ragSources: this.toRagLogSources(ragResults),
+      ragContext: '',
+      ragQuery: undefined,
+      ragMiss: false,
+      ragSources: [],
       history,
       trace,
       source,
@@ -133,11 +123,6 @@ export class AiFamilyResolver {
     // Check if the user message contains explicit naming first
     const explicitMatchId = await this.findExplicitFamilyMatch(userFamilies, userMessage);
     if (explicitMatchId) return explicitMatchId;
-
-    // In all-family calendar queries, keep the query broad unless the user explicitly named a family.
-    if (intent === 'calendar_query') {
-      return undefined;
-    }
 
     // Fall back to conversation state's lastSelectedFamilyId
     if (stateFamilyId && userFamilies.some(f => f.id === stateFamilyId)) {
@@ -284,147 +269,5 @@ export class AiFamilyResolver {
       meaningfulWords,
       isGeneric: !normalized || this.genericFamilyNames.has(normalized) || meaningfulWords.length === 0,
     };
-  }
-
-  private toRagLogSources(results: Array<{
-    documentId: string;
-    title: string;
-    chunkIndex: number;
-    score: number;
-    familyId?: string;
-    sourceType?: string;
-    category?: string;
-    retrieval?: string;
-    content?: string;
-  }>) {
-    return results.map((result) => ({
-      documentId: result.documentId,
-      title: result.title,
-      chunkIndex: result.chunkIndex,
-      score: Number(result.score || 0),
-      familyId: result.familyId,
-      sourceType: result.sourceType,
-      category: result.category,
-      retrieval: result.retrieval,
-      snippet: String(result.content || '').slice(0, 500),
-    }));
-  }
-
-  private async searchRagAcrossScope(familyIds: string[], query: string, limit: number) {
-    const uniqueFamilyIds = Array.from(new Set(familyIds.filter(Boolean)));
-    if (uniqueFamilyIds.length === 0) return [];
-
-    const results = (await Promise.all(
-      uniqueFamilyIds.map((id) => this.ragService.searchFamilyKnowledge(id, query, limit)),
-    )).flat();
-
-    return results
-      .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
-      .slice(0, Math.max(1, Math.min(limit, 5)));
-  }
-
-  private buildRagQuery(userMessage: string, history: any[], hasResolvedFamily: boolean) {
-    const normalized = normalizeSearchText(userMessage || '').trim();
-    const words = normalized.split(/\s+/).filter(Boolean);
-    const isLikelyFamilySelection = hasResolvedFamily && words.length > 0 && words.length <= 4 && !/[?？]/.test(userMessage);
-    if (!isLikelyFamilySelection) return userMessage;
-
-    const previousUserQuestion = (history || [])
-      .filter((message: any) => message?.role === 'user')
-      .map((message: any) => String(message.content || '').trim())
-      .find((content: string) => content && normalizeSearchText(content) !== normalized);
-
-    return previousUserQuestion ? `${previousUserQuestion}\n${userMessage}` : userMessage;
-  }
-
-  private shouldRetrieveRag(intent: string, userMessage: string) {
-    if (intent === 'family_knowledge') return true;
-    if (intent === 'image_vision' || intent === 'gold_price' || intent === 'football' || intent === 'weather') return false;
-
-    const normalized = normalizeSearchText(userMessage);
-    const familySignals = [
-      'nha minh',
-      'gia dinh minh',
-      'so tay',
-      'ghi chu',
-      'family wiki',
-      'wiki gia dinh',
-      'thong tin gia dinh',
-      'theo nha minh',
-      'theo ghi chu',
-      'luu ',
-      'nho ',
-      'long memory',
-      'ky niem',
-      'save ',
-      'remember',
-    ];
-
-    const familyPronouns = ['vo', 'chong', 'bo', 'me', 'con', 'anh', 'em', 'ong', 'ba', 'thanh vien', 'nha', 'gia dinh'];
-    const hasFamilyPronoun = familyPronouns.some((pronoun) => new RegExp(`\\b${pronoun}\\b`).test(normalized));
-    if (hasFamilyPronoun) return true;
-    if (familySignals.some((signal) => normalized.includes(signal))) return true;
-
-    const familyFactQuestionSignals = [
-      'bao nhieu',
-      'la gi',
-      'la ngay nao',
-      'ngay nao',
-      'ngay dau tien',
-      'dau tien',
-      'yeu nhau',
-      'thich gi',
-      'so thich',
-      'khong thich',
-      'di ung',
-      'ghet',
-    ];
-    if (familyFactQuestionSignals.some((signal) => normalized.includes(signal))) return true;
-
-    const suggestionSignals = [
-      'goi y',
-      'nen',
-      'chuan bi',
-      'ke hoach',
-      'an gi',
-      'thuc don',
-      'qua tang',
-      'sinh nhat',
-      'lich hoc',
-      'don thuoc',
-    ];
-    if (['meal_suggestion', 'calendar_query', 'event_mutation', 'horoscope'].includes(intent)) {
-      return suggestionSignals.some((signal) => normalized.includes(signal));
-    }
-
-    return false;
-  }
-
-  private logRagRetrieval(query: string, familyId: string, shouldRetrieve: boolean, ragResults: any[]) {
-    if (ragResults.length > 0) {
-      this.logger.debug(`[RAG Retrieval] Matched ${ragResults.length} snippets for query "${query}":\n` +
-        ragResults.map((result, index) => `  [#${index + 1}] Title: "${result.title}", Chunk: ${result.chunkIndex}, Score: ${result.score.toFixed(3)}, Method: ${result.retrieval}\n      Snippet: ${result.content.substring(0, 150)}...`).join('\n')
-      );
-    } else if (shouldRetrieve) {
-      this.logger.debug(`[RAG Retrieval] No snippets matched query "${query}" for family "${familyId}"`);
-    }
-  }
-
-  private buildDisambiguationNotice(
-    familyId: string,
-    userFamilies: Array<{ id: string; name: string }>,
-    intent: string,
-    resolvedFamilyId?: string,
-  ) {
-    if (familyId === 'all' && userFamilies.length > 1 && !resolvedFamilyId) {
-      if (intent === 'calendar_query') {
-        return 'USER IS VIEWING ALL FAMILIES. For read-only calendar queries, call calendar tools with familyId "all" and include private events by passing userId.';
-      }
-      return `USER IS VIEWING ALL FAMILIES. Their families:\n${userFamilies.map((family, index) => `${index + 1}. ${family.name} (id: ${family.id})`).join('\n')}\nINSTRUCTION: Ask the user ONCE which family to use. When they answer with a family name, call the tool immediately with that family's id — do NOT ask again.`;
-    }
-    if (resolvedFamilyId) {
-      return `RESOLVED FAMILY: Using "${userFamilies.find((family) => family.id === resolvedFamilyId)?.name || resolvedFamilyId}" (id: ${resolvedFamilyId}) for all write operations.`;
-    }
-    return '';
   }
 }

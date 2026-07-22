@@ -1,4 +1,4 @@
-import { AiSkillContext } from './interfaces/ai-skill.interface';
+import { AiSkill, AiSkillContext } from './interfaces/ai-skill.interface';
 import { repairToolArgs, toolError, toolValidationError, validateToolArgs } from './ai-tool-runtime';
 import { isSideEffectTool } from './ai-tool-policy';
 
@@ -11,11 +11,6 @@ type ToolSchema = {
   function?: {
     name?: string;
   };
-};
-
-type SkillWithTools = {
-  name?: string;
-  executeTool?: (toolName: string, args: any, context: AiSkillContext) => Promise<any>;
 };
 
 type BaseExecuteTool = (toolName: string, args: any, familyId: string, userId: string) => Promise<any>;
@@ -48,8 +43,7 @@ export function createSkillToolDispatcher(options: {
   label: string;
   logger: AiLogger;
   tools: ToolSchema[];
-  skill: SkillWithTools;
-  knowledgeSkill?: SkillWithTools;
+  toolOwners: Map<string, AiSkill>;
   context: AiSkillContext;
   baseExecuteTool: BaseExecuteTool;
   shouldAllowSideEffectTool: (toolName: string) => boolean;
@@ -59,8 +53,7 @@ export function createSkillToolDispatcher(options: {
     label,
     logger,
     tools,
-    skill,
-    knowledgeSkill,
+    toolOwners,
     context,
     baseExecuteTool,
     shouldAllowSideEffectTool,
@@ -86,18 +79,11 @@ export function createSkillToolDispatcher(options: {
       return proposal;
     }
 
-    if (skill.executeTool) {
-      const result = await skill.executeTool(toolName, safeArgs, context);
+    const owner = toolOwners.get(toolName);
+    if (owner?.executeTool) {
+      const result = await owner.executeTool(toolName, safeArgs, context);
       if (result !== undefined) {
-        logger.debug(`[${label}] ${toolName} handled by ${skill.name}`);
-        return result;
-      }
-    }
-
-    if (knowledgeSkill?.executeTool) {
-      const result = await knowledgeSkill.executeTool(toolName, safeArgs, context);
-      if (result !== undefined) {
-        logger.debug(`[${label}] ${toolName} handled by FamilyKnowledgeSkill`);
+        logger.debug(`[${label}] ${toolName} handled by ${owner.name}`);
         return result;
       }
     }

@@ -6,6 +6,8 @@ import { ChatService } from './services/chat.service';
 import { RagService } from './services/rag.service';
 import { VisionExtractionService } from './services/vision-extraction.service';
 import { AiActionProposalService } from './services/ai-action-proposal.service';
+import { AiEvalService } from './services/ai-eval.service';
+import { AiStatsService } from './services/ai-stats.service';
 import { ChatMessageDto } from './dto/chat.dto';
 import { AdminAuthGuard } from '../auth/guards/admin-auth.guard';
 
@@ -18,6 +20,8 @@ export class AiAgentController {
     private readonly ragService: RagService,
     private readonly visionExtractionService: VisionExtractionService,
     private readonly actionProposalService: AiActionProposalService,
+    private readonly aiEvalService: AiEvalService,
+    private readonly aiStatsService: AiStatsService,
   ) {}
 
   @Post('message')
@@ -193,7 +197,7 @@ export class AiAgentController {
       comment?: string;
     },
   ) {
-    return this.aiAgentService.addFeedback(dto);
+    return this.aiStatsService.addFeedback(dto);
   }
 
   @Delete('history/:familyId')
@@ -233,21 +237,21 @@ export class AiAgentController {
       note?: string;
     },
   ) {
-    return this.aiAgentService.createEvalDraftFromLog(dto);
+    return this.aiEvalService.createEvalDraftFromLog(dto);
   }
 
   @SkipThrottle()
   @Get('admin/eval-cases')
   @UseGuards(AdminAuthGuard)
   async getEvalCases() {
-    return this.aiAgentService.getEvalCases();
+    return this.aiEvalService.getEvalCases();
   }
 
   @SkipThrottle()
   @Post('admin/eval-cases/run')
   @UseGuards(AdminAuthGuard)
   async runEvalCases() {
-    return this.aiAgentService.runEvalCases();
+    return this.aiEvalService.runEvalCases();
   }
 
   @SkipThrottle()
@@ -257,7 +261,7 @@ export class AiAgentController {
     @Param('id') id: string,
     @Body() data: any,
   ) {
-    return this.aiAgentService.updateEvalCase(id, data);
+    return this.aiEvalService.updateEvalCase(id, data);
   }
 
   @SkipThrottle()
@@ -266,7 +270,7 @@ export class AiAgentController {
   async deleteEvalCase(
     @Param('id') id: string,
   ) {
-    return this.aiAgentService.deleteEvalCase(id);
+    return this.aiEvalService.deleteEvalCase(id);
   }
 
   @SkipThrottle()
@@ -279,6 +283,6 @@ export class AiAgentController {
     @Query('familyId') familyId?: string,
     @Query('hasRag') hasRag?: 'true' | 'false',
   ) {
-    return this.aiAgentService.getSystemStats({ model, skill, status, familyId, hasRag });
+    return this.aiStatsService.getSystemStats({ model, skill, status, familyId, hasRag });
   }
 }

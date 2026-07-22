@@ -7,7 +7,7 @@ export function createDefaultUsageByModel(): Partial<Record<AiModelProvider, Cha
   return {
     groq: {
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       contextWindow: 131072,
       totalTokens: 0,
       maxOutputTokens: 1024,

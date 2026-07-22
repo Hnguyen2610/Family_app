@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AiAgentService } from '../../ai-agent/services/ai-agent.service';
+import { AiModelClientsService } from '../../ai-agent/services/ai-model-clients.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { CreateTransactionDto, UpdateBudgetDto } from '../dto/finance.dto';
 import { TransactionType, TransactionCategory } from '@prisma/client';
@@ -11,7 +11,7 @@ export class FinanceService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly aiAgentService: AiAgentService,
+    private readonly modelClients: AiModelClientsService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -77,7 +77,7 @@ export class FinanceService {
 
     if (dto.description && (!dto.category || dto.category === TransactionCategory.OTHER)) {
       try {
-        const aiResult = await this.aiAgentService.categorizeTransaction(dto.description);
+        const aiResult = await this.categorizeTransaction(dto.description);
         category = aiResult.category as TransactionCategory;
 
         // Only override type if it was not explicitly provided (e.g. if it's default OTHER or undefined)
@@ -278,6 +278,23 @@ export class FinanceService {
       topExpenses,
       transactionCount: transactions.length
     };
+  }
+
+  /**
+   * Private: Categorize a bank transaction description via AI (Gemini)
+   */
+  private async categorizeTransaction(description: string): Promise<{ category: string; type: 'INCOME' | 'EXPENSE' }> {
+    const prompt = `Phân loại giao dịch ngân hàng Việt Nam. Danh mục: FOOD, TRANSPORT, SHOPPING, UTILITIES, RENT, ENTERTAINMENT, HEALTH, EDUCATION, SALARY, BONUS, INVESTMENT, OTHER.
+Nội dung: "${description}"
+JSON duy nhất: {"category": "...", "type": "INCOME"|"EXPENSE"}`;
+    try {
+      const model = this.modelClients.gemini.getGenerativeModel({ model: 'gemini-flash-latest' });
+      const text = (await model.generateContent(prompt)).response.text();
+      const parts = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}');
+      return { category: (parts.category || 'OTHER').toUpperCase(), type: (parts.type || 'EXPENSE').toUpperCase() as any };
+    } catch {
+      return { category: 'OTHER', type: 'EXPENSE' };
+    }
   }
 
   /**

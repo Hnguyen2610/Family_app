@@ -20,7 +20,7 @@ type DraftStatus = 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
 export class VisionExtractionService {
   private readonly gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
   private readonly groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY || 'missing', baseURL: 'https://api.groq.com/openai/v1' });
-  private readonly groqModelName = process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+  private readonly groqModelName = process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b';
   private readonly geminiModelName = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
   private readonly preferredProvider = process.env.AI_VISION_PROVIDER || 'groq';
 

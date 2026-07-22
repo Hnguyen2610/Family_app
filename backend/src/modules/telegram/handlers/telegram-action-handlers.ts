@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Telegraf, Context } from 'telegraf';
-import { AiAgentService } from '../../ai-agent/services/ai-agent.service';
+import { AiStatsService } from '../../ai-agent/services/ai-stats.service';
 import { AiActionProposalService } from '../../ai-agent/services/ai-action-proposal.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TelegramContextService } from '../services/telegram-context.service';
@@ -23,8 +23,8 @@ export class TelegramActionHandlers {
     private readonly aiResponder: TelegramAiResponder,
     private readonly noteService: TelegramFamilyNoteService,
     private readonly actionProposalService: AiActionProposalService,
-    @Inject(forwardRef(() => AiAgentService))
-    private readonly aiAgentService: AiAgentService,
+    @Inject(forwardRef(() => AiStatsService))
+    private readonly aiStatsService: AiStatsService,
   ) {}
 
   register(bot: Telegraf) {
@@ -159,7 +159,7 @@ export class TelegramActionHandlers {
     const value = ctx.match?.[1];
     const requestLogId = ctx.match?.[2];
     const user = await this.context.getLinkedUser(ctx.from?.id?.toString() || '');
-    const result = await this.aiAgentService.addFeedback({
+    const result = await this.aiStatsService.addFeedback({
       requestLogId,
       value,
       source: 'telegram',

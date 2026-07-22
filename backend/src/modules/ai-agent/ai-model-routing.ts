@@ -1,5 +1,3 @@
-import { AiIntentRoute } from './ai-intent-router';
-
 export type RoutedModel = {
   provider: 'groq' | 'gemini';
   model: string;
@@ -12,9 +10,8 @@ function getProviderFromSelection(selection?: string): 'groq' | 'gemini' | undef
   return undefined;
 }
 
-export function routeAiModel(selection: string | undefined, intentRoute: AiIntentRoute): RoutedModel {
-  // If there is an image, we MUST use Gemini regardless of selection (unless selection is also Gemini)
-  if (intentRoute.intent === 'image_vision') {
+export function routeAiModel(selection: string | undefined, hasImage: boolean): RoutedModel {
+  if (hasImage) {
     return {
       provider: 'gemini',
       model: process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
@@ -30,35 +27,16 @@ export function routeAiModel(selection: string | undefined, intentRoute: AiInten
       model:
         explicitProvider === 'gemini'
           ? process.env.GEMINI_MODEL || 'gemini-3.5-flash'
-          : process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          : process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
       route: 'explicit',
       reason: `user selected ${explicitProvider}`,
     };
   }
 
-  if (intentRoute.requiresTools) {
-    return {
-      provider: 'groq',
-      model: process.env.AI_TOOL_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-      route: 'tool',
-      reason: 'intent requires tool calling',
-    };
-  }
-
-  if (intentRoute.intent === 'horoscope') {
-    return {
-      provider: 'groq',
-      model:
-        process.env.AI_REASONING_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-      route: 'reasoning',
-      reason: 'intent benefits from reasoning/persona response',
-    };
-  }
-
   return {
     provider: 'groq',
-    model: process.env.AI_FAST_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-    route: 'fast',
-    reason: 'default fast text response',
+    model: process.env.AI_TOOL_MODEL || process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    route: 'tool',
+    reason: 'every turn can call tools now, so the tool-capable model is the default',
   };
 }

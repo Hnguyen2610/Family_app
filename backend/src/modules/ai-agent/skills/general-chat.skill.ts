@@ -1,21 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillTool } from '../interfaces/ai-skill.interface';
-import { AiIntent } from '../ai-intent-router';
 
 @Injectable()
 export class GeneralChatSkill implements AiSkill {
   name = 'GeneralChatSkill';
 
-  canHandle(_intent: AiIntent): boolean {
-    return true;
-  }
-
   getSystemPrompt(_context: AiSkillContext): string {
-    return `GENERAL CHAT MEMORY RULES:
-- You can use AI MEMORY to personalize answers.
-- If the user shares a short personal preference or health restriction, use updateAiMemory to ask for permission to remember it.
-- If the user shares long-form reusable family knowledge, routines, rules, school/health notes, or household context, use proposeFamilyNote to ask for permission to save it into Family Notes/RAG.
-- Never save memory or RAG knowledge without user confirmation.`;
+    return 'GENERAL CHAT MEMORY RULES:\n- You can use AI MEMORY to personalize answers.';
   }
 
   getTools(): AiSkillTool[] {

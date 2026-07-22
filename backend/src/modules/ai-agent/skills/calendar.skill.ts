@@ -1,11 +1,10 @@
 import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
-import { AiIntent } from '../ai-intent-router';
 import { EventsService } from '../../events/events.service';
 import { formatCalendarEventsForUser, toolSuccess, toolError } from '../ai-tool-runtime';
 import { getSolarDateFromLunar as convertLunarToSolar } from '../../../utils/lunar-calendar.util';
 import { normalizeSearchText } from '../ai-intent-router';
-import { parseCalendarDate } from '../ai-date-parser';
+import { parseCalendarDate, parseCalendarDateRange, parseCalendarTime } from '../ai-date-parser';
 import { AiConversationStateService } from '../services/ai-conversation-state.service';
 import { getCalendarReadFamilyId, getMutationFamilyId, shouldIncludePrivateEvents } from '../ai-family-scope-policy';
 
@@ -19,10 +18,6 @@ export class CalendarSkill implements AiSkill {
     private readonly eventsService: EventsService,
     private readonly conversationState: AiConversationStateService,
   ) {}
-
-  canHandle(intent: AiIntent): boolean {
-    return intent === 'calendar_query' || intent === 'event_mutation';
-  }
 
   getSystemPrompt(_context: AiSkillContext): string {
     const year = new Date().getFullYear().toString();
@@ -140,11 +135,25 @@ export class CalendarSkill implements AiSkill {
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'resolveVietnameseDate',
+          description: 'Parse a Vietnamese date/time/date-range expression (e.g. "ngay mai luc 9 gio toi", "tu ngay 11/7 den ngay 14/7", "thu 6 tuan sau") into ISO date(s) and 24h time. Call this before createEvent/updateEvent whenever the user\'s wording is relative or ambiguous — do not compute the date yourself.',
+          parameters: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'The user\'s original message or the date/time phrase to parse.' },
+            },
+            required: ['text'],
+          },
+        },
+      },
     ];
   }
 
   async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
-    if (context.intent === 'calendar_query') {
+    {
       const normalized = normalizeSearchText(context.userMessage || '');
       if (this.looksLikeCalendarMutation(normalized)) {
         return undefined;
@@ -179,7 +188,9 @@ export class CalendarSkill implements AiSkill {
         await this.conversationState.saveState(context.userId, {
           lastShownEvents: listedEvents,
           lastSelectedFamilyId: context.resolvedFamilyId || context.familyId,
-          lastIntent: context.intent,
+          // Repurposed field: records that CalendarSkill was the last relevant skill (see
+          // AiConversationStatePayload.lastIntent), not a classified intent.
+          lastIntent: this.name,
         });
 
         // Pre-inject event content into context so LLM gets it directly in Loop 1
@@ -224,7 +235,9 @@ export class CalendarSkill implements AiSkill {
         await this.conversationState.saveState(context.userId, {
           lastShownEvents: listedEvents,
           lastSelectedFamilyId: context.resolvedFamilyId || context.familyId,
-          lastIntent: context.intent,
+          // Repurposed field: records that CalendarSkill was the last relevant skill (see
+          // AiConversationStatePayload.lastIntent), not a classified intent.
+          lastIntent: this.name,
         });
 
         // Pre-inject event content into context so LLM gets it directly in Loop 1
@@ -339,6 +352,26 @@ export class CalendarSkill implements AiSkill {
             solarDate: date.toISOString().split('T')[0],
             formatted: date.toLocaleDateString('vi-VN'),
           });
+        }
+
+        case 'resolveVietnameseDate': {
+          const text = String(args?.text || '');
+          const range = parseCalendarDateRange(text);
+          if (range) {
+            return toolSuccess(toolName, {
+              date: range.start.iso,
+              endDate: range.end.iso,
+              time: parseCalendarTime(text),
+            });
+          }
+
+          const date = parseCalendarDate(text);
+          const time = parseCalendarTime(text);
+          if (!date && !time) {
+            return toolError(toolName, 'Khong tim thay ngay hoac gio hop le trong cau.');
+          }
+
+          return toolSuccess(toolName, { date: date?.iso, time });
         }
       }
     } catch (e: any) {

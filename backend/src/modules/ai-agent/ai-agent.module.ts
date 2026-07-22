@@ -7,6 +7,9 @@ import { RagService } from './services/rag.service';
 import { VisionExtractionService } from './services/vision-extraction.service';
 import { AiActionProposalService } from './services/ai-action-proposal.service';
 import { AiConversationStateService } from './services/ai-conversation-state.service';
+import { AiModelClientsService } from './services/ai-model-clients.service';
+import { AiEvalService } from './services/ai-eval.service';
+import { AiStatsService } from './services/ai-stats.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MealsModule } from '../meals/meals.module';
 import { EventsModule } from '../events/events.module';
@@ -23,7 +26,6 @@ import { AiSkillRegistry } from './skills/ai-skill-registry';
 import { WeatherModule } from '../weather/weather.module';
 import { AiFamilyResolver } from './ai-family-resolver';
 import { AiEntityResolver } from './ai-entity-resolver';
-import { AiStructuredActionHandler } from './ai-structured-action-handler';
 
 @Module({
   imports: [
@@ -41,6 +43,9 @@ import { AiStructuredActionHandler } from './ai-structured-action-handler';
     VisionExtractionService,
     AiActionProposalService,
     AiConversationStateService,
+    AiModelClientsService,
+    AiEvalService,
+    AiStatsService,
     MarketSkill,
     GeneralChatSkill,
     MealSkill,
@@ -53,8 +58,7 @@ import { AiStructuredActionHandler } from './ai-structured-action-handler';
     AiSkillRegistry,
     AiFamilyResolver,
     AiEntityResolver,
-    AiStructuredActionHandler,
   ],
-  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiActionProposalService, AiConversationStateService, AiEntityResolver, AiSkillRegistry, FootballSkill, WeatherSkill, SearchSkill],
+  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiActionProposalService, AiConversationStateService, AiEntityResolver, AiSkillRegistry, FootballSkill, WeatherSkill, SearchSkill, AiModelClientsService, AiEvalService, AiStatsService],
 })
 export class AiAgentModule {}

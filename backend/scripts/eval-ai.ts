@@ -1,11 +1,8 @@
 import { spawnSync } from 'child_process';
 
 const evalCommands: Array<[string, string[]]> = [
-  [process.execPath, ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', 'scripts/eval-ai-routing.ts']],
-  [process.execPath, ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', 'scripts/eval-calendar-mutation-parser.ts']],
   [process.execPath, ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', 'scripts/eval-response-sanitizer.ts']],
   [process.execPath, ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', 'scripts/eval-tool-validation.ts']],
-  [process.execPath, ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', 'scripts/eval-ai-actions.ts']],
 ];
 
 for (const [command, args] of evalCommands) {

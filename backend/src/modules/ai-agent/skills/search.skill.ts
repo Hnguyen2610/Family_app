@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiIntent } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { toolSuccess, toolError } from '../ai-tool-runtime';
 import { FootballScheduleSearchHelper } from '../helpers/football-schedule-search.helper';
@@ -38,14 +37,9 @@ export class SearchSkill implements AiSkill {
   private readonly apiKey = process.env.TAVILY_API_KEY;
   private readonly footballSchedule = new FootballScheduleSearchHelper();
 
-  canHandle(intent: AiIntent): boolean {
-    return intent === 'web_search';
-  }
-
   getSystemPrompt(_context: AiSkillContext): string {
     return [
       'WEB SEARCH RULES:',
-      '- ALWAYS call the search tool for questions about news, facts, or real-time information. Do NOT answer from memory.',
       '- Do NOT say you do not know without trying the tool first.',
       '- Summarize search results clearly and cite sources.',
     ].join('\n');
@@ -57,7 +51,7 @@ export class SearchSkill implements AiSkill {
         type: 'function',
         function: {
           name: 'search',
-          description: 'Search internet.',
+          description: 'Search the internet. Always call this for questions about news, facts, or real-time information you do not already know — never answer from memory.',
           parameters: {
             type: 'object',
             properties: { query: { type: 'string' } },

@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiIntent } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { RagService } from '../services/rag.service';
 import { toolSuccess, toolError } from '../ai-tool-runtime';
@@ -34,26 +33,17 @@ export class FamilyKnowledgeSkill implements AiSkill {
     private readonly ragService: RagService,
   ) {}
 
-  canHandle(intent: AiIntent): boolean {
-    return intent === 'family_knowledge';
-  }
-
-  getSystemPrompt(context: AiSkillContext): string {
-    const ragContext = context.ragContext || 'No retrieved family knowledge snippets.';
-
+  getSystemPrompt(_context: AiSkillContext): string {
     return `FAMILY KNOWLEDGE RAG RULES:
-- Answer ONLY from the retrieved snippets below. Do NOT invent facts not present in snippets.
+- Call searchFamilyNotes whenever a question needs family-specific context you do not already have — do not guess or invent facts.
+- Answer ONLY from what searchFamilyNotes returns. If it returns no matches, say: "Mình chưa tìm thấy thông tin này trong sổ tay gia đình. Bạn có muốn mình lưu lại không?" instead of guessing.
 - Keep answers SHORT and direct (2-4 sentences max).
-- When snippets exist, end with a short "Nguon:" line naming 1-2 note titles you relied on.
+- When you used searchFamilyNotes results, end with a short "Nguon:" line naming 1-2 note titles you relied on.
 - Use createWikiEntry ONLY when user explicitly asks you to save/remember something new.
 - If the user casually mentions personal preferences, habits, daily routines or non-sensitive family details (e.g. "Tin thích ăn sườn xào chua ngọt", "Mẹ thích hoa hồng", "Bột giặt để ở gầm cầu thang"), you MUST automatically call autoSaveFamilyMemory to silently save it without asking or prompting the user.
 - Do NOT use autoSaveFamilyMemory for highly sensitive data (like passwords, bank accounts, disease history, or severe allergies).
-- If information requested is NOT in snippets, say: "Mình chưa tìm thấy thông tin này trong sổ tay gia đình. Bạn có muốn mình lưu lại không?"
 - Do NOT repeat the source labels or chunk IDs in the response.
-- Respond in the same language as the user (Vietnamese preferred).
-
-RETRIEVED FAMILY KNOWLEDGE:
-${ragContext}`;
+- Respond in the same language as the user (Vietnamese preferred).`;
   }
 
   getTools(): AiSkillTool[] {
@@ -89,6 +79,20 @@ ${ragContext}`;
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'searchFamilyNotes',
+          description: 'Search the family\'s long-term memory (wiki/notes) for information relevant to the user\'s question — preferences, habits, past events, household facts. Call this whenever the question needs family-specific context you do not already have. Do not guess or invent an answer instead of calling this.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'The question or topic to search for, in the user\'s own words.' },
+            },
+            required: ['query'],
+          },
+        },
+      },
     ];
   }
 
@@ -117,6 +121,47 @@ ${ragContext}`;
   }
 
   async executeTool(toolName: string, args: any, context: AiSkillContext): Promise<any> {
+    if (toolName === 'searchFamilyNotes') {
+      const searchFamilyIds = context.resolvedFamilyId
+        ? [context.resolvedFamilyId]
+        : (context.userFamilyIds || []);
+
+      if (searchFamilyIds.length === 0) {
+        return toolError(toolName, 'Chưa xác định được gia đình để tìm trong sổ tay.');
+      }
+
+      const query = String(args?.query || '').trim();
+      if (!query) {
+        return toolError(toolName, 'Thiếu nội dung cần tìm.');
+      }
+
+      const settled = await Promise.allSettled(
+        searchFamilyIds.map((familyId) => this.ragService.searchFamilyKnowledge(familyId, query, 3)),
+      );
+
+      const failures = settled.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failures.length > 0) {
+        this.logger.warn(`searchFamilyNotes: ${failures.length}/${settled.length} family search(es) failed: ${failures.map((f) => f.reason?.message || f.reason).join('; ')}`);
+      }
+
+      const succeeded = settled.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<RagService['searchFamilyKnowledge']>>> => result.status === 'fulfilled');
+      if (succeeded.length === 0) {
+        return toolError(toolName, failures[0]?.reason?.message || 'Không thể tìm trong sổ tay gia đình lúc này.');
+      }
+
+      const merged = succeeded
+        .flatMap((result) => result.value)
+        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+        .slice(0, 3);
+
+      return toolSuccess(toolName, {
+        matches: merged.map((result) => ({
+          title: result.title,
+          snippet: result.content,
+        })),
+      });
+    }
+
     if (toolName === 'autoSaveFamilyMemory') {
       try {
         const saveFamilyId = context.resolvedFamilyId;

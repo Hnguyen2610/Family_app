@@ -1,5 +1,3 @@
-import { classifyAiIntent } from './ai-intent-router';
-
 export function getTools() {
   return [
     {
@@ -211,5 +209,5 @@ export function getGeminiTools() {
 }
 
 export function shouldUseTools(userMessage: string): boolean {
-  return classifyAiIntent(userMessage).requiresTools;
+  return true;
 }

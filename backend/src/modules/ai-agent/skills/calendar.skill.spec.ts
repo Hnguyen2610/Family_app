@@ -68,4 +68,80 @@ describe('CalendarSkill', () => {
       endDate: new Date('2026-07-14T00:00:00.000Z'),
     }));
   });
+
+  it('resolveVietnameseDate parses a relative date, a range, and a time', async () => {
+    const dateResult = await skill.executeTool('resolveVietnameseDate', {
+      text: 'ngay mai luc 9 gio toi',
+    }, {
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'ngay mai luc 9 gio toi',
+      intent: 'general_chat',
+    });
+    expect(dateResult.ok).toBe(true);
+    expect(dateResult.data.date).toBe('2026-07-08');
+    expect(dateResult.data.time).toBe('21:00');
+
+    const rangeResult = await skill.executeTool('resolveVietnameseDate', {
+      text: 'tu ngay 11/7 den ngay 14/7',
+    }, {
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'tu ngay 11/7 den ngay 14/7',
+      intent: 'general_chat',
+    });
+    expect(rangeResult.ok).toBe(true);
+    expect(rangeResult.data.date).toBe('2026-07-11');
+    expect(rangeResult.data.endDate).toBe('2026-07-14');
+  });
+
+  it('resolveVietnameseDate returns an error when no date is found', async () => {
+    const result = await skill.executeTool('resolveVietnameseDate', {
+      text: 'xin chao ban',
+    }, {
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'xin chao ban',
+      intent: 'general_chat',
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('tryDirectAnswer still answers a dated calendar query when no intent is set', async () => {
+    eventsService.getEventsByMonth.mockResolvedValue([
+      { id: 'event-1', title: 'Hop phu huynh', date: new Date('2026-07-08T09:00:00.000Z'), scope: 'FAMILY', familyId: 'family-a', time: '09:00' },
+    ]);
+
+    const result = await skill.tryDirectAnswer({
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'ngay 8/7 su kien gi',
+      intent: 'general_chat',
+    });
+
+    expect(result?.content).toContain('Hop phu huynh');
+  });
+
+  it('tryDirectAnswer returns undefined for a message with no parseable date/month', async () => {
+    const result = await skill.tryDirectAnswer({
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'ban khoe khong',
+      intent: 'general_chat',
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it('tryDirectAnswer still defers to the model for a mutation-looking message, even with no intent set', async () => {
+    const result = await skill.tryDirectAnswer({
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'xoa su kien ngay 8/7',
+      intent: 'general_chat',
+    });
+
+    expect(result).toBeUndefined();
+    expect(eventsService.getEventsByMonth).not.toHaveBeenCalled();
+  });
 });

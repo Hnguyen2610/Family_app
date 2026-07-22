@@ -32,28 +32,14 @@ export function shouldIncludePrivateEvents(userMessage: string) {
 export function buildFamilyScopeNotice(input: {
   familyId: string;
   families: Array<{ id: string; name: string }>;
-  intent: string;
   resolvedFamilyId?: string;
 }) {
-  const { familyId, families, intent, resolvedFamilyId } = input;
+  const { familyId, families, resolvedFamilyId } = input;
   if (familyId === 'all' && families.length > 1 && !resolvedFamilyId) {
-    if (intent === 'calendar_query') {
-      return 'USER IS VIEWING ALL FAMILIES. For read-only calendar queries, call calendar tools with familyId "all" and include private events by passing userId.';
-    }
-    return `USER IS VIEWING ALL FAMILIES. Their families:\n${families.map((family, index) => `${index + 1}. ${family.name} (id: ${family.id})`).join('\n')}\nINSTRUCTION: Ask the user ONCE which family to use. When they answer with a family name, call the tool immediately with that family's id - do NOT ask again.`;
+    return `USER IS VIEWING ALL FAMILIES. Their families:\n${families.map((family, index) => `${index + 1}. ${family.name} (id: ${family.id})`).join('\n')}\nINSTRUCTION: For read-only questions, you may query across all families (pass familyId "all") without asking. Before any tool call that creates, updates, or deletes data for one specific family, ask the user ONCE which family to use, then call the tool immediately with that family's id - do NOT ask again once they've answered.`;
   }
   if (resolvedFamilyId) {
     return `RESOLVED FAMILY: Using "${families.find((family) => family.id === resolvedFamilyId)?.name || resolvedFamilyId}" (id: ${resolvedFamilyId}) for all write operations.`;
   }
   return '';
-}
-
-export function getRagSearchFamilyIds(input: {
-  familyId: string;
-  resolvedFamilyId?: string;
-  families: Array<{ id: string; name: string }>;
-}) {
-  if (input.resolvedFamilyId) return [input.resolvedFamilyId];
-  if (input.familyId === 'all') return input.families.map((family) => family.id);
-  return [input.familyId].filter(Boolean);
 }

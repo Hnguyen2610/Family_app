@@ -4,7 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RagService } from '../../ai-agent/services/rag.service';
 import { TelegramContextService } from './telegram-context.service';
 import { toObject, getActiveFamily } from '../telegram-family.helpers';
-import { buildTelegramNoteDraft, shouldProposeTelegramFamilyNote } from '../telegram-note-draft';
+import { buildTelegramNoteDraft } from '../telegram-note-draft';
 
 export type PendingTelegramFamilyNote = {
   familyId: string;
@@ -75,54 +75,6 @@ export class TelegramFamilyNoteService {
         },
       },
     });
-  }
-
-  async tryReplyWithTelegramFamilyNoteProposal(ctx: Context, text: string): Promise<boolean> {
-    if (!shouldProposeTelegramFamilyNote(text)) return false;
-
-    const chatId = ctx.chat?.id?.toString();
-    if (!chatId) return false;
-
-    const user = await this.context.getLinkedUser(chatId);
-    if (!user) {
-      await ctx.reply('Bạn chưa kết nối tài khoản. Hãy mở Telegram từ Settings trong web app trước.');
-      return true;
-    }
-
-    const activeFamily = getActiveFamily(user);
-    if (!activeFamily) {
-      await ctx.reply('Hãy chọn family trước bằng /families và /use_family.');
-      return true;
-    }
-
-    const note = buildTelegramNoteDraft(text);
-    const noteId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-    const pending = {
-      familyId: activeFamily.id,
-      userId: user.id,
-      title: note.title,
-      content: note.content,
-      category: note.category,
-      createdAt: Date.now(),
-    };
-    this.pendingFamilyNotes.set(noteId, pending);
-    await this.persistPendingFamilyNote(user, noteId, pending);
-
-    await ctx.reply(
-      [
-        'Mình chưa lưu ngay. Bạn có muốn lưu ghi chú này vào sổ tay gia đình không?',
-        `Family: ${activeFamily.name}`,
-        `Title: ${note.title}`,
-        `Category: ${note.category}`,
-      ].join('\n'),
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback('Lưu', `note_save:${noteId}`),
-          Markup.button.callback('Bỏ qua', `note_skip:${noteId}`),
-        ],
-      ]),
-    );
-    return true;
   }
 
   async replyWithFamilyNoteCommand(ctx: Context, content: string) {

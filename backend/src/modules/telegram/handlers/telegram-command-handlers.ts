@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Telegraf, Context } from 'telegraf';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AiAgentService } from '../../ai-agent/services/ai-agent.service';
+import { AiStatsService } from '../../ai-agent/services/ai-stats.service';
 import { TelegramSender } from '../services/telegram-sender';
 import { TelegramContextService } from '../services/telegram-context.service';
 import { TelegramAiResponder } from '../services/telegram-ai-responder.service';
@@ -28,8 +28,8 @@ export class TelegramCommandHandlers {
     private readonly context: TelegramContextService,
     private readonly aiResponder: TelegramAiResponder,
     private readonly noteService: TelegramFamilyNoteService,
-    @Inject(forwardRef(() => AiAgentService))
-    private readonly aiAgentService: AiAgentService,
+    @Inject(forwardRef(() => AiStatsService))
+    private readonly aiStatsService: AiStatsService,
   ) {}
 
   register(bot: Telegraf) {
@@ -338,7 +338,7 @@ export class TelegramCommandHandlers {
       return;
     }
 
-    const stats = await this.aiAgentService.getSystemStats();
+    const stats = await this.aiStatsService.getSystemStats();
     const report = [
       '📊 <b>AI SYSTEM STATS</b>',
       `• Uptime: ${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m`,

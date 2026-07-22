@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
-import { AiIntent } from '../ai-intent-router';
 import { formatGoldPriceForUser, toolSuccess, toolError } from '../ai-tool-runtime';
 import { fetchGoldPrice } from '../helpers/gold-price.helper';
 import { normalizeSearchText } from '../ai-intent-router';
@@ -10,13 +9,8 @@ export class MarketSkill implements AiSkill {
   private readonly logger = new Logger(MarketSkill.name);
   name = 'MarketSkill';
 
-  canHandle(intent: AiIntent): boolean {
-    return intent === 'gold_price';
-  }
-
   getSystemPrompt(_context: AiSkillContext): string {
     return `GOLD PRICE RULES:
-- ALWAYS call getGoldPrice tool to get real-time gold prices. Do NOT answer from memory or assumptions.
 - Present the result clearly with source and timestamp.`;
   }
 
@@ -25,7 +19,7 @@ export class MarketSkill implements AiSkill {
       type: 'function',
       function: {
         name: 'getGoldPrice',
-        description: 'Fetch real-time gold prices in Vietnam (SJC, DOJI, PNJ) in VND and international XAUUSD.',
+        description: 'Fetch real-time gold prices in Vietnam (SJC, DOJI, PNJ) in VND and international XAUUSD. Always call this for gold price questions — never answer from memory, prices change constantly.',
         parameters: { type: 'object', properties: {}, required: [] },
       },
     }];

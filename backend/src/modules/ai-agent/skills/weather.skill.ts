@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiIntent, normalizeSearchText } from '../ai-intent-router';
+import { normalizeSearchText } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { WeatherHeaderSummary, WeatherService } from '../../weather/weather.service';
 
@@ -10,17 +10,11 @@ export class WeatherSkill implements AiSkill {
 
   constructor(private readonly weatherService: WeatherService) {}
 
-  canHandle(intent: AiIntent): boolean {
-    return intent === 'weather';
-  }
-
   getSystemPrompt(_context: AiSkillContext): string {
     return [
       'WEATHER RULES:',
-      '- ALWAYS call the getWeather tool to get real-time weather data. Do NOT answer from memory or assumptions.',
       '- Answer in Vietnamese, prefer Celsius, humidity, wind, and rain chance.',
       '- Respond conversationally based on the tool result, mentioning the location clearly.',
-      '- CRITICAL: NEVER write or use Chinese characters (like 作为, 可能, 的, etc.) in your thoughts or response. Use pure Vietnamese or English only.',
     ].join('\n');
   }
 
@@ -30,7 +24,7 @@ export class WeatherSkill implements AiSkill {
         type: 'function',
         function: {
           name: 'getWeather',
-          description: 'Get real-time weather forecast for a location. Call this for any weather-related question.',
+          description: 'Get real-time weather forecast for a location. Always call this for any weather-related question — never answer from memory or assumptions, weather data changes constantly.',
           parameters: {
             type: 'object',
             properties: {

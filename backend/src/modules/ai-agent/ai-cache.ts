@@ -1,18 +1,6 @@
-import { AiIntentRoute } from './ai-intent-router';
-
 const DEFAULT_TTL_MS = Number.parseInt(process.env.AI_RESPONSE_CACHE_TTL_MS || '3600000', 10);
 const MAX_ENTRIES = Number.parseInt(process.env.AI_RESPONSE_CACHE_MAX_ENTRIES || '200', 10);
 const PROMPT_VERSION = 'skill-cache-v2';
-
-export const SKILL_CACHE_TTL: Partial<Record<string, number>> = {
-  general_chat: 3600_000,
-  gold_price: 5 * 60_000,
-  horoscope: 3600_000,
-  meal_suggestion: 30 * 60_000,
-  football: 5 * 60_000,
-  weather: 30 * 60_000,
-  family_knowledge: 10 * 60_000,
-};
 
 type CacheEntry<T> = {
   value: T;
@@ -30,7 +18,6 @@ type SessionCacheKeyInput = {
   userId: string;
   model: string;
   userMessage: string;
-  intentRoute: AiIntentRoute;
   hasImage: boolean;
 };
 
@@ -65,34 +52,14 @@ function looksContextDependent(normalizedQuestion: string): boolean {
   return followUpPhrases.some((phrase) => normalizedQuestion === phrase);
 }
 
-export function getSkillTtl(intent: string): number {
-  return SKILL_CACHE_TTL[intent] ?? DEFAULT_TTL_MS;
-}
-
-export function isResponseCacheable(
-  userMessage: string,
-  hasImage: boolean,
-  intentRoute: AiIntentRoute,
-): boolean {
+export function isResponseCacheable(userMessage: string, hasImage: boolean): boolean {
   if (hasImage) return false;
-  const cacheableToolIntents = new Set(['football']);
-  if (intentRoute.requiresTools && !cacheableToolIntents.has(intentRoute.intent)) return false;
 
   const normalizedQuestion = normalizeQuestion(userMessage);
   if (normalizedQuestion.length < 4) return false;
   if (looksContextDependent(normalizedQuestion)) return false;
 
-  const cacheableIntents = new Set([
-    'general_chat',
-    'gold_price',
-    'horoscope',
-    'meal_suggestion',
-    'football',
-    'weather',
-    'family_knowledge',
-  ]);
-
-  return cacheableIntents.has(intentRoute.intent);
+  return true;
 }
 
 export function buildResponseCacheKey(input: {
@@ -100,20 +67,16 @@ export function buildResponseCacheKey(input: {
   userId: string;
   model: string;
   userMessage: string;
-  intent?: string;
 }): string {
-  const shortTtlIntent = input.intent === 'gold_price' || input.intent === 'football' || input.intent === 'weather';
-  const timeBucket = shortTtlIntent
-    ? Math.floor(Date.now() / (5 * 60_000))
-    : Math.floor(Date.now() / 3600_000);
+  const timeBucket = Math.floor(Date.now() / 3600_000);
 
   return [
     PROMPT_VERSION,
-    input.intent || 'unknown',
     input.familyId || 'no-family',
     input.userId || 'no-user',
     input.model || 'default-model',
-    shortTtlIntent ? `t${timeBucket}:${normalizeQuestion(input.userMessage)}` : normalizeQuestion(input.userMessage),
+    normalizeQuestion(input.userMessage),
+    `t${timeBucket}`,
   ].join('|');
 }
 
@@ -153,9 +116,9 @@ export function getCacheStats() {
 }
 
 export function buildSessionCacheKey(input: SessionCacheKeyInput) {
-  const { familyId, userId, model, userMessage, intentRoute, hasImage } = input;
-  return isResponseCacheable(userMessage, hasImage, intentRoute)
-    ? buildResponseCacheKey({ familyId, userId, model, userMessage, intent: intentRoute.intent })
+  const { familyId, userId, model, userMessage, hasImage } = input;
+  return isResponseCacheable(userMessage, hasImage)
+    ? buildResponseCacheKey({ familyId, userId, model, userMessage })
     : undefined;
 }
 
@@ -163,9 +126,9 @@ export function getSessionCachedResponse(cacheKey?: string) {
   return cacheKey ? getCachedResponse(cacheKey) : undefined;
 }
 
-export function setSessionCachedResponse(cacheKey: string | undefined, result: any, intent: string) {
+export function setSessionCachedResponse(cacheKey: string | undefined, result: any) {
   if (!cacheKey) return;
-  setCachedResponse(cacheKey, result, getSkillTtl(intent));
+  setCachedResponse(cacheKey, result, DEFAULT_TTL_MS);
 }
 
 export function getSessionCacheStats() {

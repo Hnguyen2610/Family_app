@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiIntent, normalizeSearchText } from '../ai-intent-router';
+import { normalizeSearchText } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { toolSuccess, toolError } from '../ai-tool-runtime';
 
@@ -34,14 +34,8 @@ export class FootballSkill implements AiSkill {
     'world cup': 'WC', 'the gioi': 'WC',
   };
 
-  canHandle(intent: AiIntent): boolean {
-    return intent === 'football';
-  }
-
   getSystemPrompt(_context: AiSkillContext): string {
     return `⚽ FOOTBALL ASSISTANT:
-- ALWAYS call get_matches tool to get real-time football match data. Do NOT guess or hallucinate matches.
-- You show football match schedules and standings.
 - Keep output formatted EXACTLY like this:
   - HH:mm DD/MM | League Name | Team A vs Team B (Highlight winner or show score if finished).`;
   }
@@ -52,7 +46,7 @@ export class FootballSkill implements AiSkill {
         type: 'function',
         function: {
           name: 'get_matches',
-          description: 'Get football match schedules or results.',
+          description: 'Get football match schedules or results. Always call this for football/match questions — never guess or hallucinate matches from memory.',
           parameters: {
             type: 'object',
             properties: {

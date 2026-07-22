@@ -2,7 +2,6 @@ import {
   buildFamilyScopeNotice,
   getCalendarReadFamilyId,
   getMutationFamilyId,
-  getRagSearchFamilyIds,
   resolveFamilyMode,
   shouldIncludePrivateEvents,
 } from './ai-family-scope-policy';
@@ -32,13 +31,17 @@ describe('ai-family-scope-policy', () => {
     expect(shouldIncludePrivateEvents('lich gia dinh hom nay')).toBe(false);
   });
 
-  it('returns all family ids for all-family RAG when no family is resolved', () => {
-    expect(getRagSearchFamilyIds({ familyId: 'all', families })).toEqual(['family-a', 'family-b']);
-    expect(getRagSearchFamilyIds({ familyId: 'all', resolvedFamilyId: 'family-b', families })).toEqual(['family-b']);
+  it('builds the same unified all-family notice regardless of intent', () => {
+    const readNotice = buildFamilyScopeNotice({ familyId: 'all', families });
+    const writeNotice = buildFamilyScopeNotice({ familyId: 'all', families });
+
+    expect(readNotice).toContain('USER IS VIEWING ALL FAMILIES');
+    expect(readNotice).toBe(writeNotice);
+    expect(readNotice).not.toContain('calendar');
   });
 
-  it('builds a read-only all-family notice for calendar queries', () => {
-    expect(buildFamilyScopeNotice({ familyId: 'all', families, intent: 'calendar_query' }))
-      .toContain('USER IS VIEWING ALL FAMILIES');
+  it('returns no notice when a single family is resolved', () => {
+    expect(buildFamilyScopeNotice({ familyId: 'all', families, resolvedFamilyId: 'family-b' }))
+      .toContain('RESOLVED FAMILY');
   });
 });

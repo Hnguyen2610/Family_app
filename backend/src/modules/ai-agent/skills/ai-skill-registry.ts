@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AiSkill } from '../interfaces/ai-skill.interface';
-import { AiIntent } from '../ai-intent-router';
 import { MarketSkill } from './market.skill';
 import { GeneralChatSkill } from './general-chat.skill';
 import { MealSkill } from './meal.skill';
@@ -34,21 +33,17 @@ export class AiSkillRegistry implements OnModuleInit {
     this.logger.log(`Registered ${this.skills.length} AI skills`);
   }
 
-  getSkillForIntent(intent: AiIntent): AiSkill {
-    const skill = this.skills.find(s => s.canHandle(intent) && s.name !== 'GeneralChatSkill');
-    
-    if (skill) {
-      return skill;
-    }
-
-    const fallback = this.skills.find(s => s.name === 'GeneralChatSkill');
-    if (!fallback) {
-      throw new Error('No GeneralChatSkill found in registry');
-    }
-    return fallback;
-  }
-
   getAllSkills(): AiSkill[] {
     return this.skills;
+  }
+
+  getAllToolOwners(): Map<string, AiSkill> {
+    const owners = new Map<string, AiSkill>();
+    for (const skill of this.skills) {
+      for (const tool of skill.getTools?.() || []) {
+        if (tool.function?.name) owners.set(tool.function.name, skill);
+      }
+    }
+    return owners;
   }
 }

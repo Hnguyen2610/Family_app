@@ -1,27 +1,10 @@
-import { classifyAiIntent, normalizeSearchText } from '../ai-agent/ai-intent-router';
+import { normalizeSearchText } from '../ai-agent/ai-intent-router';
 
 export type TelegramNoteDraft = {
   title: string;
   content: string;
   category: string;
 };
-
-export function shouldProposeTelegramFamilyNote(text: string) {
-  const normalized = normalizeSearchText(text || '');
-  if (!normalized.trim()) return false;
-  if (classifyAiIntent(text).intent === 'event_mutation') return false;
-
-  return [
-    'luu',
-    'nho',
-    'ghi nho',
-    'so tay',
-    'long memory',
-    'rag',
-    'save',
-    'remember',
-  ].some((signal) => normalized.includes(signal));
-}
 
 export function buildTelegramNoteDraft(text: string): TelegramNoteDraft {
   const content = String(text || '')

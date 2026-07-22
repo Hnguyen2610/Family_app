@@ -3,9 +3,17 @@ import { Context, Telegraf } from 'telegraf';
 import { TelegramSender } from '../services/telegram-sender';
 import { TelegramContextService } from '../services/telegram-context.service';
 import { TelegramAiResponder } from '../services/telegram-ai-responder.service';
-import { TelegramFamilyNoteService } from '../services/telegram-family-note.service';
 import { getActiveFamily } from '../telegram-family.helpers';
-import { classifyAiIntent } from '../../ai-agent/ai-intent-router';
+
+export function stripBotMention(text: string, botUsername: string | undefined): string | undefined {
+  if (!botUsername) return undefined;
+  const mention = `@${botUsername}`;
+  const trimmed = text.trim();
+  if (trimmed.toLowerCase().startsWith(mention.toLowerCase())) {
+    return trimmed.slice(mention.length).trim();
+  }
+  return undefined;
+}
 
 @Injectable()
 export class TelegramMessageHandlers {
@@ -16,7 +24,6 @@ export class TelegramMessageHandlers {
     private readonly sender: TelegramSender,
     private readonly context: TelegramContextService,
     private readonly aiResponder: TelegramAiResponder,
-    private readonly noteService: TelegramFamilyNoteService,
   ) {}
 
   register(bot: Telegraf) {
@@ -36,20 +43,16 @@ export class TelegramMessageHandlers {
     const isGroup = ctx.chat!.type === 'group' || ctx.chat!.type === 'supergroup';
 
     if (isGroup) {
-      const route = classifyAiIntent(text);
-      if (route.intent !== 'event_mutation') return;
+      const addressedText = stripBotMention(text, ctx.botInfo?.username);
+      if (!addressedText) return;
 
       await this.aiResponder.replyWithAiCommand(
         ctx,
-        `Yêu cầu lịch trong group family. Nếu tạo sự kiện, dùng scope FAMILY trừ khi người dùng nói rõ là riêng tư. Nội dung: ${text}`,
-        'Không xử lý được yêu cầu lịch lúc này. Hãy thử lại sau.',
+        `Yêu cầu trong group family. Nếu tạo/sửa/xóa sự kiện, dùng scope FAMILY trừ khi người dùng nói rõ là riêng tư. Nội dung: ${addressedText}`,
+        'Không xử lý được yêu cầu lúc này. Hãy thử lại sau.',
         true,
         { requireFamily: true },
       );
-      return;
-    }
-
-    if (await this.noteService.tryReplyWithTelegramFamilyNoteProposal(ctx, text)) {
       return;
     }
 

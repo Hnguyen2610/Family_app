@@ -1,4 +1,3 @@
-import { AiIntent } from '../ai-intent-router';
 import { AiTrace } from '../ai-observability';
 
 export interface AiSkillContext {
@@ -6,6 +5,7 @@ export interface AiSkillContext {
   familyId: string;
   resolvedFamilyId?: string; // Always the real DB family ID (not 'all')
   resolvedFamilyMode?: string; // 'single' | 'all' | 'telegram_group' | 'private'
+  userFamilyIds?: string[]; // populated when familyId === 'all': every family this user belongs to
   userMessage: string;
   intent: string;
   image?: string;
@@ -46,11 +46,6 @@ export interface AiSkillResponse {
 
 export interface AiSkill {
   name: string;
-  
-  /**
-   * Determine if this skill can handle the given intent
-   */
-  canHandle(intent: AiIntent): boolean;
 
   /**
    * Get the system prompt context for this skill
