@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AiIntent, normalizeSearchText } from '../ai-intent-router';
-import { AiSkill, AiSkillContext, AiSkillResponse } from '../interfaces/ai-skill.interface';
+import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { WeatherHeaderSummary, WeatherService } from '../../weather/weather.service';
 
 @Injectable()
 export class WeatherSkill implements AiSkill {
   name = 'WeatherSkill';
+  private readonly logger = new Logger(WeatherSkill.name);
 
   constructor(private readonly weatherService: WeatherService) {}
 
@@ -16,67 +17,75 @@ export class WeatherSkill implements AiSkill {
   getSystemPrompt(_context: AiSkillContext): string {
     return [
       'WEATHER RULES:',
-      '- Answer weather questions in Vietnamese.',
-      '- Prefer Celsius, humidity, wind, and rain chance.',
-      '- Do not use web search when WeatherAPI data is available.',
+      '- ALWAYS call the getWeather tool to get real-time weather data. Do NOT answer from memory or assumptions.',
+      '- Answer in Vietnamese, prefer Celsius, humidity, wind, and rain chance.',
+      '- Respond conversationally based on the tool result, mentioning the location clearly.',
+      '- CRITICAL: NEVER write or use Chinese characters (like 作为, 可能, 的, etc.) in your thoughts or response. Use pure Vietnamese or English only.',
     ].join('\n');
   }
 
-  async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
-    const location = this.extractLocation(context.userMessage);
-    const weather = await this.weatherService.getHeaderSummary(location);
-
-    return {
-      content: this.formatWeatherAnswer(weather, this.isTomorrowQuestion(context.userMessage)),
-      direct: true,
-    };
-  }
-
-  private extractLocation(message: string) {
-    const original = (message || '').trim().replace(/[?.!]+$/g, '');
-    const explicit = original.match(/(?:\bo\b|\u1edf|\btai\b|t\u1ea1i|cho)\s+(.+)$/i)?.[1]?.trim();
-    if (explicit) {
-      const location = this.cleanLocation(explicit);
-      if (location) return location;
-    }
-
-    const normalized = normalizeSearchText(original);
-    const knownLocations: Array<[string, string]> = [
-      ['ha noi', 'Ha Noi'],
-      ['hanoi', 'Ha Noi'],
-      ['ho chi minh', 'Ho Chi Minh'],
-      ['sai gon', 'Ho Chi Minh'],
-      ['da nang', 'Da Nang'],
-      ['hai phong', 'Hai Phong'],
-      ['nha trang', 'Nha Trang'],
-      ['da lat', 'Da Lat'],
-      ['can tho', 'Can Tho'],
+  getTools(): AiSkillTool[] {
+    return [
+      {
+        type: 'function',
+        function: {
+          name: 'getWeather',
+          description: 'Get real-time weather forecast for a location. Call this for any weather-related question.',
+          parameters: {
+            type: 'object',
+            properties: {
+              location: {
+                type: 'string',
+                description: 'City name in English (e.g. "Ha Noi", "Da Nang"). Omit to use the family home location.',
+              },
+            },
+            required: [],
+          },
+        },
+      },
     ];
-
-    return knownLocations.find(([key]) => normalized.includes(key))?.[1];
   }
 
-  private cleanLocation(value: string) {
-    return value
-      .replace(/\b(hom nay|h\u00f4m nay|ngay mai|ng\u00e0y mai|cuoi tuan|cu\u1ed1i tu\u1ea7n|nhu the nao|nh\u01b0 th\u1ebf n\u00e0o|co mua khong|c\u00f3 m\u01b0a kh\u00f4ng)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  // LLM-first: always let the LLM call getWeather tool
+  async tryDirectAnswer(_context: AiSkillContext): Promise<AiSkillResponse | undefined> {
+    return undefined;
   }
 
-  private isTomorrowQuestion(message: string) {
+  async executeTool(toolName: string, args: any, context: AiSkillContext): Promise<any> {
+    if (toolName !== 'getWeather') return { error: 'Unknown tool' };
+
+    const location = args?.location?.trim() || undefined;
+    try {
+      const weather = await this.weatherService.getHeaderSummary(location);
+      if (!weather.available || !weather.current) {
+        return { error: 'Weather data unavailable', fallback: this.buildFallback(location) };
+      }
+      const wantsTomorrow = this.isTomorrowQuestion(context.userMessage);
+      return { success: true, data: this.formatWeatherAnswer(weather, wantsTomorrow) };
+    } catch (err: any) {
+      this.logger.error(`WeatherSkill.executeTool error: ${err?.message}`);
+      return { error: err?.message, fallback: this.buildFallback(location) };
+    }
+  }
+
+  private buildFallback(location?: string): string {
+    return `Không lấy được thông tin thời tiết${location ? ` cho ${location}` : ''} lúc này. Bạn thử lại sau nhé.`;
+  }
+
+  private isTomorrowQuestion(message: string): boolean {
     const normalized = normalizeSearchText(message || '');
     return normalized.includes('ngay mai') || normalized.includes('tomorrow');
   }
 
-  private formatWeatherAnswer(weather: WeatherHeaderSummary, wantsTomorrow: boolean) {
+  private formatWeatherAnswer(weather: WeatherHeaderSummary, wantsTomorrow: boolean): string {
     if (!weather.available || !weather.current) {
-      return 'Mình chưa lấy được dữ liệu thời tiết lúc này. Bạn kiểm tra lại cấu hình WeatherAPI hoặc thử lại sau nhé.';
+      return this.buildFallback(weather.location);
     }
 
     if (wantsTomorrow && weather.tomorrow) {
       return [
         `Dự báo ngày mai ở ${weather.location}: ${weather.tomorrow.condition.toLowerCase()}.`,
-        `Nhiệt độ khoảng ${Math.round(weather.tomorrow.minTempC)}-${Math.round(weather.tomorrow.maxTempC)}°C.`,
+        `Nhiệt độ khoảng ${Math.round(weather.tomorrow.minTempC)}–${Math.round(weather.tomorrow.maxTempC)}°C.`,
         `Khả năng mưa ${weather.tomorrow.chanceOfRain}%, lượng mưa khoảng ${weather.tomorrow.totalPrecipMm}mm.`,
       ].join('\n');
     }
@@ -89,7 +98,9 @@ export class WeatherSkill implements AiSkill {
     ];
 
     if (weather.tomorrow) {
-      lines.push(`Ngày mai: ${weather.tomorrow.condition.toLowerCase()}, khả năng mưa ${weather.tomorrow.chanceOfRain}%, ${Math.round(weather.tomorrow.minTempC)}-${Math.round(weather.tomorrow.maxTempC)}°C.`);
+      lines.push(
+        `Ngày mai: ${weather.tomorrow.condition.toLowerCase()}, khả năng mưa ${weather.tomorrow.chanceOfRain}%, ${Math.round(weather.tomorrow.minTempC)}–${Math.round(weather.tomorrow.maxTempC)}°C.`,
+      );
     }
 
     return lines.join('\n');

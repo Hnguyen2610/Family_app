@@ -6,6 +6,7 @@ import { HoroscopeService } from './services/horoscope.service';
 import { RagService } from './services/rag.service';
 import { VisionExtractionService } from './services/vision-extraction.service';
 import { AiActionProposalService } from './services/ai-action-proposal.service';
+import { AiConversationStateService } from './services/ai-conversation-state.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MealsModule } from '../meals/meals.module';
 import { EventsModule } from '../events/events.module';
@@ -21,6 +22,7 @@ import { SearchSkill } from './skills/search.skill';
 import { AiSkillRegistry } from './skills/ai-skill-registry';
 import { WeatherModule } from '../weather/weather.module';
 import { AiFamilyResolver } from './ai-family-resolver';
+import { AiEntityResolver } from './ai-entity-resolver';
 import { AiStructuredActionHandler } from './ai-structured-action-handler';
 
 @Module({
@@ -38,6 +40,7 @@ import { AiStructuredActionHandler } from './ai-structured-action-handler';
     RagService,
     VisionExtractionService,
     AiActionProposalService,
+    AiConversationStateService,
     MarketSkill,
     GeneralChatSkill,
     MealSkill,
@@ -49,8 +52,9 @@ import { AiStructuredActionHandler } from './ai-structured-action-handler';
     SearchSkill,
     AiSkillRegistry,
     AiFamilyResolver,
+    AiEntityResolver,
     AiStructuredActionHandler,
   ],
-  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiActionProposalService, AiSkillRegistry, FootballSkill, WeatherSkill, SearchSkill],
+  exports: [AiAgentService, ChatService, HoroscopeService, RagService, VisionExtractionService, AiActionProposalService, AiConversationStateService, AiEntityResolver, AiSkillRegistry, FootballSkill, WeatherSkill, SearchSkill],
 })
 export class AiAgentModule {}

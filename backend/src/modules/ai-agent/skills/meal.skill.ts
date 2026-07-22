@@ -1,17 +1,16 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
-import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
+import { Injectable, Logger } from '@nestjs/common';
 import { AiIntent, normalizeSearchText } from '../ai-intent-router';
+import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { MealsService } from '../../meals/meals.service';
-import { formatMenuForUser, toolSuccess, toolError } from '../ai-tool-runtime';
+import { formatMenuForUser } from '../ai-tool-runtime';
+import { toolSuccess, toolError } from '../ai-tool-runtime';
 
 @Injectable()
 export class MealSkill implements AiSkill {
+  private readonly logger = new Logger(MealSkill.name);
   name = 'MealSkill';
 
-  constructor(
-    @Inject(forwardRef(() => MealsService))
-    private readonly mealsService: MealsService,
-  ) {}
+  constructor(private readonly mealsService: MealsService) {}
 
   canHandle(intent: AiIntent): boolean {
     return intent === 'meal_suggestion';
@@ -19,7 +18,9 @@ export class MealSkill implements AiSkill {
 
   getSystemPrompt(context: AiSkillContext): string {
     const memory = context.memoryContext ? `\nUSER PREFERENCES FROM MEMORY:\n${context.memoryContext}` : '';
-    return `MEAL RULES:\n- Call generateFamilyMenu when the user asks what to eat, meal ideas, menu, or family menu suggestions.\n- Present the menu naturally with main dish, vegetable, and soup if available.${memory}`;
+    return `MEAL RULES:
+- ALWAYS call generateFamilyMenu tool for meal/food suggestions. Do NOT answer from memory or assumptions.
+- Present the menu naturally with main dish, vegetable, and soup if available.${memory}`;
   }
 
   getTools(): AiSkillTool[] {
@@ -33,15 +34,9 @@ export class MealSkill implements AiSkill {
     }];
   }
 
-  async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
-    if (context.ragContext) return undefined;
-
-    const msg = normalizeSearchText(context.userMessage);
-    const isSimple = msg.includes('an gi') || msg.includes('an toi') || msg.includes('thuc don') || msg.includes('goi y mon');
-    if (!isSimple) return undefined;
-
-    const result = await this.mealsService.generateFamilyMenu(context.familyId);
-    return { content: formatMenuForUser(result), direct: true };
+  // LLM-first: always let the LLM call generateFamilyMenu tool
+  async tryDirectAnswer(_context: AiSkillContext): Promise<AiSkillResponse | undefined> {
+    return undefined;
   }
 
   async executeTool(toolName: string, _args: any, context: AiSkillContext): Promise<any> {

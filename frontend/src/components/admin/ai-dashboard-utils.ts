@@ -4,14 +4,23 @@ export interface AiRequestLog {
   id: string;
   timestamp: string;
   type: 'chat' | 'stream';
+  source?: string;
   intent: string;
+  prompt?: string;
+  normalizedPrompt?: string;
   skill?: string;
   model: string;
+  routeReason?: string;
+  routeConfidence?: number;
   toolsCalled?: string[];
   ragSnippetCount?: number;
   ragQuery?: string;
   ragMiss?: boolean;
   ragSources?: AiRagSource[];
+  resolverTelemetry?: Record<string, unknown>;
+  proposedAction?: Record<string, unknown>;
+  sanitizerIncidents?: Array<Record<string, unknown>>;
+  needsClarification?: boolean;
   latencyMs: number;
   cached: boolean;
   redacted: boolean;
@@ -20,6 +29,7 @@ export interface AiRequestLog {
   sessionId?: string;
   error?: string;
   fallbackReason?: string;
+  modelChoiceReason?: string;
   tokenCount?: number;
   feedbacks?: AiFeedback[];
 }
@@ -60,6 +70,17 @@ export interface SystemStats {
   logStats: { total: number; cacheHits: number; errors: number; avgLatencyMs: number };
   recentLogs: AiRequestLog[];
   topRagSources?: TopRagSource[];
+  evalDrafts?: Array<{
+    id: string;
+    sourceRequestLogId: string;
+    group: string;
+    expected: {
+      intent?: string;
+      skill?: string;
+      familyId?: string;
+    };
+    metadata: Record<string, unknown>;
+  }>;
   feedback?: {
     total: number;
     byValue: Record<string, number>;
@@ -117,21 +138,28 @@ export function formatReadableLabel(value?: string) {
 export function getRequestStatus(log: AiRequestLog) {
   if (log.error) {
     return {
-      label: 'Cần kiểm tra',
+      label: 'Can kiem tra',
       detail: log.fallbackReason || log.error,
       className: 'bg-rose-500/10 text-rose-500 border-rose-500/20',
     };
   }
   if (log.cached) {
     return {
-      label: 'Từ cache',
-      detail: 'Trả lại kết quả đã lưu nên gần như không tốn thời gian/model.',
+      label: 'Tu cache',
+      detail: 'Tra lai ket qua da luu nen gan nhu khong ton thoi gian/model.',
       className: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
     };
   }
+  if (log.needsClarification) {
+    return {
+      label: 'Can lam ro',
+      detail: 'AI da dung lai de hoi them thay vi doan.',
+      className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    };
+  }
   return {
-    label: 'Hoàn tất',
-    detail: 'Request xử lý thành công.',
+    label: 'Hoan tat',
+    detail: 'Request xu ly thanh cong.',
     className: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   };
 }
@@ -139,37 +167,39 @@ export function getRequestStatus(log: AiRequestLog) {
 export function getRequestSummary(log: AiRequestLog) {
   const skill = formatReadableLabel(log.skill);
   const intent = formatReadableLabel(log.intent);
-  const model = log.model === 'direct' ? 'không gọi model' : log.model.toUpperCase();
-  const mode = log.type === 'stream' ? 'streaming' : 'chat thường';
+  const model = log.model === 'direct' ? 'khong goi model' : log.model.toUpperCase();
+  const mode = log.type === 'stream' ? 'streaming' : 'chat thuong';
+  const reason = log.modelChoiceReason ? ` Ly do chon model: ${log.modelChoiceReason}.` : '';
+  const route = log.routeReason ? ` Route: ${log.routeReason}.` : '';
 
   if (log.cached) {
-    return `AI trả lời từ cache cho intent ${intent}, không cần xử lý lại.`;
+    return `AI tra loi tu cache cho intent ${intent}, khong can xu ly lai.${reason}${route}`;
   }
 
   if (log.error) {
-    return `Request ${mode} bị lỗi ở ${skill}.`;
+    return `Request ${mode} bi loi o ${skill}.${reason}${route}`;
   }
 
-  return `AI dùng ${skill} để xử lý intent ${intent} qua ${model}.`;
+  return `AI dung ${skill} de xu ly intent ${intent} qua ${model}.${reason}${route}`;
 }
 
 export function getRagSummary(log: AiRequestLog) {
   const snippets = log.ragSnippetCount || 0;
   const tools = log.toolsCalled?.length || 0;
 
-  if (log.ragMiss) return 'Có tìm RAG nhưng không thấy đoạn ghi chú phù hợp.';
-  if (snippets > 0) return `Đã lấy ${snippets} đoạn context từ sổ tay gia đình.`;
-  if (tools > 0) return `Đã gọi ${tools} tool, không dùng RAG.`;
-  return 'Không gọi tool và không dùng RAG.';
+  if (log.ragMiss) return 'Co tim RAG nhung khong thay doan ghi chu phu hop.';
+  if (snippets > 0) return `Da lay ${snippets} doan context tu so tay gia dinh.`;
+  if (tools > 0) return `Da goi ${tools} tool, khong dung RAG.`;
+  return 'Khong goi tool va khong dung RAG.';
 }
 
 export function getFeedbackLabel(value: AiFeedback['value']) {
   const labels: Record<AiFeedback['value'], string> = {
-    correct: 'Đúng',
+    correct: 'Dung',
     wrong: 'Sai',
-    missing_context: 'Thiếu context',
-    wrong_family: 'Sai gia đình',
-    wrong_datetime: 'Sai ngày giờ',
+    missing_context: 'Thieu context',
+    wrong_family: 'Sai gia dinh',
+    wrong_datetime: 'Sai ngay gio',
   };
   return labels[value] || value;
 }

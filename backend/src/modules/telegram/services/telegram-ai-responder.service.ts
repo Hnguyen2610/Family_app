@@ -25,12 +25,19 @@ export class TelegramAiResponder {
     private readonly context: TelegramContextService,
   ) {}
 
+  private getTelegramSourceMode(ctx: Context): 'telegram_group' | 'telegram_private' {
+    return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+      ? 'telegram_group'
+      : 'telegram_private';
+  }
+
   async chatWithAi(
     familyId: string,
     prompt: string,
     user: { id?: string } | null | undefined,
     model: 'groq' | 'gemini' = 'groq',
     imageUrl?: string,
+    sourceMode: 'telegram_group' | 'telegram_private' = 'telegram_private',
   ) {
     return this.aiAgentService.chat(
       familyId,
@@ -39,7 +46,7 @@ export class TelegramAiResponder {
       imageUrl,
       model,
       undefined,
-      'telegram',
+      sourceMode,
     );
   }
 
@@ -55,7 +62,7 @@ export class TelegramAiResponder {
 
     try {
       await ctx.sendChatAction('typing');
-      const response = await this.chatWithAi(commandContext.familyId, prompt, commandContext.user, 'groq');
+      const response = await this.chatWithAi(commandContext.familyId, prompt, commandContext.user, 'groq', undefined, this.getTelegramSourceMode(ctx));
       await this.replyWithAiResponse(ctx, response, prompt, options);
     } catch (error) {
       this.logger.error(`Telegram AI command error: ${prompt}`, error);
@@ -75,6 +82,8 @@ export class TelegramAiResponder {
           'lich hom nay cua gia dinh va viec can chu y, tra loi ngan gon cho Telegram',
           commandContext.user,
           'groq',
+          undefined,
+          this.getTelegramSourceMode(ctx),
         ),
         this.weatherService.getHeaderSummary(),
       ]);
@@ -114,9 +123,9 @@ export class TelegramAiResponder {
     const query = userText ? `lịch thi đấu bóng đá ${userText}` : 'lịch thi đấu bóng đá hôm nay';
 
     try {
-      await ctx.reply('⚽ Đang lấy lịch thi đấu bóng đá hôm nay...');
+      await ctx.reply('Đang lấy lịch thi đấu bóng đá hôm nay...');
       await ctx.sendChatAction('typing');
-      const response = await this.chatWithAi(familyId, query, user, 'groq');
+      const response = await this.chatWithAi(familyId, query, user, 'groq', undefined, this.getTelegramSourceMode(ctx));
 
       if (!isFootballNoDataResponse(response.content)) {
         await this.sender.replyWithAiFeedback(
@@ -129,7 +138,7 @@ export class TelegramAiResponder {
 
       this.logger.warn(`Football-Data had no usable matches, falling back to Tavily search: ${response.content}`);
       await ctx.sendChatAction('typing');
-      const fallback = await this.chatWithAi(familyId, buildFootballWebSearchQuery(userText), user, 'gemini');
+      const fallback = await this.chatWithAi(familyId, buildFootballWebSearchQuery(userText), user, 'gemini', undefined, this.getTelegramSourceMode(ctx));
       await this.sender.replyWithAiFeedback(
         ctx,
         sanitizeTelegramFootballReply(fallback.content),
@@ -137,7 +146,7 @@ export class TelegramAiResponder {
       );
     } catch (error: any) {
       this.logger.warn(`Telegram /football failed: ${error?.message || error}`);
-      await ctx.reply('❌ Có lỗi khi lấy dữ liệu bóng đá.');
+      await ctx.reply('Có lỗi khi lấy dữ liệu bóng đá.');
     }
   }
 
@@ -158,7 +167,7 @@ export class TelegramAiResponder {
     try {
       await ctx.reply(loadingMessage);
       await ctx.sendChatAction('typing');
-      const response = await this.chatWithAi(familyId, prompt, user, model);
+      const response = await this.chatWithAi(familyId, prompt, user, model, undefined, this.getTelegramSourceMode(ctx));
       await this.replyWithAiResponse(ctx, response, prompt, {}, replyOptions);
     } catch (error) {
       this.logger.error(`Telegram menu action error: ${prompt}`, error);
@@ -179,12 +188,52 @@ export class TelegramAiResponder {
       return;
     }
 
-    await ctx.reply(content, {
+    const proposal = response.proposal;
+    let proposalText = '\n\n<b>📢 YÊU CẦU XÁC NHẬN</b>';
+    if (proposal.summary) {
+      proposalText += `\n${proposal.summary}`;
+    }
+
+    if (proposal.riskLevel === 'high') {
+      proposalText += '\n⚠️ <b>Mức độ: Rủi ro cao / xóa dữ liệu</b>';
+    } else if (proposal.riskLevel === 'medium') {
+      proposalText += '\n⚡ <b>Mức độ: Thay đổi dữ liệu</b>';
+    }
+
+    if (proposal.before && proposal.after) {
+      proposalText += '\n\n<b>Chi tiết thay đổi:</b>';
+      const allKeys = Array.from(new Set([...Object.keys(proposal.before), ...Object.keys(proposal.after)]));
+      for (const key of allKeys) {
+        if (['id', 'createdAt', 'updatedAt', 'userId', 'familyId', 'creatorId', 'updaterId'].includes(key)) continue;
+        const bVal = proposal.before[key] !== undefined ? String(proposal.before[key] || '-') : '-';
+        const aVal = proposal.after[key] !== undefined ? String(proposal.after[key] || '-') : '-';
+        if (bVal !== aVal) {
+          proposalText += `\n- ${key}: <s>${bVal}</s> -> <b>${aVal}</b>`;
+        }
+      }
+    } else if (proposal.before) {
+      proposalText += '\n\n<b>Dữ liệu sẽ xóa:</b>';
+      for (const [key, value] of Object.entries(proposal.before)) {
+        if (['id', 'createdAt', 'updatedAt', 'userId', 'familyId', 'creatorId', 'updaterId'].includes(key)) continue;
+        proposalText += `\n- ${key}: <s>${String(value || '-')}</s>`;
+      }
+    } else if (proposal.after) {
+      proposalText += '\n\n<b>Chi tiết tạo mới:</b>';
+      for (const [key, value] of Object.entries(proposal.after)) {
+        if (['id', 'createdAt', 'updatedAt', 'userId', 'familyId', 'creatorId', 'updaterId'].includes(key)) continue;
+        proposalText += `\n- ${key}: <b>${String(value || '-')}</b>`;
+      }
+    }
+
+    await ctx.reply(content + proposalText, {
+      parse_mode: 'HTML',
       ...replyOptions,
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Xác nhận', callback_data: `proposal_confirm:${response.proposal.proposalId}` }],
-          [{ text: 'Hủy', callback_data: `proposal_reject:${response.proposal.proposalId}` }],
+          [
+            { text: 'Xác nhận', callback_data: `proposal_confirm:${proposal.proposalId}` },
+            { text: 'Hủy', callback_data: `proposal_reject:${proposal.proposalId}` },
+          ],
         ],
       },
     });

@@ -1,9 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { RagService } from './rag.service';
+import { AiAgentService } from './ai-agent.service';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ChatService.name);
+  private consolidatingSessions = new Set<string>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ragService: RagService,
+    @Inject(forwardRef(() => AiAgentService))
+    private readonly aiAgentService: AiAgentService,
+  ) {}
 
   async createSession(familyId: string, title: string) {
     return this.prisma.chatSession.create({
@@ -33,7 +44,7 @@ export class ChatService {
       }).catch(() => {});
     }
 
-    return this.prisma.chatMessage.create({
+    const createdMessage = await this.prisma.chatMessage.create({
       data: {
         familyId,
         role,
@@ -41,6 +52,15 @@ export class ChatService {
         sessionId,
       },
     });
+
+    if (sessionId) {
+      // Trigger background memory consolidation
+      this.triggerMemoryConsolidationIfNeeded(familyId, sessionId).catch((err) => {
+        this.logger.error(`Error in background triggerMemoryConsolidationIfNeeded: ${err}`);
+      });
+    }
+
+    return createdMessage;
   }
 
   async getHistory(familyId: string, sessionId?: string, limit: number = 50) {
@@ -61,5 +81,100 @@ export class ChatService {
         sessionId: sessionId || null
       },
     });
+  }
+
+  async triggerMemoryConsolidationIfNeeded(familyId: string, sessionId: string, forceDailyClassify: boolean = false) {
+    if (this.consolidatingSessions.has(sessionId)) return;
+
+    try {
+      const count = await this.prisma.chatMessage.count({
+        where: { sessionId },
+      });
+
+      // Get the last consolidated document's metadata for this session to prevent duplicate consolidation
+      const lastDocs = await this.prisma.aiDocument.findMany({
+        where: {
+          familyId,
+          sourceType: 'memory_consolidation',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+
+      const sessionDoc = lastDocs.find(
+        (doc) => (doc.metadata as any)?.sessionId === sessionId
+      );
+
+      const lastMessageCount = sessionDoc ? ((sessionDoc.metadata as any)?.lastMessageCount || 0) : 0;
+      const minMessages = forceDailyClassify ? 3 : 15;
+
+      if (count - lastMessageCount < minMessages) return;
+
+      this.consolidatingSessions.add(sessionId);
+      this.logger.log(`[MemoryConsolidation] Session ${sessionId} reached ${count} messages. Triggering background consolidation...`);
+
+      const history = await this.prisma.chatMessage.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const conversationText = history
+        .map((m) => `${m.role === 'user' ? 'Thành viên' : 'Trợ lý'}: ${m.content}`)
+        .join('\n');
+
+      const systemPrompt = `Bạn là một AI chuyên phân tích đúc kết hội thoại gia đình.
+Nhiệm vụ của bạn là đọc lịch sử hội thoại bên dưới và trích xuất các tri thức mới/hữu ích về gia đình này (ví dụ: ngày sinh nhật thành viên, sở thích ăn uống, thói quen đi lại, các nguyên tắc gia đình, món yêu thích, hoặc thông tin cập nhật khác).
+Nếu không có thông tin tri thức/thói quen/sở thích nào mới hoặc đáng nhớ, hãy trả về chữ "NO_KNOWLEDGE".
+Nếu có thông tin mới, hãy trả về danh sách các sự thật/tri thức mới dưới dạng văn bản tiếng Việt ngắn gọn, dễ đọc, mỗi ý một gạch đầu dòng.`;
+
+      const extracted = await this.aiAgentService.generateBriefingText(
+        systemPrompt,
+        `Dưới đây là hội thoại gia đình:\n"""\n${conversationText}\n"""`
+      );
+
+      if (extracted && extracted.trim() !== 'NO_KNOWLEDGE' && extracted.trim().length > 10) {
+        this.logger.log(`[MemoryConsolidation] Extracted memory facts from session ${sessionId}:\n${extracted}`);
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        await this.ragService.createKnowledgeDocument({
+          familyId,
+          title: `Ký ức đúc kết từ hội thoại ngày ${dateStr}`,
+          content: extracted.trim(),
+          sourceType: 'memory_consolidation',
+          metadata: {
+            sessionId,
+            consolidatedAt: new Date().toISOString(),
+            lastMessageCount: count,
+          },
+        });
+
+        this.logger.log(`[MemoryConsolidation] Memory successfully consolidated into pgvector RAG for familyId=${familyId}`);
+      } else {
+        this.logger.log(`[MemoryConsolidation] No new knowledge extracted from session ${sessionId}`);
+      }
+    } catch (error) {
+      this.logger.error(`[MemoryConsolidation] Failed to consolidate memory: ${error}`);
+    } finally {
+      this.consolidatingSessions.delete(sessionId);
+    }
+  }
+
+  @Cron('0 22 * * *')
+  async consolidateAllActiveSessions() {
+    this.logger.log('[MemoryConsolidation] Running scheduled last-of-day memory consolidation...');
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const activeSessions = await this.prisma.chatSession.findMany({
+        where: {
+          updatedAt: { gte: oneDayAgo },
+        },
+      });
+
+      for (const session of activeSessions) {
+        await this.triggerMemoryConsolidationIfNeeded(session.familyId, session.id, true);
+      }
+    } catch (err) {
+      this.logger.error(`[MemoryConsolidation] Failed scheduled consolidation: ${err}`);
+    }
   }
 }

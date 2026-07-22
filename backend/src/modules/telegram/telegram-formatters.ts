@@ -1,4 +1,5 @@
 import { normalizeSearchText } from '../ai-agent/ai-intent-router';
+import { sanitizeAiResponse } from '../ai-agent/ai-response-sanitizer';
 import type { WeatherHeaderSummary } from '../weather/weather.service';
 
 export function formatTelegramWeather(weather: WeatherHeaderSummary) {
@@ -29,7 +30,7 @@ export function buildFootballWebSearchQuery(userText = '') {
   const todayText = today.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
   const tomorrowText = tomorrow.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
   const scope = userText ? `${userText} ` : 'các giải đấu hàng đầu ';
-  return `web search: lịch thi đấu bóng đá ${scope} ngày ${todayText} và rạng sáng ${tomorrowText} theo gio Viet Nam. Chỉ lấy lịch thi đấu, không lấy nhận định soi kèo,video kết quả. Giải, giờ, hai đội.`;
+  return `web search: lịch thi đấu bóng đá ${scope}ngày ${todayText} và rạng sáng ${tomorrowText} theo giờ Việt Nam. Chỉ lấy lịch thi đấu, không lấy nhận định soi kèo, video, kết quả. Chỉ trả giải đấu, giờ, hai đội.`;
 }
 
 export function sanitizeTelegramReply(
@@ -42,10 +43,7 @@ export function sanitizeTelegramReply(
     return sanitizeTelegramFootballReply(content);
   }
 
-  let text = String(content || '')
-    .replace(/<function=[\s\S]*?<\/function>/gi, '')
-    .replace(/\b[a-zA-Z_][\w.]*\(\{[\s\S]*?\}\)/g, '')
-    .trim();
+  let text = sanitizeAiResponse(content).content;
 
   if (options.hideSources) {
     text = stripTelegramSources(text);
@@ -70,7 +68,8 @@ export function stripTelegramSources(content: string) {
 }
 
 export function sanitizeTelegramFootballReply(content: string) {
-  const lines = String(content || '').split(/\r?\n/);
+  const sanitized = sanitizeAiResponse(content).content;
+  const lines = String(sanitized || '').split(/\r?\n/);
   const cleaned: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
@@ -79,13 +78,13 @@ export function sanitizeTelegramFootballReply(content: string) {
       if (cleaned.length && cleaned[cleaned.length - 1] !== '') cleaned.push('');
       continue;
     }
-    if (normalized === 'nguon:' || normalized === 'source:' || normalized.startsWith('nguồn ')) break;
+    if (normalized === 'nguon:' || normalized === 'source:' || normalized.startsWith('nguon ')) break;
     if (/https?:\/\//i.test(trimmed)) continue;
     if (/^\d+\.\s+.*https?:\/\//i.test(trimmed)) continue;
     cleaned.push(trimmed);
   }
 
-  return cleaned.join('\n').trim() || content;
+  return cleaned.join('\n').trim() || sanitized || content;
 }
 
 export function isFootballNoDataResponse(content: string) {

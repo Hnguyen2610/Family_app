@@ -40,10 +40,10 @@ export class FootballSkill implements AiSkill {
 
   getSystemPrompt(_context: AiSkillContext): string {
     return `⚽ FOOTBALL ASSISTANT:
+- ALWAYS call get_matches tool to get real-time football match data. Do NOT guess or hallucinate matches.
 - You show football match schedules and standings.
 - Keep output formatted EXACTLY like this:
-  - HH:mm DD/MM | League Name | Team A vs Team B (Highlight winner or show score if finished).
-- NEVER guess or hallucinate matches. Only output what is returned from the tool.`;
+  - HH:mm DD/MM | League Name | Team A vs Team B (Highlight winner or show score if finished).`;
   }
 
   getTools(): AiSkillTool[] {
@@ -68,54 +68,9 @@ export class FootballSkill implements AiSkill {
     ];
   }
 
-  async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
-    const message = normalizeSearchText(context.userMessage || '');
-
-    let resolvedLeague = this.resolveLeagueCodeFromText(message);
-    const dateRange = this.resolveDefaultDateRange(message);
-    const cacheKey = `${resolvedLeague || 'top'}:${dateRange.dateFrom}:${dateRange.dateTo}`;
-    const cached = this.directAnswerCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return { content: cached.content, direct: true };
-    }
-
-    try {
-      let matches: any[] = [];
-
-      if (resolvedLeague) {
-        this.logger.debug(`Fetching direct matches for single league: ${resolvedLeague}`);
-        const raw = await this.fetchApi(`${this.baseUrl}/competitions/${resolvedLeague}/matches?dateFrom=${dateRange.dateFrom}&dateTo=${dateRange.dateTo}`, 'get_matches');
-        matches = Array.isArray(raw?.data) ? raw.data : [];
-      } else {
-        this.logger.debug(`Fetching direct matches for top leagues: ${this.defaultLeagues.join(', ')}`);
-        // Fetch all top leagues concurrently to avoid rate limit sequential latency
-        const promises = this.defaultLeagues.map(async (league) => {
-          try {
-            const raw = await this.fetchApi(`${this.baseUrl}/competitions/${league}/matches?dateFrom=${dateRange.dateFrom}&dateTo=${dateRange.dateTo}`, 'get_matches');
-            return Array.isArray(raw?.data) ? raw.data : [];
-          } catch (e: any) {
-            this.logger.warn(`Failed to fetch for league ${league}: ${e.message}`);
-            return [];
-          }
-        });
-
-        const results = await Promise.all(promises);
-        matches = results.flat();
-      }
-
-      const content = this.formatMatchesForUser(matches, dateRange);
-      this.directAnswerCache.set(cacheKey, {
-        content,
-        expiresAt: Date.now() + this.directAnswerCacheTtlMs,
-      });
-      return { content, direct: true };
-    } catch (error: any) {
-      this.logger.warn(`Football direct answer failed: ${error.message}`);
-      return {
-        content: `Không lấy được lịch bóng đá từ API lúc này. (Gói API miễn phí giới hạn 10 requests/phút).`,
-        direct: true,
-      };
-    }
+  // LLM-first: always let the LLM call get_matches tool
+  async tryDirectAnswer(_context: AiSkillContext): Promise<AiSkillResponse | undefined> {
+    return undefined;
   }
 
   async executeTool(toolName: string, args: any, context: AiSkillContext): Promise<any> {

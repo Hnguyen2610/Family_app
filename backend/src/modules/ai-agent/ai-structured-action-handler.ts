@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiSkillContext } from './interfaces/ai-skill.interface';
 import { normalizeSearchText } from './ai-intent-router';
 import { parseCalendarMutation } from './ai-calendar-mutation-parser';
-import { AiSkillRegistry } from './skills/ai-skill-registry';
+import { AiEntityResolver, ResolvedEntity } from './ai-entity-resolver';
+import { AiSkill, AiSkillContext } from './interfaces/ai-skill.interface';
 import { AiActionProposalService } from './services/ai-action-proposal.service';
+import { AiSkillRegistry } from './skills/ai-skill-registry';
+import { AI_I18N } from './ai-i18n';
 
 @Injectable()
 export class AiStructuredActionHandler {
@@ -12,14 +14,13 @@ export class AiStructuredActionHandler {
   constructor(
     private readonly skillRegistry: AiSkillRegistry,
     private readonly actionProposalService: AiActionProposalService,
+    private readonly entityResolver: AiEntityResolver,
   ) {}
 
-  async tryHandleStructuredCalendarMutation(skill: any, context: AiSkillContext) {
+  async tryHandleStructuredCalendarMutation(skill: AiSkill, context: AiSkillContext) {
     if (context.intent !== 'event_mutation') return undefined;
 
-    const calendarSkill = skill?.name === 'CalendarSkill'
-      ? skill
-      : this.skillRegistry.getAllSkills().find((candidate) => candidate.name === 'CalendarSkill');
+    const calendarSkill = this.getCalendarSkill(skill);
     if (!calendarSkill?.executeTool) return undefined;
 
     const parsed = parseCalendarMutation(context.userMessage || '', context.resolvedFamilyId);
@@ -32,23 +33,40 @@ export class AiStructuredActionHandler {
       return proposal;
     }
 
-    const eventId = parsed.args.id || await this.findSingleEventIdForMutation(calendarSkill, context, parsed);
+    const resolution = await this.entityResolver.resolveEvent(
+      context.userId,
+      context.userMessage || '',
+      context.resolvedFamilyId || context.familyId,
+    );
+
+    let eventId = parsed.args.id || resolution.resolved?.id;
+    let lookupResult: any = { id: eventId };
+
     if (!eventId) {
-      return 'Mình chưa tìm được sự kiện khớp với yêu cầu. Hãy gửi tên sự kiện kèm ngày, hoặc mở lịch và gửi lại ID sự kiện.';
+      if (resolution.candidates.length > 1) {
+        return this.buildCandidateSelectionMessage(resolution.candidates);
+      }
+      lookupResult = await this.findSingleEventIdForMutation(calendarSkill, context, parsed);
+      eventId = lookupResult?.id;
+    }
+
+    if (!eventId) {
+      if (lookupResult && 'message' in lookupResult) return lookupResult.message;
+      return AI_I18N.eventNoCandidateFound;
     }
 
     const toolName = parsed.action === 'delete' ? 'deleteEvent' : 'updateEvent';
-    const args = {
+    const proposal = await this.actionProposalService.createToolProposal(toolName, {
       ...parsed.args,
       id: eventId,
       familyId: context.resolvedFamilyId || context.familyId,
-    };
-    const proposal = await this.actionProposalService.createToolProposal(toolName, args, context);
+    }, context);
+
     this.logger.debug(`[DirectCalendarMutation] action=${parsed.action} proposal=${proposal.proposalId}`);
     return proposal;
   }
 
-  async tryHandleStructuredMemoryEvent(skill: any, knowledgeSkill: any, context: AiSkillContext) {
+  async tryHandleStructuredMemoryEvent(skill: AiSkill, knowledgeSkill: AiSkill | undefined, context: AiSkillContext) {
     const message = context.userMessage || '';
     const normalized = normalizeSearchText(message);
     const date = this.getFullDateFromMessage(message);
@@ -60,25 +78,34 @@ export class AiStructuredActionHandler {
       return undefined;
     }
 
-    const calendarSkill = skill?.name === 'CalendarSkill'
-      ? skill
-      : this.skillRegistry.getAllSkills().find((candidate) => candidate.name === 'CalendarSkill');
+    const calendarSkill = this.getCalendarSkill(skill);
     if (!calendarSkill?.executeTool || !knowledgeSkill?.executeTool) return undefined;
 
-    const memoryTitle = this.extractExplicitTitleFromMessage(message) || `${date.display} là kỷ niệm gia đình`;
+    const memoryTitle = this.extractExplicitTitleFromMessage(message) || `${date.display} ${AI_I18N.eventFamilyReminderSuffix}`;
     const memoryProposal = await this.actionProposalService.createToolProposal('createWikiEntry', {
       title: memoryTitle,
       content: memoryTitle,
       familyId: context.resolvedFamilyId,
     }, context);
+
     this.logger.debug(`[DirectStructuredAction] memory proposal=${memoryProposal.proposalId}`);
     return memoryProposal;
-
   }
 
-  private async findSingleEventIdForMutation(calendarSkill: any, context: AiSkillContext, parsed: any) {
-    const lookup = parsed.lookup;
-    if (!lookup?.title || !lookup.month || !lookup.year) return undefined;
+  private getCalendarSkill(skill: AiSkill) {
+    return skill?.name === 'CalendarSkill'
+      ? skill
+      : this.skillRegistry.getAllSkills().find((candidate) => candidate.name === 'CalendarSkill');
+  }
+
+  private buildCandidateSelectionMessage(candidates: ResolvedEntity[]) {
+    const rows = candidates.map((candidate, index) => `${index + 1}. "${candidate.title}"`).join('\n');
+    return AI_I18N.eventCandidateList(candidates.length, rows);
+  }
+
+  private async findSingleEventIdForMutation(calendarSkill: AiSkill, context: AiSkillContext, parsed: any) {
+    const lookup = this.withHistoryDate(parsed.lookup, context);
+    if (!lookup?.title || !lookup.month || !lookup.year || !calendarSkill.executeTool) return undefined;
 
     const result = await calendarSkill.executeTool('getEventsByMonth', {
       familyId: context.resolvedFamilyId || context.familyId,
@@ -95,20 +122,58 @@ export class AiStructuredActionHandler {
       if (!titleMatches) return false;
       if (!lookup.date) return true;
       const eventDate = event?.date ? new Date(event.date).toISOString().slice(0, 10) : '';
-      return eventDate === lookup.date;
+      if (eventDate !== lookup.date) return false;
+      if (!lookup.time) return true;
+      return String(event?.time || '') === lookup.time;
     });
 
-    return matches.length === 1 ? matches[0].id : undefined;
+    if (matches.length === 1) return { id: matches[0].id };
+    if (matches.length > 1) {
+      return {
+        message: AI_I18N.eventAmbiguousMatches(matches.length),
+      };
+    }
+
+    return undefined;
   }
 
+  private withHistoryDate(lookup: any, context: AiSkillContext) {
+    if (!lookup || lookup.date) return lookup;
+
+    const historyDate = this.findLatestCalendarDateInHistory(context.history || []);
+    if (!historyDate) return lookup;
+
+    return {
+      ...lookup,
+      date: historyDate.iso,
+      month: historyDate.month,
+      year: historyDate.year,
+    };
+  }
+
+  private findLatestCalendarDateInHistory(history: any[]) {
+    for (const message of [...(history || [])].reverse()) {
+      const content = normalizeSearchText(String(message?.content || ''));
+      const match = content.match(/(?:su kien ngay|ngay)\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+      if (!match) continue;
+
+      return {
+        iso: `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`,
+        month: Number.parseInt(match[2], 10),
+        year: Number.parseInt(match[3], 10),
+      };
+    }
+
+    return undefined;
+  }
 
   private extractExplicitTitleFromMessage(userMessage: string) {
-    const marker = userMessage.match(/(?:v[oá»›]i\s+title|title|ti[eÃª]u\s*[dÄ‘][eá»])\s*[:ï¼š]?\s*/i);
+    const marker = userMessage.match(/(?:voi\s+title|với\s+title|title|tieu\s*de|tiêu\s*đề)\s*(?:la|là|[:：])?\s*/i);
     if (!marker || marker.index === undefined) return '';
 
     const start = marker.index + marker[0].length;
     const rest = userMessage.slice(start);
-    const stop = rest.search(/(?:\.\s*)?(?:sau\s*[dÄ‘][oÃ³]|r[oá»“]i|v[aÃ ]\s+sau\s*[dÄ‘][oÃ³]|sau\s+[dÄ‘][oÃ³]\s+gi[uÃº]p)/i);
+    const stop = rest.search(/(?:\.\s*)?(?:sau\s*do|sau\s*đó|roi|rồi|va\s+sau\s*do|và\s+sau\s*đó|sau\s*do\s+giup|sau\s*đó\s+giúp)/i);
 
     return (stop >= 0 ? rest.slice(0, stop) : rest)
       .replace(/^[\s"']+|[\s"'.]+$/g, '')
@@ -125,5 +190,4 @@ export class AiStructuredActionHandler {
       iso: `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`,
     };
   }
-
 }

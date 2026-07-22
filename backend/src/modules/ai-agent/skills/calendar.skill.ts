@@ -5,6 +5,9 @@ import { EventsService } from '../../events/events.service';
 import { formatCalendarEventsForUser, toolSuccess, toolError } from '../ai-tool-runtime';
 import { getSolarDateFromLunar as convertLunarToSolar } from '../../../utils/lunar-calendar.util';
 import { normalizeSearchText } from '../ai-intent-router';
+import { parseCalendarDate } from '../ai-date-parser';
+import { AiConversationStateService } from '../services/ai-conversation-state.service';
+import { getCalendarReadFamilyId, getMutationFamilyId, shouldIncludePrivateEvents } from '../ai-family-scope-policy';
 
 @Injectable()
 export class CalendarSkill implements AiSkill {
@@ -14,6 +17,7 @@ export class CalendarSkill implements AiSkill {
   constructor(
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
+    private readonly conversationState: AiConversationStateService,
   ) {}
 
   canHandle(intent: AiIntent): boolean {
@@ -23,6 +27,7 @@ export class CalendarSkill implements AiSkill {
   getSystemPrompt(_context: AiSkillContext): string {
     const year = new Date().getFullYear().toString();
     return `CALENDAR TOOL RULES:
+- If the system prompt packages "[PRE-FETCHED CALENDAR EVENTS FOR ...]" for the targeted date/month, do NOT call getEventsByMonth database tool to retrieve events for those dates. Use the provided list of events directly to reply and construct your plans/menus.
 - Use createEvent only when the user explicitly asks to create/add/schedule an event.
 - When creating an event, always set scope. Default to FAMILY unless the user explicitly says it is private/personal.
 - For Telegram group requests or text saying "ca gia dinh", "family", "group", or "cho ca nha", create the event with scope FAMILY.
@@ -140,16 +145,98 @@ export class CalendarSkill implements AiSkill {
 
   async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
     if (context.intent === 'calendar_query') {
-      const targetMonth = this.getCalendarMonthFromMessage(context.userMessage);
-      if (targetMonth) {
+      const normalized = normalizeSearchText(context.userMessage || '');
+      if (this.looksLikeCalendarMutation(normalized)) {
+        return undefined;
+      }
+
+      // Check if LLM reasoning is required for planning/suggestions/recipes
+      const requiresLlmReasoning =
+        /(\bke\s*hoach\b|\bgoi\s*y\b|\bthuc\s*don\b|\bmenu\b|\ban\s*gi\b|\bnau\s*gi\b|\bmon\s*an\b|\blien\s*hoan\b|\bto\s*chuc\b|\bsap\s*xep\b|\bplan\b|\bsuggest\b|\bparty\b|\borganize\b|\bcook\b|\beat\b)/i.test(normalized);
+
+      const targetDate = parseCalendarDate(context.userMessage);
+      if (targetDate) {
         const events = await this.eventsService.getEventsByMonth(
-          context.familyId,
-          targetMonth.month,
-          targetMonth.year,
+          getCalendarReadFamilyId(context),
+          targetDate.month,
+          targetDate.year,
           context.userId
         );
+        const filtered = this.filterCalendarEvents(events, context.userMessage, targetDate.iso);
+        const formattedEvents = this.formatEventsForDay(filtered, targetDate.display);
+
+        const listedEvents = [...filtered].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 12)
+          .map((event, index) => ({
+            eventId: event.id,
+            date: new Date(event.date).toISOString().split('T')[0],
+            time: event.time || undefined,
+            title: event.title,
+            scope: event.scope,
+            familyId: event.familyId,
+            rowNumber: index + 1,
+          }));
+        await this.conversationState.saveState(context.userId, {
+          lastShownEvents: listedEvents,
+          lastSelectedFamilyId: context.resolvedFamilyId || context.familyId,
+          lastIntent: context.intent,
+        });
+
+        // Pre-inject event content into context so LLM gets it directly in Loop 1
+        const preFetched = `\n\n[PRE-FETCHED CALENDAR EVENTS FOR ${targetDate.display} (${targetDate.iso})]:\n${formattedEvents}`;
+        context.familyContext = (context.familyContext || '') + preFetched;
+
+        if (requiresLlmReasoning) {
+          return undefined; // Let LLM handle reasoning with pre-injected context
+        }
+
         return {
-          content: formatCalendarEventsForUser(events, targetMonth.month, targetMonth.year),
+          content: formattedEvents,
+          direct: true,
+        };
+      }
+
+      const targetMonth = this.getCalendarMonthFromMessage(context.userMessage);
+      const wantsPersonalEvents = this.isPersonalEventQuery(normalized);
+      if (targetMonth || wantsPersonalEvents) {
+        const month = targetMonth?.month || this.getCurrentIctMonth().month;
+        const year = targetMonth?.year || this.getCurrentIctMonth().year;
+        const events = await this.eventsService.getEventsByMonth(
+          getCalendarReadFamilyId(context),
+          month,
+          year,
+          context.userId
+        );
+        const filtered = this.filterCalendarEvents(events, context.userMessage);
+        const formattedEvents = formatCalendarEventsForUser(filtered, month, year);
+
+        const listedEvents = [...filtered].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 12)
+          .map((event, index) => ({
+            eventId: event.id,
+            date: new Date(event.date).toISOString().split('T')[0],
+            time: event.time || undefined,
+            title: event.title,
+            scope: event.scope,
+            familyId: event.familyId,
+            rowNumber: index + 1,
+          }));
+        await this.conversationState.saveState(context.userId, {
+          lastShownEvents: listedEvents,
+          lastSelectedFamilyId: context.resolvedFamilyId || context.familyId,
+          lastIntent: context.intent,
+        });
+
+        // Pre-inject event content into context so LLM gets it directly in Loop 1
+        const preFetched = `\n\n[PRE-FETCHED CALENDAR EVENTS FOR MONTH ${month}/${year}]:\n${formattedEvents}`;
+        context.familyContext = (context.familyContext || '') + preFetched;
+
+        if (requiresLlmReasoning) {
+          return undefined; // Let LLM handle reasoning with pre-injected context
+        }
+
+        return {
+          content: formattedEvents,
           direct: true,
         };
       }
@@ -161,7 +248,7 @@ export class CalendarSkill implements AiSkill {
     try {
       switch (toolName) {
         case 'getEventsByMonth': {
-          const searchFamilyId = args.familyId === 'all' ? 'all' : (args.familyId || context.familyId);
+          const searchFamilyId = args.familyId === 'all' ? 'all' : (args.familyId || getCalendarReadFamilyId(context));
           const events = await this.eventsService.getEventsByMonth(
             searchFamilyId,
             args.month,
@@ -219,6 +306,7 @@ export class CalendarSkill implements AiSkill {
         }
 
         case 'updateEvent': {
+          const updateFamilyId = getMutationFamilyId(context) || args.familyId || context.familyId;
           let eventDate = args.date ? new Date(args.date) : undefined;
           const eventEndDate = args.endDate ? new Date(args.endDate) : undefined;
           if (eventDate && args.time) {
@@ -227,8 +315,9 @@ export class CalendarSkill implements AiSkill {
               eventDate.setHours(hours, minutes, 0, 0);
             }
           }
-          const result = await this.eventsService.update(args.id, args.familyId || context.familyId, context.userId, {
+          const result = await this.eventsService.update(args.id, updateFamilyId, context.userId, {
             ...args,
+            familyId: updateFamilyId,
             date: eventDate,
             endDate: eventEndDate,
             recurring: args.useLunar && (args.recurring === 'MONTHLY' || args.recurring === 'YEARLY')
@@ -238,8 +327,10 @@ export class CalendarSkill implements AiSkill {
           return toolSuccess(toolName, result);
         }
 
-        case 'deleteEvent':
-          return toolSuccess(toolName, await this.eventsService.delete(args.id, args.familyId || context.familyId, context.userId));
+        case 'deleteEvent': {
+          const deleteFamilyId = getMutationFamilyId(context) || args.familyId || context.familyId;
+          return toolSuccess(toolName, await this.eventsService.delete(args.id, deleteFamilyId, context.userId));
+        }
 
         case 'getSolarDateFromLunar': {
           const date = convertLunarToSolar(args.day, args.month, args.year);
@@ -290,10 +381,7 @@ export class CalendarSkill implements AiSkill {
   }
 
   private getCalendarMonthFromMessage(message: string): { month: number; year: number } | undefined {
-    const now = new Date();
-    const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const currentMonth = ictDate.getUTCMonth() + 1;
-    const currentYear = ictDate.getUTCFullYear();
+    const { month: currentMonth, year: currentYear } = this.getCurrentIctMonth();
     const normalized = normalizeSearchText(message || '');
 
     if (normalized.includes('thang nay')) return { month: currentMonth, year: currentYear };
@@ -311,5 +399,69 @@ export class CalendarSkill implements AiSkill {
     }
 
     return undefined;
+  }
+
+  private getCurrentIctMonth() {
+    const now = new Date();
+    const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    return {
+      month: ictDate.getUTCMonth() + 1,
+      year: ictDate.getUTCFullYear(),
+    };
+  }
+
+  private filterCalendarEvents(events: any[], message: string, isoDate?: string) {
+    const normalized = normalizeSearchText(message || '');
+    const privateOnly = this.isPrivateOnlyEventQuery(normalized);
+
+    return (events || []).filter((event) => {
+      if (privateOnly && event.scope !== 'PRIVATE') return false;
+      if (!isoDate) return true;
+      return this.eventOccursOnDate(event, isoDate);
+    });
+  }
+
+  private isPersonalEventQuery(normalizedMessage: string) {
+    return shouldIncludePrivateEvents(normalizedMessage);
+  }
+
+  private isPrivateOnlyEventQuery(normalizedMessage: string) {
+    return /\b(ca nhan|private|rieng toi)\b/.test(normalizedMessage);
+  }
+
+  private looksLikeCalendarMutation(normalizedMessage: string) {
+    const hasMutation = /\b(tao|them|len lich|dat lich|sua|cap nhat|doi|doi ten|xoa|huy|delete|update|remove)\b/.test(normalizedMessage);
+    const hasCalendarObject = /\b(lich|su kien|event|birthday|sinh nhat|hen|anniversary|ky niem)\b/.test(normalizedMessage);
+    return hasMutation && hasCalendarObject;
+  }
+
+  private eventOccursOnDate(event: any, isoDate: string) {
+    const startIso = this.toDateIso(event?.date);
+    const endIso = this.toDateIso(event?.endDate || event?.date);
+    return Boolean(startIso && endIso && startIso <= isoDate && isoDate <= endIso);
+  }
+
+  private toDateIso(value: any) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  }
+
+  private formatEventsForDay(events: any[], displayDate: string) {
+    if (!Array.isArray(events) || events.length === 0) {
+      return `Không có sự kiện nào vào ngày ${displayDate}.`;
+    }
+
+    const lines = [...events]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 12)
+      .map((event, index) => {
+        const timeText = event?.time ? `${event.time}: ` : '';
+        const familyText = event?.familyName ? ` - ${event.familyName}` : '';
+        return `${index + 1}. ${timeText}${event?.title || 'Sự kiện'}${familyText}`;
+      });
+
+    return `Sự kiện ngày ${displayDate}:\n${lines.join('\n')}`;
   }
 }

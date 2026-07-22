@@ -8,14 +8,23 @@ export type AiRequestLog = {
   id: string;
   timestamp: string;
   type: 'chat' | 'stream';
+  source?: string;
   intent: string;
+  prompt?: string;
+  normalizedPrompt?: string;
   skill?: string;
   model: string;
+  routeReason?: string;
+  routeConfidence?: number;
   toolsCalled?: string[];
   ragSnippetCount?: number;
   ragQuery?: string;
   ragMiss?: boolean;
   ragSources?: AiRagLogSource[];
+  resolverTelemetry?: Record<string, unknown>;
+  proposedAction?: Record<string, unknown>;
+  sanitizerIncidents?: Array<Record<string, unknown>>;
+  needsClarification?: boolean;
   latencyMs: number;
   cached: boolean;
   redacted: boolean;
@@ -24,7 +33,9 @@ export type AiRequestLog = {
   sessionId?: string;
   error?: string;
   fallbackReason?: string;
+  modelChoiceReason?: string;
   tokenCount?: number;
+  resolvedFamilyMode?: string; // 'single' | 'all' | 'telegram_group' | 'private'
   feedbacks?: AiRequestFeedback[];
 };
 
@@ -41,7 +52,7 @@ export type AiRequestFeedback = {
 export type AiRequestLogFilters = {
   model?: string;
   skill?: string;
-  status?: 'ok' | 'error' | 'cached';
+  status?: 'ok' | 'error' | 'cached' | 'needs_clarification' | 'raw_tool_blocked' | 'low_confidence' | 'negative_feedback';
   familyId?: string;
   hasRag?: 'true' | 'false';
 };
@@ -82,14 +93,23 @@ function mapDbLog(row: any): AiRequestLog {
     id: row.id,
     timestamp: row.timestamp instanceof Date ? row.timestamp.toISOString() : String(row.timestamp),
     type: row.type,
+    source: row.source || undefined,
     intent: row.intent,
+    prompt: row.prompt || undefined,
+    normalizedPrompt: row.normalizedPrompt || undefined,
     skill: row.skill || undefined,
     model: row.model,
+    routeReason: row.routeReason || undefined,
+    routeConfidence: typeof row.routeConfidence === 'number' ? row.routeConfidence : undefined,
     toolsCalled: row.toolsCalled || undefined,
     ragSnippetCount: row.ragSnippetCount ?? undefined,
     ragQuery: row.ragQuery || undefined,
     ragMiss: row.ragMiss ?? undefined,
     ragSources: Array.isArray(row.ragSources) ? row.ragSources : undefined,
+    resolverTelemetry: row.resolverTelemetry && typeof row.resolverTelemetry === 'object' ? row.resolverTelemetry : undefined,
+    proposedAction: row.proposedAction && typeof row.proposedAction === 'object' ? row.proposedAction : undefined,
+    sanitizerIncidents: Array.isArray(row.sanitizerIncidents) ? row.sanitizerIncidents : undefined,
+    needsClarification: row.needsClarification ?? undefined,
     latencyMs: row.latencyMs || 0,
     cached: Boolean(row.cached),
     redacted: Boolean(row.redacted),
@@ -98,7 +118,9 @@ function mapDbLog(row: any): AiRequestLog {
     sessionId: row.sessionId || undefined,
     error: row.error || undefined,
     fallbackReason: row.fallbackReason || undefined,
+    modelChoiceReason: row.modelChoiceReason || undefined,
     tokenCount: row.tokenCount ?? undefined,
+    resolvedFamilyMode: row.resolvedFamilyMode || undefined,
     feedbacks: row.feedbacks?.map(mapDbFeedback) || undefined,
   };
 }
@@ -108,14 +130,23 @@ function toDbLog(log: AiRequestLog) {
     id: log.id,
     timestamp: new Date(log.timestamp),
     type: log.type,
+    source: log.source || null,
     intent: log.intent,
+    prompt: log.prompt || null,
+    normalizedPrompt: log.normalizedPrompt || null,
     skill: log.skill || null,
     model: log.model,
+    routeReason: log.routeReason || null,
+    routeConfidence: log.routeConfidence ?? null,
     toolsCalled: log.toolsCalled || [],
     ragSnippetCount: log.ragSnippetCount ?? null,
     ragQuery: log.ragQuery || null,
     ragMiss: log.ragMiss ?? null,
     ragSources: log.ragSources || undefined,
+    resolverTelemetry: log.resolverTelemetry || undefined,
+    proposedAction: log.proposedAction || undefined,
+    sanitizerIncidents: log.sanitizerIncidents || undefined,
+    needsClarification: log.needsClarification ?? false,
     latencyMs: log.latencyMs || 0,
     cached: Boolean(log.cached),
     redacted: Boolean(log.redacted),
@@ -124,7 +155,9 @@ function toDbLog(log: AiRequestLog) {
     sessionId: log.sessionId || null,
     error: log.error || null,
     fallbackReason: log.fallbackReason || null,
+    modelChoiceReason: log.modelChoiceReason || null,
     tokenCount: log.tokenCount ?? null,
+    resolvedFamilyMode: log.resolvedFamilyMode || null,
   };
 }
 
@@ -321,6 +354,12 @@ export async function getFilteredRequestLogs(limit = 50, filters: AiRequestLogFi
       if (filters.familyId) where.familyId = filters.familyId;
       if (filters.status === 'cached') where.cached = true;
       if (filters.status === 'error') where.error = { not: null };
+      if (filters.status === 'needs_clarification') where.needsClarification = true;
+      if (filters.status === 'raw_tool_blocked') where.sanitizerIncidents = { not: null };
+      if (filters.status === 'low_confidence') where.routeConfidence = { lt: 0.65 };
+      if (filters.status === 'negative_feedback') {
+        where.feedbacks = { some: { value: { not: 'correct' } } };
+      }
       if (filters.status === 'ok') {
         where.cached = false;
         where.error = null;
@@ -355,6 +394,10 @@ export async function getFilteredRequestLogs(limit = 50, filters: AiRequestLogFi
       if (!filters.status) return true;
       if (filters.status === 'cached') return log.cached;
       if (filters.status === 'error') return !!log.error;
+      if (filters.status === 'needs_clarification') return !!log.needsClarification;
+      if (filters.status === 'raw_tool_blocked') return Boolean(log.sanitizerIncidents?.length);
+      if (filters.status === 'low_confidence') return typeof log.routeConfidence === 'number' && log.routeConfidence < 0.65;
+      if (filters.status === 'negative_feedback') return Boolean(log.feedbacks?.some((feedback) => feedback.value !== 'correct'));
       return !log.error && !log.cached;
     })
     .slice(-limit)
@@ -480,6 +523,7 @@ export async function getLogStats() {
 
 type DirectRequestLogInput = {
   type: 'chat' | 'stream';
+  source?: string;
   intent: string;
   skill?: string;
   model?: string;
@@ -487,22 +531,67 @@ type DirectRequestLogInput = {
   userId?: string;
   familyId: string;
   sessionId?: string;
+  resolvedFamilyMode?: string;
+  modelChoiceReason?: string;
+  prompt?: string;
+  normalizedPrompt?: string;
+  routeReason?: string;
+  routeConfidence?: number;
+  resolverTelemetry?: Record<string, unknown>;
+  proposedAction?: Record<string, unknown>;
+  sanitizerIncidents?: Array<Record<string, unknown>>;
+  needsClarification?: boolean;
 };
 
 export type AiTelemetryFilters = AiRequestLogFilters;
 
+function buildEvalDrafts(feedbackStats: Awaited<ReturnType<typeof getFeedbackStats>>) {
+  return (feedbackStats.recent || [])
+    .filter((feedback: any) => feedback.value !== 'correct')
+    .slice(0, 20)
+    .map((feedback: any) => ({
+      id: `draft-${feedback.requestLogId}-${feedback.value}`,
+      sourceRequestLogId: feedback.requestLogId,
+      group: feedback.value,
+      expected: {
+        intent: feedback.intent,
+        skill: feedback.skill,
+        familyId: feedback.familyId,
+      },
+      metadata: {
+        model: feedback.model,
+        feedback: feedback.value,
+        source: feedback.source,
+        comment: feedback.comment,
+        timestamp: feedback.timestamp,
+        userId: feedback.userId,
+      },
+    }));
+}
+
 export function appendDirectAiRequestLog(input: DirectRequestLogInput) {
   return appendRequestLog({
     type: input.type,
+    source: input.source,
     intent: input.intent,
+    prompt: input.prompt,
+    normalizedPrompt: input.normalizedPrompt,
     skill: input.skill,
     model: input.model || 'direct',
+    routeReason: input.routeReason,
+    routeConfidence: input.routeConfidence,
+    resolverTelemetry: input.resolverTelemetry,
+    proposedAction: input.proposedAction,
+    sanitizerIncidents: input.sanitizerIncidents,
+    needsClarification: input.needsClarification,
     latencyMs: 0,
     cached: input.cached || false,
     redacted: false,
     userId: input.userId,
     familyId: input.familyId,
     sessionId: input.sessionId,
+    resolvedFamilyMode: input.resolvedFamilyMode,
+    modelChoiceReason: input.modelChoiceReason,
   });
 }
 
@@ -518,6 +607,7 @@ export async function getAiRequestTelemetry(filters: AiTelemetryFilters) {
     logs: requestLogs,
     logStats,
     feedbackStats,
+    evalDrafts: buildEvalDrafts(feedbackStats),
     topRetrievedRagSources,
   };
 }

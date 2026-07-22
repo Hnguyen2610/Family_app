@@ -3,8 +3,8 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import { FiArrowLeft } from 'react-icons/fi';
-import { useState } from 'react';
-import { usersAPI } from '@/lib/api-client';
+import { useState, useEffect } from 'react';
+import { usersAPI, notificationsAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { TimePicker } from '@/components/ui/time-picker';
 
@@ -41,6 +41,16 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
 
   const [settings, setSettings] = useState<any>(user?.notificationSettings || defaultSettings);
   const [isSaving, setIsSaving] = useState(false);
+  const [deliveryLogs, setDeliveryLogs] = useState<any[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) {
+      notificationsAPI.getDeliveryLogs({ userId: user.id, limit: 20 })
+        .then(res => setDeliveryLogs(res.data || []))
+        .catch(() => {});
+    }
+  }, [user?.id]);
 
   const toggleSetting = async (key: string) => {
     const oldSettings = { ...settings };
@@ -258,6 +268,58 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
           language={language}
           disabled={isSaving}
         />
+      </div>
+
+      {/* Delivery Log Section */}
+      <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowLogs(v => !v)}
+          className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all"
+        >
+          <div>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+              📋 {language === 'vi' ? 'Lịch sử giao thông báo' : 'Delivery History'}
+            </p>
+            <p className="text-xs text-slate-400 font-bold mt-0.5">
+              {deliveryLogs.length} {language === 'vi' ? 'bản ghi gần nhất' : 'recent records'}
+            </p>
+          </div>
+          <span className="text-xs font-bold text-slate-400">{showLogs ? '▲' : '▼'}</span>
+        </button>
+
+        {showLogs && (
+          <div className="border-t border-border max-h-72 overflow-y-auto">
+            {deliveryLogs.length === 0 ? (
+              <p className="text-xs text-slate-400 p-5 text-center font-bold italic">
+                {language === 'vi' ? 'Chưa có lịch sử giao thông báo.' : 'No delivery records yet.'}
+              </p>
+            ) : (
+              deliveryLogs.map((log) => (
+                <div key={log.id} className="flex items-center justify-between p-4 border-b border-border last:border-0 gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{log.title}</p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                      {log.channel?.toUpperCase()} · {new Date(log.createdAt).toLocaleTimeString(language === 'vi' ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(log.createdAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                    </p>
+                    {log.errorMessage && (
+                      <p className="text-[10px] text-rose-400 font-bold mt-0.5 truncate">{log.errorMessage}</p>
+                    )}
+                  </div>
+                  <span className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                    log.status === 'SENT' ? 'bg-emerald-500/10 text-emerald-600' :
+                    log.status === 'FAILED' ? 'bg-rose-500/10 text-rose-500' :
+                    'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                  }`}>
+                    {log.status === 'SENT' ? (language === 'vi' ? 'Đã gửi' : 'Sent') :
+                     log.status === 'FAILED' ? (language === 'vi' ? 'Lỗi' : 'Failed') :
+                     (language === 'vi' ? 'Bỏ qua' : 'Skipped')}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Note Section */}

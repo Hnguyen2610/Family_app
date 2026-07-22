@@ -3,8 +3,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ChatService } from './services/chat.service';
 import { RagService } from './services/rag.service';
 import { AiSkillContext } from './interfaces/ai-skill.interface';
-import { buildMemoryProfileContext, parseMemoryProfile } from './ai-memory-profile';
+import { AiConversationStateService } from './services/ai-conversation-state.service';
+import { buildMemoryProfileContext, parseMemoryProfile, toStringList } from './ai-memory-profile';
 import { normalizeSearchText } from './ai-intent-router';
+import { buildFamilyScopeNotice, getRagSearchFamilyIds, resolveFamilyMode } from './ai-family-scope-policy';
 
 type BuildSkillContextInput = {
   familyId: string;
@@ -15,7 +17,7 @@ type BuildSkillContextInput = {
   trace?: any;
   sessionId?: string;
   historyLimit: number;
-  source?: 'web' | 'telegram';
+  source?: 'web' | 'telegram' | 'telegram_group' | 'telegram_private';
 };
 
 @Injectable()
@@ -45,6 +47,7 @@ export class AiFamilyResolver {
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
     private readonly ragService: RagService,
+    private readonly conversationState: AiConversationStateService,
   ) {}
 
   async buildSkillContext(input: BuildSkillContextInput): Promise<AiSkillContext> {
@@ -55,8 +58,9 @@ export class AiFamilyResolver {
       ? await this.getUserFamilies(userId)
       : [];
 
-    const resolvedFamilyId = await this.resolveFamilyId(familyId, userFamilies, userMessage, sessionId);
-    const ragFamilyId = resolvedFamilyId || familyId;
+    const state = familyId === 'all' ? await this.conversationState.getState(userId) : null;
+    const resolvedFamilyId = await this.resolveFamilyId(familyId, userFamilies, userMessage, intent, sessionId, userId, state?.lastSelectedFamilyId);
+    const resolvedFamilyMode = resolveFamilyMode({ familyId, resolvedFamilyId, source });
 
     const [memoryContext, familyRaw, history] = await Promise.all([
       this.getMemoryContext(userId),
@@ -66,12 +70,12 @@ export class AiFamilyResolver {
     const ragQuery = this.buildRagQuery(userMessage, history, Boolean(resolvedFamilyId));
     const shouldRetrieveRag = this.shouldRetrieveRag(intent, ragQuery);
     const ragResults = shouldRetrieveRag
-      ? await this.ragService.searchFamilyKnowledge(ragFamilyId, ragQuery, 3)
+      ? await this.searchRagAcrossScope(getRagSearchFamilyIds({ familyId, resolvedFamilyId, families: userFamilies }), ragQuery, 3)
       : [];
 
-    this.logRagRetrieval(ragQuery, ragFamilyId, shouldRetrieveRag, ragResults);
+    this.logRagRetrieval(ragQuery, resolvedFamilyId || familyId, shouldRetrieveRag, ragResults);
 
-    const disambiguationNotice = this.buildDisambiguationNotice(familyId, userFamilies, resolvedFamilyId);
+    const disambiguationNotice = buildFamilyScopeNotice({ familyId, families: userFamilies, intent, resolvedFamilyId });
     const ragContext = this.ragService.formatRagContext(ragResults);
     const ragFamilyContext = ragContext ? `FAMILY WIKI RETRIEVED CONTEXT:\n${ragContext}` : '';
     const familyContext = [memoryContext, familyRaw, disambiguationNotice, ragFamilyContext].filter(Boolean).join('\n\n');
@@ -80,6 +84,7 @@ export class AiFamilyResolver {
       userId,
       familyId,
       resolvedFamilyId,
+      resolvedFamilyMode,
       userMessage,
       intent,
       image,
@@ -116,11 +121,29 @@ export class AiFamilyResolver {
     familyId: string,
     userFamilies: Array<{ id: string; name: string }>,
     userMessage: string,
+    intent: string,
     sessionId?: string,
+    userId?: string,
+    stateFamilyId?: string,
   ) {
     if (familyId !== 'all') return familyId;
     if (userFamilies.length === 1) return userFamilies[0].id;
     if (userFamilies.length <= 1) return undefined;
+
+    // Check if the user message contains explicit naming first
+    const explicitMatchId = await this.findExplicitFamilyMatch(userFamilies, userMessage);
+    if (explicitMatchId) return explicitMatchId;
+
+    // In all-family calendar queries, keep the query broad unless the user explicitly named a family.
+    if (intent === 'calendar_query') {
+      return undefined;
+    }
+
+    // Fall back to conversation state's lastSelectedFamilyId
+    if (stateFamilyId && userFamilies.some(f => f.id === stateFamilyId)) {
+      this.logger.debug(`[FamilyResolve] Reused lastSelectedFamilyId from conversation state: ${stateFamilyId}`);
+      return stateFamilyId;
+    }
 
     const historyMessages = await this.chatService.getHistory(familyId, sessionId, 6);
     const searchText = normalizeSearchText([
@@ -147,6 +170,30 @@ export class AiFamilyResolver {
       }
     }
 
+    return undefined;
+  }
+
+  private async findExplicitFamilyMatch(
+    userFamilies: Array<{ id: string; name: string }>,
+    userMessage: string,
+  ): Promise<string | undefined> {
+    const searchText = normalizeSearchText(userMessage);
+    const Candidates = userFamilies
+      .map((family) => ({
+        family,
+        ...this.getFamilyMatchTerms(family.name),
+      }))
+      .filter((candidate) => !candidate.isGeneric)
+      .sort((a, b) => b.normalized.length - a.normalized.length);
+
+    for (const { family, normalized, meaningfulWords } of Candidates) {
+      if (normalized.length >= 4 && searchText.includes(normalized)) {
+        return family.id;
+      }
+      if (meaningfulWords.length > 0 && meaningfulWords.every((word) => searchText.includes(word))) {
+        return family.id;
+      }
+    }
     return undefined;
   }
 
@@ -198,16 +245,32 @@ export class AiFamilyResolver {
         mealPreferences: {
           include: { meal: true },
         },
+        foodLikes: true,
+        foodDislikes: true,
+        healthRestrictions: true,
+        dailyRoutine: true,
+        aiProfileNotes: true,
       },
     });
 
+    const dbFoodLikes = toStringList(user?.foodLikes) || [];
+    const dbFoodDislikes = toStringList(user?.foodDislikes) || [];
+    const dbHealthRestrictions = toStringList(user?.healthRestrictions) || [];
+
     const profile = parseMemoryProfile(user?.notificationSettings);
     const mealLikes = user?.mealPreferences.map((preference) => preference.meal.name) || [];
-    const combinedLikes = Array.from(new Set([...(profile.foodLikes || []), ...mealLikes]));
+    const combinedLikes = Array.from(new Set([...(profile.foodLikes || []), ...dbFoodLikes, ...mealLikes]));
+    const combinedDislikes = Array.from(new Set([...(profile.foodDislikes || []), ...dbFoodDislikes]));
+    const combinedRestrictions = Array.from(new Set([...(profile.healthRestrictions || []), ...dbHealthRestrictions]));
+    const combinedNote = [profile.note, user?.aiProfileNotes].filter(Boolean).join('; ') || undefined;
 
     return buildMemoryProfileContext({
       ...profile,
       foodLikes: combinedLikes,
+      foodDislikes: combinedDislikes,
+      healthRestrictions: combinedRestrictions,
+      dailyRoutine: user?.dailyRoutine || undefined,
+      note: combinedNote,
     });
   }
 
@@ -245,6 +308,19 @@ export class AiFamilyResolver {
       retrieval: result.retrieval,
       snippet: String(result.content || '').slice(0, 500),
     }));
+  }
+
+  private async searchRagAcrossScope(familyIds: string[], query: string, limit: number) {
+    const uniqueFamilyIds = Array.from(new Set(familyIds.filter(Boolean)));
+    if (uniqueFamilyIds.length === 0) return [];
+
+    const results = (await Promise.all(
+      uniqueFamilyIds.map((id) => this.ragService.searchFamilyKnowledge(id, query, limit)),
+    )).flat();
+
+    return results
+      .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+      .slice(0, Math.max(1, Math.min(limit, 5)));
   }
 
   private buildRagQuery(userMessage: string, history: any[], hasResolvedFamily: boolean) {
@@ -337,9 +413,13 @@ export class AiFamilyResolver {
   private buildDisambiguationNotice(
     familyId: string,
     userFamilies: Array<{ id: string; name: string }>,
+    intent: string,
     resolvedFamilyId?: string,
   ) {
     if (familyId === 'all' && userFamilies.length > 1 && !resolvedFamilyId) {
+      if (intent === 'calendar_query') {
+        return 'USER IS VIEWING ALL FAMILIES. For read-only calendar queries, call calendar tools with familyId "all" and include private events by passing userId.';
+      }
       return `USER IS VIEWING ALL FAMILIES. Their families:\n${userFamilies.map((family, index) => `${index + 1}. ${family.name} (id: ${family.id})`).join('\n')}\nINSTRUCTION: Ask the user ONCE which family to use. When they answer with a family name, call the tool immediately with that family's id — do NOT ask again.`;
     }
     if (resolvedFamilyId) {

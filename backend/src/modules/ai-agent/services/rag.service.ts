@@ -32,7 +32,7 @@ export type RagSearchResult = {
 const RAG_CHUNK_SIZE = 1200;
 const RAG_CHUNK_OVERLAP = 160;
 const RAG_SCAN_LIMIT = 200;
-const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || 'text-embedding-004';
+const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || 'gemini-embedding-2';
 const EMBEDDING_DIMENSION = Number.parseInt(process.env.AI_EMBEDDING_DIMENSION || '768', 10);
 const STOP_WORDS = new Set([
   'anh',
@@ -63,12 +63,11 @@ export class RagService {
   async createKnowledgeDocument(input: CreateKnowledgeDocumentInput) {
     const content = input.content.trim();
     const title = input.title.trim();
-    const existing = await this.findExistingDocumentByTitle(input.familyId, title);
+    const existing = await this.findDuplicateKnowledgeDocument(input.familyId, title, content);
     if (existing) {
-      const mergedContent = this.mergeDocumentContent(existing.content || '', content);
       return this.updateKnowledgeDocument(input.familyId, existing.id, {
         title,
-        content: mergedContent,
+        content: existing.mergedContent,
         metadata: {
           ...((existing.metadata as Record<string, any>) || {}),
           ...(input.metadata || {}),
@@ -102,10 +101,32 @@ export class RagService {
     });
 
     await this.embedDocumentChunks(document.chunks.map((chunk) => ({ id: chunk.id, content: chunk.content })));
+
+    // Save version history for initial creation
+    await this.prisma.familyKnowledgeVersion.create({
+      data: {
+        documentId: document.id,
+        title: document.title,
+        content: document.content,
+        category: this.getDocumentCategory(document.metadata),
+        createdBy: document.createdBy,
+      },
+    });
+
     return this.prisma.aiDocument.findUnique({
       where: { id: document.id },
       include: { chunks: true },
     });
+  }
+
+  async findDuplicateKnowledgeDocument(familyId: string, title: string, content: string) {
+    const existing = await this.findExistingDocumentByTitle(familyId, title);
+    if (!existing) return null;
+
+    return {
+      ...existing,
+      mergedContent: this.mergeDocumentContent(existing.content || '', content),
+    };
   }
 
   private async findExistingDocumentByTitle(familyId: string, title: string) {
@@ -206,6 +227,18 @@ export class RagService {
           metadata: { retrieval: 'hybrid', embeddingReady: false },
         })),
       });
+
+      // Save version inside transaction for consistency
+      const createdBy = (metadata as any)?.userId || (metadata as any)?.createdBy || undefined;
+      await tx.familyKnowledgeVersion.create({
+        data: {
+          documentId,
+          title: input.title.trim(),
+          content: content,
+          category: this.getDocumentCategory(metadata),
+          createdBy,
+        },
+      });
     });
 
     const document = await this.getKnowledgeDocument(familyId, documentId);
@@ -219,13 +252,63 @@ export class RagService {
     });
   }
 
-  async searchFamilyKnowledge(familyId: string, query: string, limit = 3): Promise<RagSearchResult[]> {
+  async getDocumentVersions(documentId: string) {
+    return this.prisma.familyKnowledgeVersion.findMany({
+      where: { documentId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async checkDuplicateDocument(familyId: string, title: string, content: string) {
+    const existing = await this.findExistingDocumentByTitle(familyId, title);
+    if (!existing) return { duplicate: false };
+
+    const normalizedExisting = normalizeSearchText(existing.content || '');
+    const normalizedNext = normalizeSearchText(content || '');
+    const isContentSimilar = normalizedExisting.includes(normalizedNext.slice(0, 120));
+
+    return {
+      duplicate: true,
+      existingDocumentId: existing.id,
+      message: 'Ghi chú này có vẻ đã tồn tại.',
+      contentOverlap: isContentSimilar,
+    };
+  }
+
+  async searchFamilyKnowledge(
+    familyId: string,
+    query: string,
+    limit = 3,
+  ): Promise<RagSearchResult[]> {
     if (!familyId || !query.trim()) return [];
 
     const semanticResults = await this.searchSemantic(familyId, query, limit);
     if (semanticResults.length > 0) return semanticResults;
 
-    return this.searchLexical(familyId, query, limit);
+    const lexicalResults = await this.searchLexical(familyId, query, limit);
+    if (lexicalResults.length > 0) return lexicalResults;
+
+    // Log RAG miss diagnostics
+    const docCount = await this.prisma.aiDocument.count({ where: { familyId } });
+    const chunkCount = await this.prisma.aiDocumentChunk.count({ where: { familyId } });
+    this.logger.warn(
+      JSON.stringify({
+        event: 'rag_miss',
+        query: query.slice(0, 120),
+        normalizedQuery: normalizeSearchText(query).slice(0, 120),
+        familyId,
+        retrievedCount: 0,
+        docCount,
+        chunkCount,
+        reason: docCount === 0
+          ? 'no_documents'
+          : chunkCount === 0
+            ? 'no_chunks'
+            : 'low_relevance',
+      })
+    );
+
+    return [];
   }
 
   private async searchLexical(familyId: string, query: string, limit = 3): Promise<RagSearchResult[]> {
@@ -384,6 +467,7 @@ export class RagService {
           body: JSON.stringify({
             model: `models/${EMBEDDING_MODEL}`,
             content: { parts: [{ text }] },
+            outputDimensionality: EMBEDDING_DIMENSION,
           }),
         },
       );

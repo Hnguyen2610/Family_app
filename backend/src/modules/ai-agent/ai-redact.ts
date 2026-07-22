@@ -1,5 +1,4 @@
 /**
- * ai-redact.ts
  * Redacts sensitive PII from user messages before sending to external AI providers.
  * Triggered per-intent to avoid over-censoring general conversation.
  */
@@ -61,6 +60,9 @@ const RULES: RedactRule[] = [
 const ALWAYS_REDACT_INTENTS = new Set([
   'finance',
   'finance_analysis',
+  'general_chat',
+  'family_knowledge',
+  'event_mutation',
 ]);
 
 // ─── Public API ──────────────────────────────────────────────────────────────

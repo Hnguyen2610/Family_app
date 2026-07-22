@@ -14,6 +14,7 @@ export type ParsedCalendarMutation = {
     date?: string;
     month?: number;
     year?: number;
+    time?: string;
   };
   reason: string;
   needsClarification?: string;
@@ -30,7 +31,7 @@ const CREATE_SIGNALS = [
   'add event',
 ];
 
-const UPDATE_SIGNALS = ['sua', 'cap nhat', 'doi', 'update'];
+const UPDATE_SIGNALS = ['sua', 'cap nhat', 'doi', 'doi ten', 'update'];
 const DELETE_SIGNALS = ['xoa', 'huy', 'delete', 'remove'];
 const EVENT_SIGNALS = ['lich', 'su kien', 'event', 'birthday', 'sinh nhat', 'hen', 'anniversary', 'ky niem', 'nhac'];
 
@@ -91,6 +92,7 @@ function extractExplicitTitle(message: string) {
 function stripCommonEventWords(value: string) {
   return value
     .replace(/\b\d{4}-\d{1,2}-\d{1,2}\b/g, ' ')
+    .replace(/\b(?:tu|từ)\s+(?:ngay|ngày)?\s*\d{1,2}\/\d{1,2}(?:\/\d{4})?\s*(?:-|den|đến|toi|tới)\s*(?:ngay|ngày)?\s*\d{1,2}\/\d{1,2}(?:\/\d{4})?\b/gi, ' ')
     .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{4})?\s*(?:-|den|d[eế]n|đến|toi|t[oớ]i|tới)\s*(?:ngay|ng[aà]y|ngày)?\s*\d{1,2}\/\d{1,2}(?:\/\d{4})?\b/gi, ' ')
     .replace(/\b(?:ngay|ngày)\s+\d{1,2}\/\d{1,2}(?:\/\d{4})?\b/gi, ' ')
     .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{4})?\b/g, ' ')
@@ -104,6 +106,7 @@ function stripCommonEventWords(value: string) {
     .replace(/\s+(?:o|ở|cho)\s+(?:gia dinh|gia đình|family).*/gi, ' ')
     .replace(/\s+(?:scope|pham vi|phạm vi).*/gi, ' ')
     .replace(/^(?:den|đến|toi|tới|di|đi)\s+/i, ' ')
+    .replace(/\s+(?:tu|từ)\s*$/i, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -166,6 +169,21 @@ function extractUpdatedTitle(message: string) {
 function extractUpdatedDate(message: string) {
   const match = message.match(/\b(?:sang|doi sang|đổi sang|thanh ngay|thành ngày)\s+([^.\n]+)$/i);
   return match ? parseCalendarDate(match[1]) : undefined;
+}
+
+function extractExistingTitleForUpdate(message: string) {
+  const match = message.match(/(?:su\s*kien|sự\s*kiện|event|lich|lịch)\s+(.+?)\s+(?:thanh|thành|doi\s+thanh|đổi\s+thành)\s+/iu);
+  if (!match) return undefined;
+
+  const title = match[1]
+    .replace(/^\s*(?:ngay|ngày)\s+\d{1,2}\/\d{1,2}(?:\/\d{4})?\s*[:\-]?\s*/iu, '')
+    .replace(/^\s*\d{1,2}\/\d{1,2}(?:\/\d{4})?\s*[:\-]?\s*/u, '')
+    .replace(/^\s*\d{1,2}\s*(?::|h)\s*\d{0,2}\s*[:\-]?\s*/u, '')
+    .replace(/\s*-\s*(?:ca\s*nhan|cá\s*nhân|family|gia\s*dinh|gia\s*đình)\s*$/iu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return title || undefined;
 }
 
 export function parseCalendarMutation(userMessage: string, resolvedFamilyId?: string): ParsedCalendarMutation | undefined {
@@ -232,20 +250,20 @@ export function parseCalendarMutation(userMessage: string, resolvedFamilyId?: st
   }
 
   if (hasAny(normalized, UPDATE_SIGNALS)) {
-    const title = extractTitle(message);
+    const title = extractExistingTitleForUpdate(message) || extractTitle(message);
     const updatedDate = extractUpdatedDate(message);
     const updatedTitle = extractUpdatedTitle(message);
     const args: Record<string, any> = eventId ? { id: eventId, familyId: resolvedFamilyId } : {};
     if (updatedDate) args.date = updatedDate.iso;
-    if (time) args.time = time;
     if (updatedTitle) args.title = updatedTitle;
+    if (eventId && time) args.time = time;
 
     return {
       action: 'update',
       args,
-      lookup: { title, date: date?.iso, month: date?.month, year: date?.year },
+      lookup: { title, date: date?.iso, month: date?.month, year: date?.year, time },
       reason: eventId ? 'deterministic_update_by_id' : 'deterministic_update_lookup',
-      needsClarification: !eventId && (!title || !date)
+      needsClarification: !eventId && !title
         ? 'Bạn muốn sửa sự kiện nào? Hay gửi tên sự kiện kèm ngày.'
         : undefined,
     };

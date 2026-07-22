@@ -219,11 +219,11 @@ export default function Chatbot() {
           : item
       )));
       toast.success(action === 'confirm'
-        ? (language === 'vi' ? 'ÄÃ£ xÃ¡c nháº­n thao tÃ¡c' : 'Action confirmed')
-        : (language === 'vi' ? 'ÄÃ£ há»§y thao tÃ¡c' : 'Action rejected'));
+        ? (language === 'vi' ? 'Đã xác nhận thao tác' : 'Action confirmed')
+        : (language === 'vi' ? 'Đã hủy thao tác' : 'Action rejected'));
     } catch (error) {
       console.error('Failed to update proposal:', error);
-      toast.error(language === 'vi' ? 'KhÃ´ng thá»ƒ cáº­p nháº­t thao tÃ¡c' : 'Could not update action');
+      toast.error(language === 'vi' ? 'Không thể cập nhật thao tác' : 'Could not update action');
     }
   };
 
@@ -237,7 +237,7 @@ export default function Chatbot() {
     if (!file) return;
 
     if (file.size > MAX_IMAGE_SOURCE_BYTES) {
-      alert(language === 'vi' ? 'Anh qua lon (max 8MB)' : 'File too large (max 8MB)');
+      alert(language === 'vi' ? 'Ảnh quá lớn (tối đa 8MB)' : 'File too large (max 8MB)');
       return;
     }
 

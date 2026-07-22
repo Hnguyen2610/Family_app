@@ -78,6 +78,9 @@ export function createSkillToolDispatcher(options: {
     }
 
     if (createActionProposal && isSideEffectTool(toolName)) {
+      if ((toolName === 'updateEvent' || toolName === 'deleteEvent') && !safeArgs?.id) {
+        return toolError(toolName, 'Cần xác định chính xác sự kiện trước khi cập nhật hoặc xóa. Hãy gửi thêm ngày, giờ hoặc chọn sự kiện trong lịch.');
+      }
       const proposal = await createActionProposal(toolName, safeArgs, context);
       logger.debug(`[${label}] ${toolName} converted to action proposal`);
       return proposal;

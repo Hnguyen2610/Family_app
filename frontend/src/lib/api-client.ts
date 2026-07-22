@@ -23,6 +23,13 @@ export type AiActionProposal = {
   action: string;
   payload: Record<string, any>;
   message?: string;
+  summary?: string;
+  // V2 fields
+  targetType?: string;
+  targetId?: string;
+  riskLevel?: string;
+  before?: Record<string, any>;
+  after?: Record<string, any>;
 };
 
 export type ChatUsage = {
@@ -421,6 +428,8 @@ export const notificationsAPI = {
     apiClient.post('/api/notifications/push/subscribe', subscription, { params: { userId } }),
   unsubscribePush: (userId: string, endpoint: string) =>
     apiClient.post('/api/notifications/push/unsubscribe', { endpoint }, { params: { userId } }),
+  getDeliveryLogs: (params: { userId?: string; familyId?: string; limit?: number }) =>
+    apiClient.get('/api/notifications/delivery-logs', { params }),
 };
 
 export const dailyTasksAPI = {

@@ -23,6 +23,12 @@ export interface User {
   notificationSettings?: any;
   telegramChatId?: string;
   telegramUsername?: string;
+  // Phase 5: Member profile fields
+  foodLikes?: string[] | null;
+  foodDislikes?: string[] | null;
+  healthRestrictions?: string[] | null;
+  dailyRoutine?: string | null;
+  aiProfileNotes?: string | null;
 }
 
 interface AuthContextType {

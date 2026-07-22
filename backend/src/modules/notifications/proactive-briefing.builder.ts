@@ -6,6 +6,8 @@ import { WeatherForecastSummary } from '../weather/weather.service';
 import { formatIctDate, getIctNow, startOfIctDay } from '../../utils/timezone.util';
 import { ProactiveBriefingItem } from './notification-types';
 import { isProactiveTypeEnabled } from './proactive-notification-settings';
+import { getLunarDateObject } from '../../utils/lunar-calendar.util';
+import { AiAgentService } from '../ai-agent/services/ai-agent.service';
 
 export type DailyBriefingBuildResult = {
   items: ProactiveBriefingItem[];
@@ -25,6 +27,8 @@ export class ProactiveBriefingBuilder {
     private readonly eventsService: EventsService,
     @Inject(forwardRef(() => FinanceService))
     private readonly financeService: FinanceService,
+    @Inject(forwardRef(() => AiAgentService))
+    private readonly aiAgentService: AiAgentService,
   ) {}
 
   async buildDailyBriefing(
@@ -41,10 +45,29 @@ export class ProactiveBriefingBuilder {
     };
     const settings = (user.notificationSettings || {}) as Record<string, any>;
 
+    const lunarNow = getLunarDateObject(now);
+    if (lunarNow.day === 1 || lunarNow.day === 15) {
+      const lunarMsg = lunarNow.day === 1
+        ? 'Hôm nay là Mùng 1 Âm lịch. Chúc gia đình tháng mới an lành!'
+        : `Hôm nay là ngày Rằm Âm lịch (${lunarNow.day}/${lunarNow.month}). Chúc gia đình vạn sự hanh thông!`;
+      result.items.push({
+        kind: 'event' as const,
+        title: lunarNow.day === 1 ? 'Mùng 1 Âm lịch' : 'Ngày Rằm Âm lịch',
+        message: lunarMsg,
+        path: '/calendar',
+        reason: 'lunar_holiday',
+        metadata: {
+          lunarDay: lunarNow.day,
+          lunarMonth: lunarNow.month,
+        },
+      });
+      result.eventItems += 1;
+    }
+
     if (isProactiveTypeEnabled(settings, 'eventChecklist')) {
       const eventItems = await this.buildEventBriefingItems(user.id, now);
       result.items.push(...eventItems);
-      result.eventItems = eventItems.length;
+      result.eventItems += eventItems.length;
     }
 
     if (isProactiveTypeEnabled(settings, 'weather')) {
@@ -74,7 +97,7 @@ export class ProactiveBriefingBuilder {
     return result;
   }
 
-  formatDailyBriefingMessage(items: ProactiveBriefingItem[]) {
+  formatDailyBriefingMessageFallback(items: ProactiveBriefingItem[]) {
     const lines = ['Hôm nay có vài điểm đáng chú ý:'];
     const labels: Record<ProactiveBriefingItem['kind'], string> = {
       event: 'Lịch',
@@ -90,13 +113,45 @@ export class ProactiveBriefingBuilder {
     return lines.join('\n');
   }
 
+  async formatDailyBriefingMessage(items: ProactiveBriefingItem[]): Promise<string> {
+    if (!items || items.length === 0) return '';
+
+    try {
+      const systemPrompt = `Bạn là Trợ lý Gia đình AI thân thiện, ấm áp và chu đáo.
+Nhiệm vụ của bạn là nhận danh sách dữ liệu thô (sự kiện lịch, thời tiết, chi tiêu, sổ tay ghi chú) và chuyển soạn nó thành một bản tin chào buổi sáng tự nhiên, liền mạch, thân mật bằng tiếng Việt (ngữ điệu ấm áp, gần gũi, xưng hô phù hợp như "mình", "cả nhà", "bố", "mẹ", "bé").
+Hãy giữ thông tin ngắn gọn, súc tích (khoảng 3-6 câu), có tính liên kết cao chứ không chỉ liệt kê gạch đầu dòng khô khan. Trả về đúng bản tin trôi chảy, không chứa bất kì giải thích hay kí tự XML/HTML nào khác.`;
+
+      const bulletPointsJson = JSON.stringify(
+        items.map((item) => ({
+          loai: item.kind,
+          tieuDe: item.title,
+          thongTinTho: item.message,
+        })),
+        null,
+        2
+      );
+
+      const formatted = await this.aiAgentService.generateBriefingText(
+        systemPrompt,
+        `Dưới đây là danh sách thô thông tin gia đình hôm nay:\n${bulletPointsJson}`
+      );
+
+      if (formatted && formatted.trim().length > 10) {
+        return formatted.trim();
+      }
+      return this.formatDailyBriefingMessageFallback(items);
+    } catch (err) {
+      return this.formatDailyBriefingMessageFallback(items);
+    }
+  }
+
   private async buildEventBriefingItems(userId: string, now: Date): Promise<ProactiveBriefingItem[]> {
     const upcomingEvents = await this.getUpcomingEventsForUser(userId, now, this.lookaheadDays);
     return upcomingEvents
       .filter((event) => event.type !== 'HOLIDAY')
       .filter((event) => {
         const daysUntil = getDaysUntil(now, new Date(event.date));
-        return daysUntil >= 1 && daysUntil <= this.lookaheadDays;
+        return daysUntil >= 0 && daysUntil <= this.lookaheadDays;
       })
       .slice(0, 3)
       .map((event) => {
@@ -108,12 +163,19 @@ export class ProactiveBriefingBuilder {
           : type === 'ANNIVERSARY'
             ? 'anniversary_soon'
             : 'event_soon';
+
+        const label = daysUntil === 0
+          ? 'Hôm nay:'
+          : `Còn ${daysUntil} ngày nữa:`;
+
+        const suffix = daysUntil === 0 ? '' : ` (${formatIctDate(eventDate)})`;
+
         return {
           kind: 'event' as const,
           title: event.title,
-          message: `Còn ${daysUntil} ngày nữa: ${event.title} (${formatIctDate(eventDate)}).`,
+          message: `${label} ${event.title}${suffix}.`,
           path: '/calendar',
-          reason,
+          reason: daysUntil === 0 ? 'event_today' : reason,
           metadata: {
             eventId: event.id,
             eventType: type,
@@ -137,9 +199,9 @@ export class ProactiveBriefingBuilder {
     return {
       kind: 'weather',
       title: `Thời tiết ${forecast.location}`,
-      message: `Ngày mai ${forecast.condition.toLowerCase()}, khả năng mưa ${forecast.chanceOfRain}%, ${Math.round(forecast.minTempC)}-${Math.round(forecast.maxTempC)}°C.`,
+      message: `Hôm nay ${forecast.condition.toLowerCase()}, khả năng mưa ${forecast.chanceOfRain}%, ${Math.round(forecast.minTempC)}-${Math.round(forecast.maxTempC)}°C.`,
       path: '/calendar',
-      reason: 'rain_or_bad_weather_tomorrow',
+      reason: 'rain_or_bad_weather_today',
       metadata: {
         provider: process.env.WEATHER_PROVIDER || 'weatherapi',
         location: forecast.location,
@@ -257,7 +319,7 @@ export class ProactiveBriefingBuilder {
     return allEvents
       .filter((event) => {
         const eventDate = startOfIctDay(new Date(event.date));
-        return eventDate > start && eventDate <= end;
+        return eventDate >= start && eventDate <= end;
       })
       .filter((event) => {
         const key = `${event.id}:${new Date(event.date).toISOString()}`;

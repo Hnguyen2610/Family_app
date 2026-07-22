@@ -23,6 +23,7 @@ export type WeatherHeaderSummary = {
     icon?: string;
     updatedAt?: string;
   };
+  today?: WeatherForecastSummary;
   tomorrow?: WeatherForecastSummary;
 };
 
@@ -54,6 +55,11 @@ export class WeatherService {
     return data;
   }
 
+  async getTodayForecast(): Promise<WeatherForecastSummary | null> {
+    const summary = await this.getHeaderSummary();
+    return summary.available ? summary.today || null : null;
+  }
+
   async getTomorrowForecast(): Promise<WeatherForecastSummary | null> {
     const summary = await this.getHeaderSummary();
     return summary.available ? summary.tomorrow || null : null;
@@ -76,8 +82,10 @@ export class WeatherService {
       }
 
       const data: any = await response.json();
-      const forecastDay = data?.forecast?.forecastday?.[1] || data?.forecast?.forecastday?.[0];
-      const day = forecastDay?.day;
+      const todayForecastDay = data?.forecast?.forecastday?.[0];
+      const tomorrowForecastDay = data?.forecast?.forecastday?.[1];
+      const todayDay = todayForecastDay?.day;
+      const tomorrowDay = tomorrowForecastDay?.day;
       const current = data?.current;
 
       return {
@@ -95,15 +103,26 @@ export class WeatherService {
               updatedAt: current.last_updated,
             }
           : undefined,
-        tomorrow: forecastDay && day
+        today: todayForecastDay && todayDay
           ? {
               location: data?.location?.name || location,
-              date: forecastDay.date,
-              condition: day.condition?.text || 'Thời tiết thay đổi',
-              chanceOfRain: Number(day.daily_chance_of_rain || 0),
-              totalPrecipMm: Number(day.totalprecip_mm || 0),
-              maxTempC: Number(day.maxtemp_c || 0),
-              minTempC: Number(day.mintemp_c || 0),
+              date: todayForecastDay.date,
+              condition: todayDay.condition?.text || 'Thời tiết thay đổi',
+              chanceOfRain: Number(todayDay.daily_chance_of_rain || 0),
+              totalPrecipMm: Number(todayDay.totalprecip_mm || 0),
+              maxTempC: Number(todayDay.maxtemp_c || 0),
+              minTempC: Number(todayDay.mintemp_c || 0),
+            }
+          : undefined,
+        tomorrow: tomorrowForecastDay && tomorrowDay
+          ? {
+              location: data?.location?.name || location,
+              date: tomorrowForecastDay.date,
+              condition: tomorrowDay.condition?.text || 'Thời tiết thay đổi',
+              chanceOfRain: Number(tomorrowDay.daily_chance_of_rain || 0),
+              totalPrecipMm: Number(tomorrowDay.totalprecip_mm || 0),
+              maxTempC: Number(tomorrowDay.maxtemp_c || 0),
+              minTempC: Number(tomorrowDay.mintemp_c || 0),
             }
           : undefined,
       };

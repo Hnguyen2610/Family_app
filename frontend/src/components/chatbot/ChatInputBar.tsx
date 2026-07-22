@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
-import { FiImage, FiSend, FiX } from 'react-icons/fi';
+import { FiImage, FiSend, FiX, FiLoader } from 'react-icons/fi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { AiModelProvider } from './chatbot-usage';
@@ -74,33 +74,38 @@ export function ChatInputBar({
             <Input
               value={input}
               onChange={(event) => onInputChange(event.target.value)}
-              className="pr-16 h-12"
+              className="pr-24 h-12"
               disabled={isLoading}
               placeholder={language === 'vi' ? 'Hỏi AI bất cứ điều gì...' : 'Message AI...'}
             />
-            <div className="absolute right-1 top-1/2 -translate-y-1/2">
-              {isLoading ? (
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+              {isLoading && (
                 <Button
                   type="button"
-                  variant="destructive"
+                  variant="ghost"
+                  size="icon"
                   onClick={onCancelStream}
-                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                  title={language === 'vi' ? 'Dừng phản hồi' : 'Stop generating'}
                 >
-                  <FiX />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  disabled={(!input.trim() && !selectedImage)}
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    (input.trim() || selectedImage)
-                      ? 'shadow-md active:scale-95'
-                      : ''
-                  }`}
-                >
-                  <FiSend />
+                  <FiX size={15} />
                 </Button>
               )}
+              <Button
+                type="submit"
+                disabled={isLoading || (!input.trim() && !selectedImage)}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                  !isLoading && (input.trim() || selectedImage)
+                    ? 'shadow-md active:scale-95'
+                    : ''
+                }`}
+              >
+                {isLoading ? (
+                  <FiLoader className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FiSend size={15} />
+                )}
+              </Button>
             </div>
           </div>
         </div>

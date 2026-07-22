@@ -22,6 +22,7 @@ If FAMILY WIKI RETRIEVED CONTEXT is present, use it as retrieved family notes. D
 
 function getCalendarRules(year: string) {
   return `CALENDAR TOOL RULES:
+- If the system prompt packages "[PRE-FETCHED CALENDAR EVENTS FOR ...]" for the targeted date/month, do NOT call getEventsByMonth database tool to retrieve events for those dates. Use the provided list of events directly to reply and construct your plans/menus.
 - Use createEvent only when the user explicitly asks to create/add/schedule an event.
 - When creating an event, always set scope. Default to FAMILY unless the user explicitly says it is private/personal.
 - For Telegram group requests or text saying "ca gia dinh", "family", "group", or "cho ca nha", create the event with scope FAMILY.
@@ -80,7 +81,10 @@ export function buildSystemPrompt(
 Answer in the same language as the user.
 Be concise, natural, and practical.
 When performing actions, always use the appropriate tools.
-When creating or reading dates, pay attention to the day of week and avoid date calculation errors.`;
+When creating or reading dates, pay attention to the day of week and avoid date calculation errors.
+CRITICAL LANGUAGE CONSTRAINT:
+- NEVER mix external languages (like Chinese characters: 作为, etc.) in your Vietnamese responses.
+- Ensure the response is 100% in pure Vietnamese. For example, translate terms like "as" to "làm" or "là" instead of "作为".`;
 
   const familyAwareIntents: AiIntent[] = [
     'general_chat',
@@ -112,7 +116,7 @@ When creating or reading dates, pay attention to the day of week and avoid date 
     'CRITICAL RULES FOR ACTIONS & MEMORY:\n' +
     '- When the user asks to save, create, update, or delete information, you MUST call the provided tools using native function calling — never write <function=...> tags in text.\n' +
     '- For calendar-related tasks, use CalendarSkill tools (createEvent, updateEvent, deleteEvent).\n' +
-    '- For saving family knowledge or "long memory", use createWikiEntry.\n' +
+    '- For saving family knowledge or "long memory" when explicitly requested, use createWikiEntry. For auto-extracting non-sensitive preferences or habits (likes, routines, family rules) mentioned casually, use autoSaveFamilyMemory.\n' +
     '- For football/soccer queries (matches, results, standings), use FootballSkill tools.\n' +
     '- For any real-time information, news, or deep research outside family knowledge, use the search tool via SearchSkill.\n' +
     '- DISAMBIGUATION RULE: If context says "USER IS VIEWING ALL FAMILIES", ask the user ONCE which family to use. After they answer, immediately call the tool with that family\'s id. Do NOT ask again.\n' +

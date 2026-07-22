@@ -54,4 +54,20 @@ export class UpdateUserDto {
 
   @IsOptional()
   notificationSettings?: any;
+
+  @IsOptional()
+  foodLikes?: any;
+
+  @IsOptional()
+  foodDislikes?: any;
+
+  @IsOptional()
+  healthRestrictions?: any;
+
+  @IsOptional()
+  dailyRoutine?: any;
+
+  @IsOptional()
+  @IsString()
+  aiProfileNotes?: string;
 }

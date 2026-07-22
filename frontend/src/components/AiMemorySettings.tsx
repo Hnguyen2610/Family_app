@@ -25,10 +25,31 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
     healthRestrictions: '',
     familyNotes: ''
   });
+  const [noteText, setNoteText] = useState('');
+  const [routineText, setRoutineText] = useState('');
+  const [savingTexts, setSavingTexts] = useState(false);
 
   useEffect(() => {
-    if (user?.notificationSettings) {
-      setProfile(parseMemoryProfile(user.notificationSettings));
+    if (user) {
+      const parsedSettings = parseMemoryProfile(user.notificationSettings);
+      
+      const loadedProfile = {
+        enabled: true,
+        foodLikes: Array.isArray(user.foodLikes) ? (user.foodLikes as string[]) : (parsedSettings.foodLikes || []),
+        foodDislikes: Array.isArray(user.foodDislikes) ? (user.foodDislikes as string[]) : (parsedSettings.foodDislikes || []),
+        healthRestrictions: Array.isArray(user.healthRestrictions) ? (user.healthRestrictions as string[]) : (parsedSettings.healthRestrictions || []),
+        familyNotes: parsedSettings.familyNotes || [],
+        note: user.aiProfileNotes || parsedSettings.note || '',
+        dailyRoutine: typeof user.dailyRoutine === 'string' 
+          ? user.dailyRoutine 
+          : user.dailyRoutine 
+            ? JSON.stringify(user.dailyRoutine) 
+            : '',
+      };
+      
+      setProfile(loadedProfile);
+      setNoteText(loadedProfile.note);
+      setRoutineText(loadedProfile.dailyRoutine);
     }
     if (user?.id) {
        mealsAPI.getUserPreferences(user.id).then(res => {
@@ -40,10 +61,14 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
   const saveProfile = async (updatedProfile: AiUserMemoryProfile) => {
     if (!user?.id) return;
     try {
-      const currentSettings = (user.notificationSettings || {}) as any;
       await usersAPI.update(user.id, {
+        foodLikes: updatedProfile.foodLikes || [],
+        foodDislikes: updatedProfile.foodDislikes || [],
+        healthRestrictions: updatedProfile.healthRestrictions || [],
+        aiProfileNotes: updatedProfile.note || '',
+        dailyRoutine: updatedProfile.dailyRoutine || '',
         notificationSettings: {
-          ...currentSettings,
+          ...((user.notificationSettings as any) || {}),
           aiMemory: {
             ...updatedProfile,
             lastUpdatedAt: new Date().toISOString()
@@ -55,7 +80,21 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
     } catch (error) {
       console.error('Failed to update AI memory:', error);
       toast.error(t('settings.memory.updateError'));
+    }
+  };
+
+  const handleSaveTexts = async () => {
+    setSavingTexts(true);
+    try {
+      const updated = {
+        ...profile,
+        note: noteText,
+        dailyRoutine: routineText
+      };
+      setProfile(updated);
+      await saveProfile(updated);
     } finally {
+      setSavingTexts(false);
     }
   };
 
@@ -221,6 +260,34 @@ export default function AiMemorySettings({ onBack }: { readonly onBack: () => vo
           icon={<FiFileText />}
           placeholder={t('settings.memory.familyNotesPlaceholder')}
         />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">🥗 Khẩu vị & Thói quen ăn uống (Daily Routine)</h3>
+          <textarea
+            value={routineText}
+            onChange={(e) => setRoutineText(e.target.value)}
+            placeholder="Ví dụ: Dậy lúc 7h sáng, thường ăn sáng nhẹ lúc 8h, không ăn tối sau 20h..."
+            className="w-full min-h-[100px] p-3 text-xs bg-slate-50 dark:bg-slate-900 border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:outline-none resize-none"
+          />
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">💡 Ghi chú riêng cho Trợ lý AI (AI Profile Notes)</h3>
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Ví dụ: Chỉ liên hệ công việc qua email, thích câu trả lời ngắn gọn súc tích..."
+            className="w-full min-h-[100px] p-3 text-xs bg-slate-50 dark:bg-slate-900 border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:outline-none resize-none"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end pt-2">
+        <Button onClick={handleSaveTexts} disabled={savingTexts} className="h-11 px-8 rounded-xl font-bold">
+          {savingTexts ? 'Đang lưu...' : 'Lưu Ghi chú & Thói quen'}
+        </Button>
       </div>
 
       <div className="pt-6 flex justify-between items-center text-xs text-slate-400 font-bold border-t border-black/5 dark:border-white/5">

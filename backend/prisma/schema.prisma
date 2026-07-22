@@ -34,6 +34,12 @@ model User {
   createdEvents   Event[]
   mealPreferences MealPreference[]
 
+  foodLikes          Json?
+  foodDislikes       Json?
+  healthRestrictions Json?
+  dailyRoutine       Json?
+  aiProfileNotes     String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -240,26 +246,37 @@ model AiExtractionDraft {
 }
 
 model AiRequestLog {
-  id              String   @id
-  timestamp       DateTime @default(now())
-  type            String
-  intent          String
-  skill           String?
-  model           String
-  toolsCalled     String[] @default([])
-  ragSnippetCount Int?
-  ragQuery        String?
-  ragMiss         Boolean?
-  ragSources      Json?
-  latencyMs       Int      @default(0)
-  cached          Boolean  @default(false)
-  redacted        Boolean  @default(false)
-  userId          String?
-  familyId        String?
-  sessionId       String?
-  error           String?
-  fallbackReason  String?
-  tokenCount      Int?
+  id                 String   @id
+  timestamp          DateTime @default(now())
+  type               String
+  source             String?
+  intent             String
+  prompt             String?
+  normalizedPrompt   String?
+  skill              String?
+  model              String
+  routeReason        String?
+  routeConfidence    Float?
+  toolsCalled        String[] @default([])
+  ragSnippetCount    Int?
+  ragQuery           String?
+  ragMiss            Boolean?
+  ragSources         Json?
+  resolverTelemetry  Json?
+  proposedAction     Json?
+  sanitizerIncidents Json?
+  needsClarification Boolean  @default(false)
+  latencyMs          Int      @default(0)
+  cached             Boolean  @default(false)
+  redacted           Boolean  @default(false)
+  userId             String?
+  familyId           String?
+  sessionId          String?
+  error              String?
+  fallbackReason     String?
+  modelChoiceReason  String?
+  tokenCount         Int?
+  resolvedFamilyMode String? // 'single' | 'all' | 'telegram_group' | 'private'
 
   feedbacks AiRequestFeedback[]
 
@@ -287,16 +304,22 @@ model AiRequestFeedback {
 }
 
 model AiActionProposal {
-  id        String   @id @default(cuid())
-  userId    String
-  familyId  String?
-  source    String
-  action    String
-  payload   Json
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  expiresAt DateTime
+  id                   String   @id @default(cuid())
+  userId               String
+  familyId             String?
+  source               String
+  action               String
+  payload              Json
+  status               String   @default("PENDING")
+  targetType           String?
+  targetId             String?
+  riskLevel            String?  @default("low")
+  requiresConfirmation Boolean  @default(true)
+  before               Json?
+  after                Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  expiresAt            DateTime
 
   @@index([userId])
   @@index([familyId])
@@ -423,3 +446,80 @@ model DailyTask {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ============================================
+// AI Conversation State
+// ============================================
+model AiConversationState {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  familyId             String?
+  lastShownEvents      Json? // JSON array of event metadata: [{ eventId, date, time, title, scope, familyId, rowNumber }]
+  lastShownNotes       Json? // JSON array of note metadata: [{ noteId, title, familyId, category, rowNumber }]
+  lastShownTasks       Json? // JSON array of task metadata: [{ taskId, title, priority, rowNumber }]
+  lastSelectedFamilyId String?
+  lastIntent           String?
+  lastAssistantSummary String?
+  pendingReference     Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  expiresAt            DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ============================================
+// Notification Delivery Log (Phase 4)
+// ============================================
+model NotificationDeliveryLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  familyId     String?
+  type         String // e.g., EVENT_REMINDER, DAILY_TASK, HOROSCOPE
+  channel      String // telegram | webpush | email | inapp
+  status       String // SENT | FAILED | SKIPPED
+  title        String
+  body         String
+  metadata     Json?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+// ============================================
+// Family Knowledge Version History (Phase 7)
+// ============================================
+model FamilyKnowledgeVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  title      String
+  content    String
+  category   String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+  @@index([createdAt])
+}
+
+// ============================================
+// AI Eval Cases (Phase 6)
+// ============================================
+model AiEvalCase {
+  id             String   @id @default(cuid())
+  input          String
+  expectedIntent String?
+  expectedSkill  String?
+  expectedAnswer String?
+  expectedTool   String?
+  sourceLogId    String?
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+

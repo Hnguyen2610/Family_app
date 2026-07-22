@@ -7,12 +7,25 @@ export type AiUserMemoryProfile = {
   healthRestrictions?: string[];
   familyNotes?: string[];
   note?: string;
+  dailyRoutine?: any;
 };
 
-function toStringList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const list = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-  return list.length ? list : undefined;
+export function toStringList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const list = value.map(item => String(item).trim()).filter(Boolean);
+    return list.length ? list : undefined;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item).trim()).filter(Boolean);
+      }
+    } catch {}
+    const list = value.split(',').map(item => item.trim()).filter(Boolean);
+    return list.length ? list : undefined;
+  }
+  return undefined;
 }
 
 export function parseMemoryProfile(settings: unknown): AiUserMemoryProfile {
@@ -44,6 +57,12 @@ export function buildMemoryProfileContext(profile: AiUserMemoryProfile): string 
   if (profile.foodDislikes?.length) parts.push(`Food dislikes: ${profile.foodDislikes.join(', ')}`);
   if (profile.healthRestrictions?.length) {
     parts.push(`Health restrictions: ${profile.healthRestrictions.join(', ')}`);
+  }
+  if (profile.dailyRoutine) {
+    const routineStr = typeof profile.dailyRoutine === 'string'
+      ? profile.dailyRoutine
+      : JSON.stringify(profile.dailyRoutine);
+    parts.push(`Daily routine: ${routineStr}`);
   }
   if (profile.familyNotes?.length) parts.push(`Family notes: ${profile.familyNotes.join('; ')}`);
   if (profile.note) parts.push(`User note: ${profile.note}`);

@@ -12,6 +12,7 @@ import { WeatherModule } from '../weather/weather.module';
 import { ProactiveBriefingBuilder } from './proactive-briefing.builder';
 import { NotificationDeliveryService } from './notification-delivery.service';
 import { ProactiveAssistantService } from './proactive-assistant.service';
+import { NotificationLogService } from './notification-log.service';
 
 @Module({
   imports: [
@@ -30,7 +31,8 @@ import { ProactiveAssistantService } from './proactive-assistant.service';
     ProactiveBriefingBuilder,
     NotificationDeliveryService,
     ProactiveAssistantService,
+    NotificationLogService,
   ],
-  exports: [NotificationsService, WebPushService],
+  exports: [NotificationsService, WebPushService, NotificationLogService],
 })
 export class NotificationsModule {}

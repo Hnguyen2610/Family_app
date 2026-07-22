@@ -38,7 +38,6 @@ export class TelegramActionHandlers {
     bot.action('menu_search', (ctx) => this.handleMenuSearch(ctx));
     bot.action('menu_help', (ctx) => this.handleMenuHelp(ctx));
 
-    // Callback parameters
     bot.action(/^note_save:(.+)$/, (ctx) => this.handleNoteSave(ctx as any));
     bot.action(/^note_skip:(.+)$/, (ctx) => this.handleNoteSkip(ctx as any));
     bot.action(/^ai_feedback:([^:]+):(.+)$/, (ctx) => this.handleAiFeedback(ctx as any));
@@ -70,12 +69,14 @@ export class TelegramActionHandlers {
       await ctx.reply('Bạn chưa kết nối tài khoản. Hãy mở Settings trong web app để liên kết trước.');
       return;
     }
+
     const activeFamilyId = getTelegramActiveFamilyId(user.notificationSettings);
     const families = getUserFamilies(user);
     if (!families.length) {
       await ctx.reply('Tài khoản này chưa tham gia gia đình nào.');
       return;
     }
+
     const lines = families.map((family, index) => {
       const active = family.id === activeFamilyId ? ' *' : '';
       return `${index + 1}. ${family.name}${active}\n   /use_family ${index + 1}\n   ID: ${family.id}`;
@@ -90,6 +91,7 @@ export class TelegramActionHandlers {
       await ctx.reply('Telegram chưa liên kết với tài khoản Family App.');
       return;
     }
+
     const activeFamily = getActiveFamily(user);
     await ctx.reply([
       `Đã liên kết: ${user.name}`,
@@ -131,7 +133,7 @@ export class TelegramActionHandlers {
 
   private async handleMenuSearch(ctx: Context) {
     await ctx.answerCbQuery();
-    await ctx.reply('🔍 Để tìm kiếm thông tin bằng AI trên Internet, hãy gõ lệnh: \n`/search <từ khóa cần tìm>`\nVí dụ: `/search thời tiết Hà Nội hôm nay`');
+    await ctx.reply('🔍 Để tìm kiếm thông tin bằng AI trên Internet, hãy gõ lệnh:\n`/search <từ khóa cần tìm>`\nVí dụ: `/search thời tiết Hà Nội hôm nay`');
   }
 
   private async handleMenuHelp(ctx: Context) {
@@ -210,8 +212,19 @@ export class TelegramActionHandlers {
       } else {
         await this.actionProposalService.reject(proposalId, user.id);
       }
+
       await ctx.answerCbQuery(action === 'confirm' ? 'Đã xác nhận' : 'Đã hủy');
-      await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+      const originalText = ctx.callbackQuery?.message?.text || '';
+      const statusSuffix = action === 'confirm' ? '\n\n✅ *Đã xác nhận*' : '\n\n❌ *Đã hủy*';
+
+      if (originalText) {
+        await ctx.editMessageText(originalText + statusSuffix, {
+          parse_mode: 'Markdown',
+          reply_markup: undefined,
+        }).catch(() => {});
+      } else {
+        await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+      }
     } catch (error: any) {
       this.logger.warn(`Proposal ${action} failed: ${error?.message || error}`);
       await ctx.answerCbQuery('Thao tác đã hết hạn hoặc không hợp lệ');

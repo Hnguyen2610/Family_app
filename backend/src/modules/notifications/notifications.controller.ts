@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Query, Headers, Unauthoriz
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationLogService } from './notification-log.service';
 
 @Controller('api/notifications')
 export class NotificationsController {
@@ -9,7 +10,8 @@ export class NotificationsController {
 
   constructor(
     private readonly notificationsService: NotificationsService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly notificationLogService: NotificationLogService
   ) {}
 
   @SkipThrottle()
@@ -90,6 +92,17 @@ export class NotificationsController {
     this.logger.log('Manually triggering monthly finance report via Vercel Cron endpoint');
     await this.notificationsService.sendMonthlyFinanceReport();
     return { success: true, message: 'Monthly finance report triggered' };
+  }
+
+  @SkipThrottle()
+  @Get('delivery-logs')
+  async getDeliveryLogs(
+    @Query('userId') userId?: string,
+    @Query('familyId') familyId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const lim = limit ? parseInt(limit, 10) : 50;
+    return this.notificationLogService.getLogs({ userId, familyId, limit: lim });
   }
 
   @Get()

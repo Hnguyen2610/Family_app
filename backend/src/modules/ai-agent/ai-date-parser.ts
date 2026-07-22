@@ -75,7 +75,11 @@ function parseWeekdayDate(normalized: string): ParsedDate | undefined {
   const targetDay = match[1] ? Number.parseInt(match[1], 10) - 1 : 0;
   const todayIct = new Date(Date.now() + 7 * 60 * 60 * 1000);
   const currentDay = todayIct.getUTCDay();
-  let daysUntilTarget = targetDay - currentDay;
+
+  // Convert to Vietnamese day numbering: Monday = 1, Tuesday = 2, ..., Saturday = 6, Sunday = 7
+  const currentDayVn = currentDay === 0 ? 7 : currentDay;
+  const targetDayVn = targetDay === 0 ? 7 : targetDay;
+  let daysUntilTarget = targetDayVn - currentDayVn;
 
   if (normalized.includes('tuan sau') || normalized.includes('next week')) {
     daysUntilTarget += 7;
@@ -90,16 +94,30 @@ function parseWeekdayDate(normalized: string): ParsedDate | undefined {
 
 export function parseCalendarDateRange(message: string): ParsedDateRange | undefined {
   const normalized = normalizeSearchText(message || '');
-  const range = normalized.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:-|den|toi)\s*(?:ngay)?\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/i);
-  if (!range) return undefined;
 
-  const start = parseSlashDateParts(range[1], range[2], range[3] || range[6]);
-  const end = parseSlashDateParts(range[4], range[5], range[6] || range[3]);
-  if (!start || !end) return undefined;
+  // 1. Slash range: 8/7 - 12/7
+  const slashRange = normalized.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:-|den|toi)\s*(?:ngay)?\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/i);
+  if (slashRange) {
+    const start = parseSlashDateParts(slashRange[1], slashRange[2], slashRange[3] || slashRange[6]);
+    const end = parseSlashDateParts(slashRange[4], slashRange[5], slashRange[6] || slashRange[3]);
+    if (start && end) {
+      const dates = enumerateDateRange(start, end);
+      if (dates.length >= 2) return { start, end, dates };
+    }
+  }
 
-  const dates = enumerateDateRange(start, end);
-  if (dates.length < 2) return undefined;
-  return { start, end, dates };
+  // 2. Word range: tu ngay 8 den ngay 12 thang 7 [nam 2026]
+  const wordRange = normalized.match(/\b(?:tu\s+)?(?:ngay\s+)?(\d{1,2})\s*(?:den|toi|-)\s*(?:ngay\s+)?(\d{1,2})\s+thang\s+(\d{1,2})(?:\s+nam\s+(\d{4}))?\b/i);
+  if (wordRange) {
+    const start = parseSlashDateParts(wordRange[1], wordRange[3], wordRange[4]);
+    const end = parseSlashDateParts(wordRange[2], wordRange[3], wordRange[4]);
+    if (start && end) {
+      const dates = enumerateDateRange(start, end);
+      if (dates.length >= 2) return { start, end, dates };
+    }
+  }
+
+  return undefined;
 }
 
 export function parseCalendarDate(message: string): ParsedDate | undefined {
@@ -113,8 +131,12 @@ export function parseCalendarDate(message: string): ParsedDate | undefined {
   const slash = message.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/);
   if (slash) return parseSlashDateParts(slash[1], slash[2], slash[3]);
 
+  // Support "ngay 8 thang 7"
+  const wordDate = normalized.match(/\b(?:ngay|le)?\s*(\d{1,2})\s+thang\s+(\d{1,2})(?:\s+nam\s+(\d{4}))?\b/i);
+  if (wordDate) return parseSlashDateParts(wordDate[1], wordDate[2], wordDate[3]);
+
   if (normalized.includes('ngay mai') || normalized.includes('tomorrow')) return addDays(1);
-  if (normalized.includes('ngay mot') || normalized.includes('moi ngay kia')) return addDays(2);
+  if (normalized.includes('ngay kia') || normalized.includes('ngay mot') || normalized.includes('moi ngay kia')) return addDays(2);
   if (normalized.includes('hom nay') || normalized.includes('toi nay') || normalized.includes('today')) return addDays(0);
 
   return parseWeekdayDate(normalized);

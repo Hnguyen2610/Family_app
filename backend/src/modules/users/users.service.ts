@@ -80,6 +80,11 @@ export class UsersService {
         birthday: true,
         familyId: true, // legacy
         families: true,
+        foodLikes: true,
+        foodDislikes: true,
+        healthRestrictions: true,
+        dailyRoutine: true,
+        aiProfileNotes: true,
         createdAt: true,
       },
     });
@@ -97,6 +102,11 @@ export class UsersService {
         birthday: true,
         familyId: true, // legacy
         families: true,
+        foodLikes: true,
+        foodDislikes: true,
+        healthRestrictions: true,
+        dailyRoutine: true,
+        aiProfileNotes: true,
         createdAt: true,
       },
     });

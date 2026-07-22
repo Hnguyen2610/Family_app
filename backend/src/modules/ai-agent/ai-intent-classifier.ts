@@ -91,8 +91,34 @@ export class AiIntentClassifier {
       const response = await this.openai.chat.completions.create({
         model: this.model,
         temperature: 0,
-        max_tokens: 80,
-        response_format: { type: 'json_object' },
+        max_tokens: 150,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'intent_classification',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                intent: {
+                  type: 'string',
+                  enum: ALLOWED_INTENTS,
+                },
+                requiresTools: {
+                  type: 'boolean',
+                },
+                confidence: {
+                  type: 'number',
+                },
+                reason: {
+                  type: 'string',
+                },
+              },
+              required: ['intent', 'requiresTools', 'confidence', 'reason'],
+              additionalProperties: false,
+            },
+          },
+        },
         messages: [
           { role: 'system', content: CLASSIFIER_SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
@@ -178,12 +204,18 @@ export class AiIntentClassifier {
   }
 
   private parseJson(raw: string): Partial<AiIntentRoute> | undefined {
-    const jsonText = raw.match(/\{[\s\S]*\}/)?.[0];
-    if (!jsonText) return undefined;
+    // Try to parse parsing directly first since structured output formats are clean JSON
     try {
-      return JSON.parse(jsonText);
+      return JSON.parse(raw);
     } catch {
-      return undefined;
+      // Fallback to regex parser
+      const jsonText = raw.match(/\{[\s\S]*\}/)?.[0];
+      if (!jsonText) return undefined;
+      try {
+        return JSON.parse(jsonText);
+      } catch {
+        return undefined;
+      }
     }
   }
 

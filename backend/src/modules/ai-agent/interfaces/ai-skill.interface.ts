@@ -5,6 +5,7 @@ export interface AiSkillContext {
   userId: string;
   familyId: string;
   resolvedFamilyId?: string; // Always the real DB family ID (not 'all')
+  resolvedFamilyMode?: string; // 'single' | 'all' | 'telegram_group' | 'private'
   userMessage: string;
   intent: string;
   image?: string;
@@ -26,7 +27,7 @@ export interface AiSkillContext {
   }>;
   history?: any[];
   trace?: AiTrace;
-  source?: 'web' | 'telegram';
+  source?: 'web' | 'telegram' | 'telegram_group' | 'telegram_private';
 }
 
 export interface AiSkillTool {

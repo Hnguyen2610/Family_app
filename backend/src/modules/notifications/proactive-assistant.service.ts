@@ -36,7 +36,7 @@ export class ProactiveAssistantService {
 
     const now = getIctNow();
     this.logger.log('Starting proactive assistant cron job...');
-    const weatherForecast = await this.weatherService.getTomorrowForecast();
+    const weatherForecast = await this.weatherService.getTodayForecast();
 
     const users = await this.prisma.user.findMany({
       select: {
@@ -76,7 +76,7 @@ export class ProactiveAssistantService {
   private async sendDailyBriefing(
     user: any,
     now: Date,
-    weatherForecast: Awaited<ReturnType<WeatherService['getTomorrowForecast']>>,
+    weatherForecast: Awaited<ReturnType<WeatherService['getTodayForecast']>>,
   ) {
     const result = {
       sent: 0,
@@ -98,7 +98,7 @@ export class ProactiveAssistantService {
 
     const dateKey = getIctDateKey(now);
     const title = `Tóm tắt gia đình ${formatIctDate(now)}`;
-    const message = this.proactiveBriefingBuilder.formatDailyBriefingMessage(briefing.items);
+    const message = await this.proactiveBriefingBuilder.formatDailyBriefingMessage(briefing.items);
     const created = await this.createProactiveNotification(user.id, {
       type: 'PROACTIVE_DAILY_BRIEFING',
       title,

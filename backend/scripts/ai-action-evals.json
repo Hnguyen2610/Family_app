@@ -1,0 +1,42 @@
+[
+  {
+    "id": "calendar.rename.followup-title",
+    "group": "follow_up_entity_linking",
+    "input": "toi muon doi ten su kien Su kien thanh Photo giay xac nhan thuc tap",
+    "expectedAction": "update",
+    "expectedLookupTitle": "Su kien",
+    "expectedTitle": "Photo giay xac nhan thuc tap",
+    "shouldAskClarification": false
+  },
+  {
+    "id": "calendar.rename.copied-event-line",
+    "group": "follow_up_entity_linking",
+    "input": "toi muon doi ten Su kien ngay 08/07/2026: 19:30: Su kien - Ca nhan thanh Photo giay xac nhan thuc tap",
+    "expectedAction": "update",
+    "expectedLookupTitle": "Su kien",
+    "expectedLookupDate": "2026-07-08",
+    "expectedLookupTime": "19:30",
+    "expectedTitle": "Photo giay xac nhan thuc tap",
+    "shouldAskClarification": false
+  },
+  {
+    "id": "calendar.create.private-title",
+    "group": "calendar_create",
+    "input": "tao lich ngay 8/7 scope ca nhan voi tieu de Lam giay dang ky thuc tap vao luc 19:30",
+    "expectedAction": "create",
+    "expectedTitle": "Lam giay dang ky thuc tap",
+    "expectedDate": "2026-07-08",
+    "expectedTime": "19:30",
+    "expectedScope": "PRIVATE"
+  },
+  {
+    "id": "calendar.create.range",
+    "group": "calendar_create",
+    "input": "tao su kien Team Building cong ty tu ngay 11/7 den ngay 14/7 scope ca nhan",
+    "expectedAction": "create",
+    "expectedTitle": "Team Building cong ty",
+    "expectedDate": "2026-07-11",
+    "expectedEndDate": "2026-07-14",
+    "expectedScope": "PRIVATE"
+  }
+]

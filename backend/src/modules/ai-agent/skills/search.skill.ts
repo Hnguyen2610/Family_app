@@ -45,7 +45,7 @@ export class SearchSkill implements AiSkill {
   getSystemPrompt(_context: AiSkillContext): string {
     return [
       'WEB SEARCH RULES:',
-      '- IMPORTANT: You MUST use the search tool for questions about news, dates, specific facts, or real-time information.',
+      '- ALWAYS call the search tool for questions about news, facts, or real-time information. Do NOT answer from memory.',
       '- Do NOT say you do not know without trying the tool first.',
       '- Summarize search results clearly and cite sources.',
     ].join('\n');
@@ -68,25 +68,9 @@ export class SearchSkill implements AiSkill {
     ];
   }
 
-  async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
-    const query = this.cleanQuery(context.userMessage);
-    if (!query) {
-      return { content: 'Bạn muốn mình tra cứu thông tin gì?', direct: true };
-    }
-
-    try {
-      const result = await this.performSearch(query);
-      return {
-        content: this.formatSearchResult(query, result),
-        direct: true,
-      };
-    } catch (error: any) {
-      this.logger.error(`Tavily direct search error: ${error.message}`);
-      return {
-        content: `Không tra cứu được thông tin lúc này: ${error.message}`,
-        direct: true,
-      };
-    }
+  // LLM-first: always let the LLM call search tool
+  async tryDirectAnswer(_context: AiSkillContext): Promise<AiSkillResponse | undefined> {
+    return undefined;
   }
 
   async executeTool(toolName: string, args: any, _context: AiSkillContext): Promise<any> {

@@ -138,6 +138,7 @@ function isLikelyEventMutation(text: string): boolean {
     'them',
     'len lich',
     'dat lich',
+    'doi ten',
     'cap nhat',
     'sua',
     'xoa',
@@ -186,7 +187,7 @@ export function classifyAiIntent(userMessage: string, hasImage: boolean = false)
   }
 
   if (isWeatherQuestion(text)) {
-    return route('weather', false, { confidence: 0.95, reason: 'weather_keyword' });
+    return route('weather', true, { confidence: 0.95, reason: 'weather_keyword' });
   }
 
   if (isLikelyEventMutation(text)) {

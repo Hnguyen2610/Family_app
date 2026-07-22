@@ -4,6 +4,7 @@ export type RoutedModel = {
   provider: 'groq' | 'gemini';
   model: string;
   route: 'explicit' | 'fast' | 'tool' | 'reasoning' | 'fallback_default' | 'vision';
+  reason: string;
 };
 
 function getProviderFromSelection(selection?: string): 'groq' | 'gemini' | undefined {
@@ -18,6 +19,7 @@ export function routeAiModel(selection: string | undefined, intentRoute: AiInten
       provider: 'gemini',
       model: process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
       route: 'vision',
+      reason: 'image input requires a vision-capable model',
     };
   }
 
@@ -30,6 +32,7 @@ export function routeAiModel(selection: string | undefined, intentRoute: AiInten
           ? process.env.GEMINI_MODEL || 'gemini-3.5-flash'
           : process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       route: 'explicit',
+      reason: `user selected ${explicitProvider}`,
     };
   }
 
@@ -38,6 +41,7 @@ export function routeAiModel(selection: string | undefined, intentRoute: AiInten
       provider: 'groq',
       model: process.env.AI_TOOL_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       route: 'tool',
+      reason: 'intent requires tool calling',
     };
   }
 
@@ -47,6 +51,7 @@ export function routeAiModel(selection: string | undefined, intentRoute: AiInten
       model:
         process.env.AI_REASONING_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       route: 'reasoning',
+      reason: 'intent benefits from reasoning/persona response',
     };
   }
 
@@ -54,5 +59,6 @@ export function routeAiModel(selection: string | undefined, intentRoute: AiInten
     provider: 'groq',
     model: process.env.AI_FAST_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
     route: 'fast',
+    reason: 'default fast text response',
   };
 }

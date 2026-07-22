@@ -1,5 +1,5 @@
 import { getTools } from '../src/modules/ai-agent/ai-agent-tools';
-import { validateToolArgs } from '../src/modules/ai-agent/ai-tool-validation';
+import { validateToolArgs } from '../src/modules/ai-agent/ai-tool-runtime';
 
 const tools = getTools();
 

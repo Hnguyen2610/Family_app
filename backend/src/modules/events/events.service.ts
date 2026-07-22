@@ -104,13 +104,17 @@ export class EventsService {
         });
       }
 
-      // Create in-app notifications
+      // Create detailed notifications for in-app / push / telegram
       const creatorName = event.user?.name || 'Thành viên gia đình';
+      const eventDateStr = new Date(event.date).toLocaleDateString('vi-VN');
+      const descPart = event.description ? `\n📝 Mô tả: ${event.description}` : '';
+      const notificationMessage = `${creatorName} đã thêm một sự kiện mới:\n📌 Tiêu đề: ${event.title}\n📅 Ngày: ${eventDateStr}${descPart}`;
+
       for (const member of filteredMembers) {
         await this.notificationsService.createNotification(member.id, {
           type: eventType,
-          title: 'Sự kiện mới',
-          message: `${creatorName} đã thêm sự kiện: ${event.title}`,
+          title: 'Sự kiện mới 📢',
+          message: notificationMessage,
           metadata: { eventId: event.id, path: '/calendar' }
         });
       }

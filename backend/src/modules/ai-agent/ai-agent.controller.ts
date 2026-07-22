@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Delete, Param, Res, Patch, Headers } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Delete, Param, Res, Patch, Headers, UseGuards } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AiAgentService } from './services/ai-agent.service';
@@ -7,6 +7,7 @@ import { RagService } from './services/rag.service';
 import { VisionExtractionService } from './services/vision-extraction.service';
 import { AiActionProposalService } from './services/ai-action-proposal.service';
 import { ChatMessageDto } from './dto/chat.dto';
+import { AdminAuthGuard } from '../auth/guards/admin-auth.guard';
 
 @Controller('api/chat')
 @Throttle({ default: { limit: 10, ttl: 60000 } })
@@ -124,6 +125,14 @@ export class AiAgentController {
     return this.ragService.getKnowledgeDocument(familyId, id);
   }
 
+  @SkipThrottle()
+  @Get('knowledge/:id/versions')
+  async getKnowledgeDocumentVersions(
+    @Param('id') id: string,
+  ) {
+    return this.ragService.getDocumentVersions(id);
+  }
+
   @Patch('knowledge/:id')
   async updateKnowledgeDocument(
     @Param('id') id: string,
@@ -139,6 +148,14 @@ export class AiAgentController {
     @Query('familyId') familyId: string,
   ) {
     return this.ragService.deleteKnowledgeDocument(familyId, id);
+  }
+
+  @SkipThrottle()
+  @Post('knowledge/check-duplicate')
+  async checkDuplicate(
+    @Body() dto: { familyId: string; title: string; content: string },
+  ) {
+    return this.ragService.checkDuplicateDocument(dto.familyId, dto.title, dto.content);
   }
 
   @Post('vision/drafts')
@@ -204,17 +221,64 @@ export class AiAgentController {
   }
 
   @SkipThrottle()
+  @Post('admin/eval-drafts')
+  @UseGuards(AdminAuthGuard)
+  async createEvalDraft(
+    @Body() dto: {
+      requestLogId: string;
+      group?: string;
+      expectedIntent?: string;
+      expectedSkill?: string;
+      expectedFamilyId?: string;
+      note?: string;
+    },
+  ) {
+    return this.aiAgentService.createEvalDraftFromLog(dto);
+  }
+
+  @SkipThrottle()
+  @Get('admin/eval-cases')
+  @UseGuards(AdminAuthGuard)
+  async getEvalCases() {
+    return this.aiAgentService.getEvalCases();
+  }
+
+  @SkipThrottle()
+  @Post('admin/eval-cases/run')
+  @UseGuards(AdminAuthGuard)
+  async runEvalCases() {
+    return this.aiAgentService.runEvalCases();
+  }
+
+  @SkipThrottle()
+  @Patch('admin/eval-cases/:id')
+  @UseGuards(AdminAuthGuard)
+  async updateEvalCase(
+    @Param('id') id: string,
+    @Body() data: any,
+  ) {
+    return this.aiAgentService.updateEvalCase(id, data);
+  }
+
+  @SkipThrottle()
+  @Delete('admin/eval-cases/:id')
+  @UseGuards(AdminAuthGuard)
+  async deleteEvalCase(
+    @Param('id') id: string,
+  ) {
+    return this.aiAgentService.deleteEvalCase(id);
+  }
+
+  @SkipThrottle()
   @Get('admin/stats')
+  @UseGuards(AdminAuthGuard)
   async getAdminStats(
-    @Headers('x-admin-secret') adminSecret: string,
     @Query('model') model?: string,
     @Query('skill') skill?: string,
     @Query('status') status?: 'ok' | 'error' | 'cached',
     @Query('familyId') familyId?: string,
     @Query('hasRag') hasRag?: 'true' | 'false',
   ) {
-    const secret = process.env.CRON_SECRET || 'family-cron-secret-2026';
-    if (adminSecret !== secret) return { error: 'Unauthorized' };
     return this.aiAgentService.getSystemStats({ model, skill, status, familyId, hasRag });
   }
 }

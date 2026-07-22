@@ -8,6 +8,11 @@ export function shouldAllowKnowledgeWriteTool(context: AiSkillContext) {
   return /\b(luu|nho|ghi nho|long memory|so tay|rag|save|remember)\b/.test(normalized);
 }
 
+export function shouldAllowKnowledgeOrAutoWrite(context: AiSkillContext) {
+  const normalized = normalizeSearchText(context.userMessage || '');
+  return /\b(luu|nho|ghi nho|long memory|so tay|rag|save|remember|thich|ghet|di ung|thoi quen|so thich|sinh nhat|tuoi|nha minh|quy tac)\b/.test(normalized);
+}
+
 export function shouldAllowGeneralMemoryTools(context: AiSkillContext) {
   const normalized = normalizeSearchText(context.userMessage || '');
   return /\b(luu|nho|ghi nho|so tay|long memory|rag|save|remember|toi thich|minh thich|khong thich|di ung|so thich|ghi chu)\b/.test(normalized);
@@ -15,7 +20,7 @@ export function shouldAllowGeneralMemoryTools(context: AiSkillContext) {
 
 export function getSkillToolsForContext(skill: any, context: AiSkillContext) {
   if (!skill.getTools) return [];
-  if (skill.name === 'FamilyKnowledgeSkill' && !shouldAllowKnowledgeWriteTool(context)) return [];
+  if (skill.name === 'FamilyKnowledgeSkill' && !shouldAllowKnowledgeOrAutoWrite(context)) return [];
   if (skill.name === 'GeneralChatSkill' && !shouldAllowGeneralMemoryTools(context)) return [];
   return skill.getTools();
 }

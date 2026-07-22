@@ -15,8 +15,9 @@ export class MarketSkill implements AiSkill {
   }
 
   getSystemPrompt(_context: AiSkillContext): string {
-    // Return only ADDITIONAL rules; base prompt is composed in orchestrator
-    return `GOLD PRICE RULES:\n- Call getGoldPrice immediately for any gold/vàng/SJC/DOJI/PNJ/XAUUSD question.\n- Present the result clearly with source and timestamp.`;
+    return `GOLD PRICE RULES:
+- ALWAYS call getGoldPrice tool to get real-time gold prices. Do NOT answer from memory or assumptions.
+- Present the result clearly with source and timestamp.`;
   }
 
   getTools(): AiSkillTool[] {
@@ -30,19 +31,9 @@ export class MarketSkill implements AiSkill {
     }];
   }
 
-  async tryDirectAnswer(context: AiSkillContext): Promise<AiSkillResponse | undefined> {
-    const rawMsg = context.userMessage;
-    const msg = normalizeSearchText(rawMsg);
-    const isSimple = msg.includes('gia vang') || msg.includes('vang bao nhieu') || msg.includes('sjc');
-    if (!isSimple) return undefined;
-
-    try {
-      const result = await fetchGoldPrice();
-      return { content: formatGoldPriceForUser(result), direct: true };
-    } catch (e: any) {
-      this.logger.error(`MarketSkill direct answer error: ${e.message}`);
-      return undefined;
-    }
+  // LLM-first: always let the LLM call getGoldPrice tool
+  async tryDirectAnswer(_context: AiSkillContext): Promise<AiSkillResponse | undefined> {
+    return undefined;
   }
 
   async executeTool(toolName: string, _args: any, _context: AiSkillContext): Promise<any> {

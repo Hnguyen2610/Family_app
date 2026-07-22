@@ -8,6 +8,7 @@ export type AiUserMemoryProfile = {
   familyNotes?: string[];
   note?: string;
   lastUpdatedAt?: string;
+  dailyRoutine?: any;
 };
 
 function toStringList(value: unknown): string[] | undefined {
