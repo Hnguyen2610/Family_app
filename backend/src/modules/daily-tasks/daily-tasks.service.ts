@@ -98,6 +98,12 @@ function alignToNextSlotFromStart(currentMinutes: number, startMinutes: number, 
   return startMinutes + slots * Math.max(1, intervalMinutes);
 }
 
+function isWithinActiveWindow(task: DailyTaskLike, ictNow: IctParts) {
+  const startMinutes = parseTimeToMinutes(task.activeStartTime, DEFAULT_ACTIVE_START_TIME);
+  const endMinutes = parseTimeToMinutes(task.activeEndTime, DEFAULT_ACTIVE_END_TIME);
+  return ictNow.minutes >= startMinutes && ictNow.minutes < endMinutes;
+}
+
 function calculateNextReminderAt(task: DailyTaskLike, now = new Date(), afterNotification = false): Date {
   const ictNow = getIctParts(now);
   const startMinutes = parseTimeToMinutes(task.activeStartTime, DEFAULT_ACTIVE_START_TIME);
@@ -107,7 +113,7 @@ function calculateNextReminderAt(task: DailyTaskLike, now = new Date(), afterNot
 
   if (todayAllowed && ictNow.minutes < endMinutes) {
     const baseMinutes = afterNotification
-      ? ictNow.minutes + interval
+      ? Math.max(ictNow.minutes + interval, startMinutes)
       : alignToNextSlotFromStart(ictNow.minutes, startMinutes, interval);
     if (baseMinutes < endMinutes) {
       return ictWallTimeToInstant(ictNow, baseMinutes);
@@ -264,9 +270,11 @@ export class DailyTasksService {
     if (!tasks.length) return { sent: false, reason: 'no_active_tasks' };
 
     const nowMs = now.getTime();
+    const ictNow = getIctParts(now);
     const due = tasks.find((task) => {
       if (this.isCompletedToday(task.completedAt, now)) return false;
-      if (!runsOnWeekday(task, getIctParts(now).weekday)) return false;
+      if (!runsOnWeekday(task, ictNow.weekday)) return false;
+      if (!isWithinActiveWindow(task, ictNow)) return false;
       if (!isTaskDue(task, now)) return false;
       if (!task.lastNotifiedAt) return true;
       const elapsedMinutes = (nowMs - task.lastNotifiedAt.getTime()) / 60_000;

@@ -216,6 +216,32 @@ describe('DailyTasksService', () => {
     expect(prisma.dailyTask.update).not.toHaveBeenCalled();
   });
 
+  it('does not send outside the active window even if nextReminderAt is stale, and reschedules to next window start', async () => {
+    const { service, prisma, telegramSender, webPushService } = buildService();
+    // 2026-07-07T00:05:00 ICT (00:05 local, well before the 08:00 default window start)
+    jest.setSystemTime(new Date('2026-07-06T17:05:00.000Z'));
+    prisma.dailyTask.findMany.mockResolvedValue([
+      {
+        id: 'task-1',
+        title: 'Midnight task',
+        intervalMinutes: 20,
+        priority: 0,
+        lastNotifiedAt: null,
+        // Stale/corrupted nextReminderAt from an earlier out-of-window send — simulates the reported bug.
+        nextReminderAt: new Date('2026-07-06T17:00:00.000Z'),
+        completedAt: null,
+        activeStartTime: '08:00',
+        activeEndTime: '17:00',
+      },
+    ]);
+
+    const result = await service.triggerNext('user-1');
+
+    expect(result).toEqual({ sent: false, reason: 'no_task_due' });
+    expect(telegramSender.sendDailyTaskReminderToUser).not.toHaveBeenCalled();
+    expect(webPushService.sendToUser).not.toHaveBeenCalled();
+  });
+
   it('clears notification and completion state on daily reset', async () => {
     const { service, prisma } = buildService();
     prisma.dailyTask.updateMany.mockResolvedValue({ count: 2 });
