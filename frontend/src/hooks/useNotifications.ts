@@ -32,22 +32,24 @@ export function useNotifications() {
   }, [fetchNotifications]);
 
   const markAsRead = async (id: string) => {
-    if (!user?.id) return;
+    // Optimistic UI update
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+
     try {
-      await notificationsAPI.markAsRead(id, user.id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      await notificationsAPI.markAsRead(id, user?.id || '');
     } catch (error) {
       console.error('Failed to mark notification as read', error);
     }
   };
 
   const markAllAsRead = async () => {
-    if (!user?.id) return;
+    // Optimistic UI update
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+
     try {
-      await notificationsAPI.markAllAsRead(user.id);
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
+      await notificationsAPI.markAllAsRead(user?.id || '');
     } catch (error) {
       console.error('Failed to mark all as read', error);
     }

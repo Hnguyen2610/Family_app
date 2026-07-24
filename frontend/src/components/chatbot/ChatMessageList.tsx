@@ -1,15 +1,42 @@
 import { useState, type RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { FiActivity, FiCalendar, FiCheck, FiFlag, FiThumbsDown, FiThumbsUp, FiTrendingUp, FiUser, FiX } from 'react-icons/fi';
+import MascotAvatar from '@/components/MascotAvatar';
 import type { AiFeedbackValue } from '@/lib/api-client';
 import { FEEDBACK_OPTIONS, type Message } from './chatbot-types';
 import { getStatusLabel } from './chatbot-usage';
 
+function cleanMarkdownText(text: string): string {
+  if (!text) return '';
+  let cleaned = text;
+
+  // Fix single-line table breaks where rows are joined with || or | |
+  cleaned = cleaned.replace(/\|\s*\|\s*\|/g, '|\n|');
+  cleaned = cleaned.replace(/\|\s*\|\s*(?=\|)/g, '|\n');
+  cleaned = cleaned.replace(/\|\s*\|\s*(?=[A-Za-z0-9À-ỹ]+)/g, '|\n');
+
+  // Ensure newline after Markdown table header divider e.g. "| --- | --- |\n"
+  cleaned = cleaned.replace(/(\|-{2,}[\s\S]*?\|)\s*(\|)/g, '$1\n$2');
+
+  // Replace <br> with \n ONLY outside of table rows so table cells don't break across lines
+  const lines = cleaned.split('\n');
+  const processedLines = lines.map((line) => {
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      return line.replace(/<br\s*\/?>/gi, '<br />');
+    }
+    return line.replace(/<br\s*\/?>/gi, '\n');
+  });
+
+  return processedLines.join('\n');
+}
+
 function MessageContent({ content, role, language }: { content: string; role: string; language: string }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   if (role !== 'assistant') {
-    return <ReactMarkdown>{content}</ReactMarkdown>;
+    return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{cleanMarkdownText(content)}</ReactMarkdown>;
   }
 
   // Globally extract all closed <thought>...</thought> blocks
@@ -37,14 +64,18 @@ function MessageContent({ content, role, language }: { content: string; role: st
     }
   }
 
-  if (!thoughtText) {
-    return <ReactMarkdown>{content}</ReactMarkdown>;
+  // Smart Fallback: If LLM omitted literal <thought> tags but wrote 'Phân tích yêu cầu:',
+  // extract that paragraph into thoughtText so it displays inside the AI Reasoning box!
+  if (!thoughtText && /^Phân tích (yêu cầu|câu hỏi|dữ liệu):/i.test(restText)) {
+    const doubleNewlineIdx = restText.indexOf('\n\n');
+    if (doubleNewlineIdx !== -1) {
+      thoughtText = restText.substring(0, doubleNewlineIdx).trim();
+      restText = restText.substring(doubleNewlineIdx).trim();
+    }
   }
 
-  // Fallback: If AI wrapped the entire response inside <thought> cells and left restText empty,
-  // expose thoughtText directly as the main response to avoid showing an empty message box.
-  if (!restText) {
-    return <ReactMarkdown>{thoughtText}</ReactMarkdown>;
+  if (!thoughtText) {
+    return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{cleanMarkdownText(content)}</ReactMarkdown>;
   }
 
   const isVi = language === 'vi';
@@ -73,7 +104,7 @@ function MessageContent({ content, role, language }: { content: string; role: st
           )}
         </div>
       )}
-      {restText && <ReactMarkdown>{restText}</ReactMarkdown>}
+      {restText ? <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{cleanMarkdownText(restText)}</ReactMarkdown> : null}
     </div>
   );
 }
@@ -209,8 +240,8 @@ export function ChatMessageList({
     >
       {messages.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-start md:justify-center text-center space-y-5 md:space-y-8 pt-3 md:pt-0">
-          <div className="hidden sm:flex w-16 h-16 bg-primary/5 rounded-2xl items-center justify-center border border-primary/10">
-            <FiActivity className="w-8 h-8 text-primary" />
+          <div className="hidden sm:flex shrink-0 items-center justify-center">
+            <MascotAvatar size="lg" isWaving={true} showBubble={false} />
           </div>
           <div className="max-w-md space-y-3 md:space-y-4">
             <h3 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
@@ -247,11 +278,15 @@ export function ChatMessageList({
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300`}
               >
                 <div className={`flex gap-3 md:gap-5 max-w-[96%] md:max-w-[92%] xl:max-w-[88%] ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl shrink-0 flex items-center justify-center border ${
-                    message.role === 'user' ? 'bg-primary border-primary/20 text-primary-foreground' : 'bg-slate-200 dark:bg-slate-800 border-black/5 dark:border-white/5 text-primary'
-                  }`}>
-                    {message.role === 'user' ? <FiUser size={16} /> : <FiActivity size={16} />}
-                  </div>
+                  {message.role === 'user' ? (
+                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl shrink-0 flex items-center justify-center border bg-primary border-primary/20 text-primary-foreground">
+                      <FiUser size={16} />
+                    </div>
+                  ) : (
+                    <div className="shrink-0 flex items-center justify-center">
+                      <MascotAvatar size="sm" isWaving={false} showBubble={false} />
+                    </div>
+                  )}
                   <div
                     className={`p-4 md:p-5 rounded-2xl text-sm leading-relaxed border ${
                       message.role === 'user'
@@ -336,8 +371,8 @@ export function ChatMessageList({
           {isLoading && (
             <div className="flex justify-start">
               <div className="flex gap-3 md:gap-5">
-                <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-200 dark:bg-slate-800 border-black/5 dark:border-white/5 text-primary flex items-center justify-center animate-pulse">
-                  <FiActivity />
+                <div className="shrink-0 flex items-center justify-center">
+                  <MascotAvatar size="sm" isWaving={false} showBubble={false} />
                 </div>
                 <div className="bg-white dark:bg-slate-900/40 p-4 md:p-6 rounded-2xl border border-black/5 dark:border-white/5">
                   <div className="mb-3 text-xs font-semibold text-primary">

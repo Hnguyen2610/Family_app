@@ -4,6 +4,8 @@ import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '@/hooks/useAuth';
 import { useState } from 'react';
 
+import MascotAvatar from '@/components/MascotAvatar';
+
 export default function Login() {
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +29,14 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-2xl">
-            <span aria-hidden="true">🏠</span>
+          <div className="mx-auto mb-4 flex justify-center pt-2">
+            <MascotAvatar
+              size="lg"
+              isWaving={true}
+              showBubble={true}
+              bubbleText="Xin chào! Đăng nhập để cùng quản lý gia đình nhé 👋"
+              bubblePosition="top"
+            />
           </div>
           <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950">
             Family <span className="gradient-text">Calendar</span>

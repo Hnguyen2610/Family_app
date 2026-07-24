@@ -111,12 +111,13 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
-  async markAsRead(@Param('id') id: string, @Query('userId') userId: string) {
+  @Post(':id/read')
+  async markAsRead(@Param('id') id: string, @Query('userId') userId?: string) {
     return this.notificationsService.markAsRead(id, userId);
   }
 
   @Post('read-all')
-  async markAllAsRead(@Query('userId') userId: string) {
+  async markAllAsRead(@Query('userId') userId?: string) {
     return this.notificationsService.markAllAsRead(userId);
   }
 

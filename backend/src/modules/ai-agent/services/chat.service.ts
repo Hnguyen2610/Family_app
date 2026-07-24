@@ -64,13 +64,63 @@ export class ChatService {
   }
 
   async getHistory(familyId: string, sessionId?: string, limit: number = 50) {
-    return this.prisma.chatMessage.findMany({
+    const messages = await this.prisma.chatMessage.findMany({
       where: { 
         familyId,
         sessionId: sessionId || null
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
+    });
+
+    const proposalIds: string[] = [];
+    for (const msg of messages) {
+      const match = msg.content?.match(/<!--\s*action_proposal:([a-zA-Z0-9_-]+)\s*-->/);
+      if (match && match[1]) {
+        proposalIds.push(match[1]);
+      }
+    }
+
+    if (proposalIds.length === 0) {
+      return messages;
+    }
+
+    const proposals = await (this.prisma as any).aiActionProposal.findMany({
+      where: { id: { in: proposalIds } },
+    });
+
+    const proposalMap = new Map<string, any>(proposals.map((p: any) => [p.id, p]));
+
+    return messages.map((msg) => {
+      const match = msg.content?.match(/<!--\s*action_proposal:([a-zA-Z0-9_-]+)\s*-->/);
+      if (!match || !match[1]) return msg;
+
+      const prop = proposalMap.get(match[1]);
+      if (!prop) return msg;
+
+      const cleanContent = msg.content.replace(/<!--\s*action_proposal:([a-zA-Z0-9_-]+)\s*-->/g, '').trim();
+      const statusMap: Record<string, 'pending' | 'confirmed' | 'rejected'> = {
+        PENDING: 'pending',
+        CONFIRMED: 'confirmed',
+        REJECTED: 'rejected',
+        EXPIRED: 'rejected',
+      };
+
+      return {
+        ...msg,
+        content: cleanContent,
+        proposal: {
+          proposalId: prop.id,
+          action: prop.action,
+          payload: prop.payload,
+          summary: prop.payload?.title ? `Tạo sự kiện "${prop.payload.title}" vào ${prop.payload.date}.` : undefined,
+          targetType: prop.targetType,
+          riskLevel: prop.riskLevel,
+          before: prop.before,
+          after: prop.after,
+        },
+        proposalStatus: statusMap[prop.status] || 'pending',
+      };
     });
   }
 

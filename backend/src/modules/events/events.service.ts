@@ -25,15 +25,18 @@ export class EventsService {
       lunarDate = calculateLunarDate(normalizedDate);
     }
 
-    // Extract extra fields that shouldn't be spread directly into Prisma data
-    const { creatorId: _c, familyId: _f, useLunar: _u, ...eventData } = dto as any;
-
     const event = await this.prisma.event.create({
       data: {
-        ...eventData,
+        title: dto.title,
+        description: dto.description || null,
         date: normalizedDate,
         endDate: normalizedEndDate,
+        time: dto.time || null,
         lunarDate,
+        type: dto.type || 'GENERAL',
+        scope: dto.scope || 'FAMILY',
+        isRecurring: !!dto.isRecurring,
+        recurring: dto.recurring || null,
         familyId,
         createdBy: userId,
       },
@@ -74,13 +77,16 @@ export class EventsService {
           select: { id: true, email: true, notificationSettings: true }
         });
       } else {
-        // Notify only family members for FAMILY events
+        // Notify only family members for FAMILY events (support both legacy familyId and families relation)
         usersToNotify = await this.prisma.user.findMany({
           where: {
-            families: { some: { id: familyId } },
-            id: { not: event.createdBy } // Exclude creator
+            OR: [
+              { familyId },
+              { families: { some: { id: familyId } } },
+            ],
+            id: { not: event.createdBy }, // Exclude creator
           },
-          select: { id: true, email: true, notificationSettings: true }
+          select: { id: true, email: true, notificationSettings: true },
         });
       }
 
@@ -337,13 +343,18 @@ export class EventsService {
       lunarDate = calculateLunarDate(normalizedDate);
     }
 
-    const { creatorId: _c, familyId: _f, useLunar: _u, ...updateData } = dto as any;
-    if (normalizedDate) {
-      updateData.date = normalizedDate;
-    }
-    if (normalizedEndDate) {
-      updateData.endDate = normalizedEndDate;
-    }
+    const updatePayload: any = {};
+    if (dto.title !== undefined) updatePayload.title = dto.title;
+    if (dto.description !== undefined) updatePayload.description = dto.description;
+    if (dto.time !== undefined) updatePayload.time = dto.time;
+    if (dto.type !== undefined) updatePayload.type = dto.type;
+    if (dto.scope !== undefined) updatePayload.scope = dto.scope;
+    if (dto.isRecurring !== undefined) updatePayload.isRecurring = dto.isRecurring;
+    if (dto.recurring !== undefined) updatePayload.recurring = dto.recurring;
+    if (lunarDate !== undefined) updatePayload.lunarDate = lunarDate;
+    if (normalizedDate) updatePayload.date = normalizedDate;
+    if (normalizedEndDate) updatePayload.endDate = normalizedEndDate;
+
     if (normalizedDate || normalizedEndDate) {
       const existing = await this.prisma.event.findFirst({
         where: { id: baseId, familyId },
@@ -371,10 +382,7 @@ export class EventsService {
 
     const result = await this.prisma.event.updateMany({
       where,
-      data: {
-        ...updateData,
-        lunarDate,
-      },
+      data: updatePayload,
     });
 
     if (result.count > 0 && dto.scope === 'FAMILY') {

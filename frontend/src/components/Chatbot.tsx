@@ -221,9 +221,10 @@ export default function Chatbot() {
       toast.success(action === 'confirm'
         ? (language === 'vi' ? 'Đã xác nhận thao tác' : 'Action confirmed')
         : (language === 'vi' ? 'Đã hủy thao tác' : 'Action rejected'));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update proposal:', error);
-      toast.error(language === 'vi' ? 'Không thể cập nhật thao tác' : 'Could not update action');
+      const serverMessage = error?.response?.data?.message || error?.message;
+      toast.error(serverMessage || (language === 'vi' ? 'Không thể cập nhật thao tác' : 'Could not update action'));
     }
   };
 
@@ -287,6 +288,7 @@ export default function Chatbot() {
           model={model}
           setIsSidebarOpen={setIsSidebarOpen}
           setModel={setModel}
+          usageByModel={usageByModel}
         />
 
         <ChatMessageList
@@ -323,7 +325,6 @@ export default function Chatbot() {
           input={input}
           isLoading={isBusy}
           language={language}
-          model={model}
           selectedImage={selectedImage}
           onCancelStream={cancelStream}
           onFileChange={handleFileChange}

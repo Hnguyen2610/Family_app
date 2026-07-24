@@ -1,4 +1,4 @@
-import { handleGroqChat } from './ai-model-handlers';
+import { handleGroqChat, handleGeminiChat, handleGeminiStream } from './ai-model-handlers';
 
 describe('ai-model-handlers - Groq ReAct Loop', () => {
   let deps: any;
@@ -115,6 +115,38 @@ describe('ai-model-handlers - Groq ReAct Loop', () => {
     expect(callCount).toBe(2); // Initial call + second call after tool execution
     expect(deps.executeTool).toHaveBeenCalledWith('getEventsByMonth', { month: 7 }, 'family-1', 'user-1', undefined);
     expect(mockChatService.saveMessage).toHaveBeenCalledWith('family-1', 'assistant', 'Lịch hôm nay trống tuếch.', undefined);
+
+    // Regression coverage: result.usage must have real computed totalTokens (from the last
+    // turn's apiUsage) and real quota parsed from response.headers via .get() — a prior bug
+    // had ai-model-handlers.ts shadow ai-usage.ts's buildUsageSnapshot/parseGroqRateLimitQuota
+    // with local stubs that never computed totalTokens and read headers with bracket access
+    // (headers['x-...'] instead of headers.get('x-...')), which silently always produced
+    // totalTokens: undefined and quota.remainingRequests: 0 regardless of the real values.
+    expect(result.usage.totalTokens).toBe(40 + 15); // turn2Response's apiUsage
+    expect(result.usage.quota.source).toBe('headers'); // turn2Response.response.headers is a (empty) Map, not null
+  });
+
+  it('reads real rate-limit values from response.headers via .get() (regression: bracket access on a Headers-like object always silently read as undefined/0)', async () => {
+    mockOpenai.chat.completions.create = jest.fn().mockImplementation(() => ({
+      withResponse: jest.fn().mockResolvedValue({
+        data: {
+          choices: [{ message: { role: 'assistant', content: 'OK', tool_calls: null } }],
+          usage: { prompt_tokens: 12, completion_tokens: 8 },
+        },
+        response: {
+          headers: new Map([
+            ['x-ratelimit-limit-requests', '14400'],
+            ['x-ratelimit-remaining-requests', '14237'],
+          ]) as any,
+        },
+      }),
+    }));
+
+    const result = await handleGroqChat(deps, input);
+
+    expect(result.usage.totalTokens).toBe(20);
+    expect(result.usage.quota.remainingRequests).toBe(14237);
+    expect(result.usage.quota.limitRequests).toBe(14400);
   });
 
   it('prevents infinite recursion loop under LoopGuard if duplicate tool arguments occur', async () => {
@@ -151,13 +183,14 @@ describe('ai-model-handlers - Groq ReAct Loop', () => {
 
     const result = await handleGroqChat(deps, input);
 
-    // Loop count should stop at the safety boundary of 5 iterations because of LoopGuard detection
-    expect(mockOpenai.chat.completions.create).toHaveBeenCalledTimes(5);
+    // LoopGuard should break the loop immediately when duplicate detected:
+    // Iteration 1: execute tool, iteration 2: detect duplicate → break
+    expect(mockOpenai.chat.completions.create).toHaveBeenCalledTimes(2);
     expect(deps.executeTool).toHaveBeenCalledTimes(1); // Execute tool exactly once, then blocked on repeating call
   });
 
-  it('triggers Critic audit block and fixes output containing leaked system function call syntax or JSON leaks', async () => {
-    const leakingContent = 'Tôi đã cập nhật sự kiện cho bạn. <function:createEvent arg="something"/> {"status":"ok"}';
+  it('bypasses secondary LLM critic audit for ultra-fast response latency', async () => {
+    const leakingContent = 'Tôi đã cập nhật thành công sự kiện cho gia đình mình rồi nhé.';
 
     const rawHandlerResponse = {
       data: {
@@ -175,39 +208,281 @@ describe('ai-model-handlers - Groq ReAct Loop', () => {
       response: { headers: new Map() as any },
     };
 
-    const criticAuditResponse = {
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: JSON.stringify({
-              isValid: false,
-              reasons: ['Rò rỉ thẻ function và dữ liệu JSON thô'],
-              fixedContent: 'Tôi đã cập nhật thành công sự kiện cho gia đình mình rồi nhé.',
-            }),
-          },
-        },
-      ],
-    };
-
     let callCount = 0;
     mockOpenai.chat.completions.create = jest.fn().mockImplementation((args) => {
       callCount++;
-      if (callCount === 1) {
-        return {
-          withResponse: jest.fn().mockResolvedValue(rawHandlerResponse),
-        };
-      } else {
-        return criticAuditResponse;
-      }
+      return {
+        withResponse: jest.fn().mockResolvedValue(rawHandlerResponse),
+      };
     });
 
     const result = await handleGroqChat(deps, input);
 
     expect(result.content).toBe('Tôi đã cập nhật thành công sự kiện cho gia đình mình rồi nhé.');
-    expect(callCount).toBe(2);
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('[CriticAudit] Critic flagged output!')
-    );
+    expect(callCount).toBe(1);
+  });
+
+  it('gộp dynamicSuffix trực tiếp vào message system đầu tiên để Groq API ưu tiên cao nhất', async () => {
+    const finalResponse = {
+      data: {
+        choices: [{ message: { role: 'assistant', content: 'OK.', tool_calls: null } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      },
+      response: { headers: new Map() as any },
+    };
+
+    let capturedMessages: any[] = [];
+    mockOpenai.chat.completions.create = jest.fn().mockImplementation((args) => {
+      capturedMessages = args.messages;
+      return { withResponse: jest.fn().mockResolvedValue(finalResponse) };
+    });
+
+    await handleGroqChat(deps, { ...input, dynamicSuffix: 'CALENDAR TOOL RULES: ...' });
+
+    expect(capturedMessages[0].content).toContain('CALENDAR TOOL RULES');
+    const lastMessage = capturedMessages[capturedMessages.length - 1];
+    expect(lastMessage).toEqual({ role: 'user', content: input.finalUserMessage });
+  });
+
+  it('không thêm message nào khi dynamicSuffix rỗng/không có — hành vi giống hệt trước đây', async () => {
+    const finalResponse = {
+      data: {
+        choices: [{ message: { role: 'assistant', content: 'OK.', tool_calls: null } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      },
+      response: { headers: new Map() as any },
+    };
+
+    let capturedMessages: any[] = [];
+    mockOpenai.chat.completions.create = jest.fn().mockImplementation((args) => {
+      capturedMessages = args.messages;
+      return { withResponse: jest.fn().mockResolvedValue(finalResponse) };
+    });
+
+    await handleGroqChat(deps, input);
+
+    expect(capturedMessages).toHaveLength(2);
+    expect(capturedMessages[1]).toEqual({ role: 'user', content: input.finalUserMessage });
+  });
+});
+
+describe('ai-model-handlers - Gemini chat dynamicSuffix / image caption handling', () => {
+  let deps: any;
+  let input: any;
+  let mockGemini: any;
+  let mockChatService: any;
+  let mockLogger: any;
+  let getGenerativeModelMock: jest.Mock;
+  let sendMessageMock: jest.Mock;
+
+  const buildFinalResponse = (text: string) => ({
+    response: {
+      candidates: [{ content: { parts: [{ text }] } }],
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+      text: () => text,
+    },
+  });
+
+  beforeEach(() => {
+    mockChatService = {
+      saveMessage: jest.fn().mockResolvedValue(null),
+    };
+    mockLogger = {
+      debug: jest.fn(),
+      warn: jest.fn(),
+      log: jest.fn(),
+      error: jest.fn(),
+    };
+
+    sendMessageMock = jest.fn().mockResolvedValue(buildFinalResponse('OK từ Gemini.'));
+
+    getGenerativeModelMock = jest.fn().mockReturnValue({
+      startChat: jest.fn().mockReturnValue({
+        sendMessage: sendMessageMock,
+      }),
+    });
+
+    mockGemini = {
+      getGenerativeModel: getGenerativeModelMock,
+    };
+
+    deps = {
+      gemini: mockGemini,
+      chatService: mockChatService,
+      logger: mockLogger,
+      geminiModel: 'gemini-1.5-flash',
+      aiMaxTokens: 800,
+      geminiContextWindow: 1000000,
+      historyLimit: 6,
+      executeTool: jest.fn(),
+    };
+
+    input = {
+      familyId: 'family-1',
+      history: [],
+      familyInfo: 'Family info text',
+      finalUserMessage: 'Hôm nay có sự kiện gì không?',
+      userId: 'user-1',
+      intentRoute: { intent: 'calendar_query', requiresTools: true },
+    };
+  });
+
+  it('truyền systemInstruction ổn định (không đổi) cho getGenerativeModel, không bao giờ chứa dynamicSuffix', async () => {
+    await handleGeminiChat(deps, { ...input, dynamicSuffix: 'PERSONA SUFFIX RULES: ...' });
+
+    expect(getGenerativeModelMock).toHaveBeenCalledTimes(1);
+    const callArgs = getGenerativeModelMock.mock.calls[0][0];
+    expect(typeof callArgs.systemInstruction).toBe('string');
+    expect(callArgs.systemInstruction).not.toContain('PERSONA SUFFIX RULES');
+  });
+
+  it('gắn dynamicSuffix làm prefix của finalUserMessage khi gửi cho chat.sendMessage khi không có ảnh', async () => {
+    await handleGeminiChat(deps, { ...input, dynamicSuffix: 'PERSONA SUFFIX RULES: ...' });
+
+    expect(sendMessageMock).toHaveBeenCalledWith(`PERSONA SUFFIX RULES: ...\n\n${input.finalUserMessage}`);
+  });
+
+  it('[Regression Finding 1] ảnh có caption rỗng vẫn nhận câu mô tả mặc định dù dynamicSuffix đang có giá trị', async () => {
+    await handleGeminiChat(deps, {
+      ...input,
+      finalUserMessage: '',
+      dynamicSuffix: 'PERSONA SUFFIX RULES: ...',
+      image: 'data:image/png;base64,AAAA',
+    });
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    const sentParts = sendMessageMock.mock.calls[0][0];
+    expect(sentParts[0].text).toBe('PERSONA SUFFIX RULES: ...\n\nPhân tích và mô tả chi tiết hình ảnh này.');
+    expect(sentParts[1].inlineData.mimeType).toBe('image/png');
+  });
+
+  it('ảnh có caption thật vẫn được gắn dynamicSuffix như prefix (không bị ghi đè bởi câu mô tả mặc định)', async () => {
+    await handleGeminiChat(deps, {
+      ...input,
+      finalUserMessage: 'Đây là ảnh sinh nhật của bé.',
+      dynamicSuffix: 'PERSONA SUFFIX RULES: ...',
+      image: 'data:image/png;base64,AAAA',
+    });
+
+    const sentParts = sendMessageMock.mock.calls[0][0];
+    expect(sentParts[0].text).toBe('PERSONA SUFFIX RULES: ...\n\nĐây là ảnh sinh nhật của bé.');
+  });
+
+  it('không có dynamicSuffix => hành vi giống hệt trước đây (không thêm prefix ở đâu cả)', async () => {
+    await handleGeminiChat(deps, input);
+
+    expect(sendMessageMock).toHaveBeenCalledWith(input.finalUserMessage);
+  });
+
+  it('[No-op check] không có dynamicSuffix, ảnh caption rỗng vẫn dùng câu mô tả mặc định như trước khi có plan này', async () => {
+    await handleGeminiChat(deps, {
+      ...input,
+      finalUserMessage: '',
+      image: 'data:image/png;base64,AAAA',
+    });
+
+    const sentParts = sendMessageMock.mock.calls[0][0];
+    expect(sentParts[0].text).toBe('Phân tích và mô tả chi tiết hình ảnh này.');
+  });
+});
+
+describe('ai-model-handlers - Gemini stream dynamicSuffix / image caption handling', () => {
+  let deps: any;
+  let input: any;
+  let mockGemini: any;
+  let mockChatService: any;
+  let mockLogger: any;
+  let getGenerativeModelMock: jest.Mock;
+  let sendMessageStreamMock: jest.Mock;
+  let mockRes: any;
+
+  const buildStreamResponse = (text: string) => ({
+    stream: (async function* () {
+      yield {
+        candidates: [{ content: { parts: [{ text }] } }],
+        text: () => text,
+      };
+    })(),
+  });
+
+  beforeEach(() => {
+    mockChatService = {
+      saveMessage: jest.fn().mockResolvedValue(null),
+    };
+    mockLogger = {
+      debug: jest.fn(),
+      warn: jest.fn(),
+      log: jest.fn(),
+      error: jest.fn(),
+    };
+
+    sendMessageStreamMock = jest.fn().mockResolvedValue(buildStreamResponse('OK stream.'));
+
+    getGenerativeModelMock = jest.fn().mockReturnValue({
+      startChat: jest.fn().mockReturnValue({
+        sendMessageStream: sendMessageStreamMock,
+      }),
+    });
+
+    mockGemini = {
+      getGenerativeModel: getGenerativeModelMock,
+    };
+
+    mockRes = {
+      write: jest.fn(),
+      end: jest.fn(),
+    };
+
+    deps = {
+      gemini: mockGemini,
+      chatService: mockChatService,
+      logger: mockLogger,
+      geminiModel: 'gemini-1.5-flash',
+      aiMaxTokens: 800,
+      geminiContextWindow: 1000000,
+      historyLimit: 6,
+      executeTool: jest.fn(),
+    };
+
+    input = {
+      familyId: 'family-1',
+      history: [],
+      familyInfo: 'Family info text',
+      finalUserMessage: 'Hôm nay có sự kiện gì không?',
+      userId: 'user-1',
+      intentRoute: { intent: 'calendar_query', requiresTools: true },
+      res: mockRes,
+    };
+  });
+
+  it('truyền systemInstruction ổn định cho getGenerativeModel khi stream, không bao giờ chứa dynamicSuffix', async () => {
+    await handleGeminiStream(deps, { ...input, dynamicSuffix: 'PERSONA SUFFIX RULES: ...' });
+
+    const callArgs = getGenerativeModelMock.mock.calls[0][0];
+    expect(callArgs.systemInstruction).not.toContain('PERSONA SUFFIX RULES');
+  });
+
+  it('gắn dynamicSuffix làm prefix của finalUserMessage khi gửi cho chat.sendMessageStream khi không có ảnh', async () => {
+    await handleGeminiStream(deps, { ...input, dynamicSuffix: 'PERSONA SUFFIX RULES: ...' });
+
+    expect(sendMessageStreamMock).toHaveBeenCalledWith(`PERSONA SUFFIX RULES: ...\n\n${input.finalUserMessage}`);
+  });
+
+  it('[Regression Finding 1 - stream] ảnh có caption rỗng vẫn nhận câu mô tả mặc định dù dynamicSuffix đang có giá trị', async () => {
+    await handleGeminiStream(deps, {
+      ...input,
+      finalUserMessage: '',
+      dynamicSuffix: 'PERSONA SUFFIX RULES: ...',
+      image: 'data:image/png;base64,AAAA',
+    });
+
+    const sentParts = sendMessageStreamMock.mock.calls[0][0];
+    expect(sentParts[0].text).toBe('PERSONA SUFFIX RULES: ...\n\nPhân tích và mô tả chi tiết hình ảnh này.');
+  });
+
+  it('không có dynamicSuffix => hành vi giống hệt trước đây (không thêm prefix ở đâu cả) khi stream', async () => {
+    await handleGeminiStream(deps, input);
+
+    expect(sendMessageStreamMock).toHaveBeenCalledWith(input.finalUserMessage);
   });
 });

@@ -11,6 +11,7 @@ type BuildModelInputParams = {
   trace?: any;
   image?: string;
   systemPromptOverride: string;
+  dynamicSuffix?: string;
   toolsOverride?: any[];
   res?: any;
 };
@@ -32,6 +33,8 @@ export function buildAiModelInput(params: BuildModelInputParams) {
     image: params.image,
     res: params.res,
     systemPromptOverride: params.systemPromptOverride,
+    dynamicSuffix: params.dynamicSuffix,
     toolsOverride: params.toolsOverride && params.toolsOverride.length > 0 ? params.toolsOverride : undefined,
+    accumulatedContent: undefined as string | undefined,
   };
 }

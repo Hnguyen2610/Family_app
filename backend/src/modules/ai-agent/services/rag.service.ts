@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { normalizeSearchText } from '../ai-intent-router';
+import { AiModelClientsService } from './ai-model-clients.service';
+import { DEFAULT_EMBEDDING_MODEL, DEFAULT_GROQ_RERANK_MODEL } from '../ai-model-defaults';
 
 type CreateKnowledgeDocumentInput = {
   familyId: string;
@@ -32,7 +34,8 @@ export type RagSearchResult = {
 const RAG_CHUNK_SIZE = 1200;
 const RAG_CHUNK_OVERLAP = 160;
 const RAG_SCAN_LIMIT = 200;
-const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || 'gemini-embedding-2';
+const RAG_MAX_CANDIDATES = 8;
+const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
 const EMBEDDING_DIMENSION = Number.parseInt(process.env.AI_EMBEDDING_DIMENSION || '768', 10);
 const STOP_WORDS = new Set([
   'anh',
@@ -58,7 +61,10 @@ const STOP_WORDS = new Set([
 export class RagService {
   private readonly logger = new Logger(RagService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly modelClients: AiModelClientsService,
+  ) {}
 
   async createKnowledgeDocument(input: CreateKnowledgeDocumentInput) {
     const content = input.content.trim();
@@ -282,74 +288,168 @@ export class RagService {
   ): Promise<RagSearchResult[]> {
     if (!familyId || !query.trim()) return [];
 
-    const semanticResults = await this.searchSemantic(familyId, query, limit);
-    if (semanticResults.length > 0) return semanticResults;
+    const candidateLimit = Math.max(limit, RAG_MAX_CANDIDATES);
+    const [semanticResults, lexicalResults] = await Promise.all([
+      this.searchSemantic(familyId, query, candidateLimit),
+      this.searchLexical(familyId, query, candidateLimit),
+    ]);
 
-    const lexicalResults = await this.searchLexical(familyId, query, limit);
-    if (lexicalResults.length > 0) return lexicalResults;
+    const fused = this.fuseWithRrf(semanticResults, lexicalResults);
 
-    // Log RAG miss diagnostics
-    const docCount = await this.prisma.aiDocument.count({ where: { familyId } });
-    const chunkCount = await this.prisma.aiDocumentChunk.count({ where: { familyId } });
-    this.logger.warn(
-      JSON.stringify({
-        event: 'rag_miss',
-        query: query.slice(0, 120),
-        normalizedQuery: normalizeSearchText(query).slice(0, 120),
-        familyId,
-        retrievedCount: 0,
-        docCount,
-        chunkCount,
-        reason: docCount === 0
-          ? 'no_documents'
-          : chunkCount === 0
-            ? 'no_chunks'
-            : 'low_relevance',
-      })
-    );
+    if (fused.length === 0) {
+      // Log RAG miss diagnostics
+      const docCount = await this.prisma.aiDocument.count({ where: { familyId } });
+      const chunkCount = await this.prisma.aiDocumentChunk.count({ where: { familyId } });
+      this.logger.warn(
+        JSON.stringify({
+          event: 'rag_miss',
+          query: query.slice(0, 120),
+          normalizedQuery: normalizeSearchText(query).slice(0, 120),
+          familyId,
+          retrievedCount: 0,
+          docCount,
+          chunkCount,
+          reason: docCount === 0
+            ? 'no_documents'
+            : chunkCount === 0
+              ? 'no_chunks'
+              : 'low_relevance',
+        })
+      );
 
-    return [];
+      return [];
+    }
+
+    const topCandidates = fused.slice(0, candidateLimit);
+    const reranked = await this.rerankWithLlm(query, topCandidates);
+    // Stamp `score` with a rank-derived value so downstream consumers that
+    // re-sort by score descending (e.g. family-knowledge.skill.ts merging
+    // results across families) preserve this rerank order instead of
+    // reverting to the original RRF fused score.
+    return reranked.slice(0, limit).map((result, index, arr) => ({
+      ...result,
+      score: arr.length - index,
+    }));
+  }
+
+  private fuseWithRrf(
+    semanticResults: RagSearchResult[],
+    lexicalResults: RagSearchResult[],
+  ): RagSearchResult[] {
+    const RRF_K = 60;
+    const scoreByKey = new Map<string, number>();
+    const resultByKey = new Map<string, RagSearchResult>();
+
+    const addRankedList = (list: RagSearchResult[]) => {
+      list.forEach((result, index) => {
+        const key = `${result.documentId}:${result.chunkIndex}`;
+        const rrfScore = 1 / (RRF_K + index + 1);
+        scoreByKey.set(key, (scoreByKey.get(key) || 0) + rrfScore);
+        if (!resultByKey.has(key)) resultByKey.set(key, result);
+      });
+    };
+
+    addRankedList(semanticResults);
+    addRankedList(lexicalResults);
+
+    return Array.from(scoreByKey.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, fusedScore]) => ({ ...resultByKey.get(key)!, score: fusedScore }));
+  }
+
+  private async rerankWithLlm(query: string, candidates: RagSearchResult[]): Promise<RagSearchResult[]> {
+    if (candidates.length <= 1) return candidates;
+
+    try {
+      const candidateList = candidates
+        .map((candidate, index) => `${index}. ${candidate.title}: ${candidate.content.slice(0, 200)}`)
+        .join('\n');
+
+      const response = await this.modelClients.openai.chat.completions.create({
+        model: DEFAULT_GROQ_RERANK_MODEL,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        max_tokens: 200,
+        messages: [
+          {
+            role: 'system',
+            content: 'Bạn là bộ xếp hạng độ liên quan cho tìm kiếm sổ tay gia đình. Cho câu hỏi và danh sách kết quả đánh số, trả về JSON {"order": [số thứ tự theo độ liên quan giảm dần]} — chỉ gồm số thứ tự có trong danh sách, không thêm số khác.',
+          },
+          { role: 'user', content: `Câu hỏi: ${query}\n\nKết quả:\n${candidateList}` },
+        ],
+      });
+
+      const raw = response.choices[0]?.message?.content || '{}';
+      const parsed = JSON.parse(raw);
+      const order = Array.isArray(parsed.order) ? parsed.order : [];
+      const validOrder = order.filter(
+        (index: any) => Number.isInteger(index) && index >= 0 && index < candidates.length,
+      );
+
+      if (validOrder.length === 0) return candidates;
+
+      const seen = new Set<number>();
+      const reranked: RagSearchResult[] = [];
+      for (const index of validOrder) {
+        if (seen.has(index)) continue;
+        seen.add(index);
+        reranked.push(candidates[index]);
+      }
+      for (let i = 0; i < candidates.length; i++) {
+        if (!seen.has(i)) reranked.push(candidates[i]);
+      }
+
+      return reranked;
+    } catch (err: any) {
+      this.logger.warn(`rerankWithLlm failed, falling back to fused order: ${err.message}`);
+      return candidates;
+    }
   }
 
   private async searchLexical(familyId: string, query: string, limit = 3): Promise<RagSearchResult[]> {
-    const terms = this.extractTerms(query);
-    if (terms.length === 0) return [];
+    try {
+      const terms = this.extractTerms(query);
+      if (terms.length === 0) return [];
 
-    const chunks = await this.prisma.aiDocumentChunk.findMany({
-      where: { familyId },
-      include: {
-        document: {
-          select: {
-            id: true,
-            title: true,
-            familyId: true,
-            sourceType: true,
-            metadata: true,
+      const chunks = await this.prisma.aiDocumentChunk.findMany({
+        where: { familyId },
+        include: {
+          document: {
+            select: {
+              id: true,
+              title: true,
+              familyId: true,
+              sourceType: true,
+              metadata: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: RAG_SCAN_LIMIT,
-    });
+        orderBy: { createdAt: 'desc' },
+        take: RAG_SCAN_LIMIT,
+      });
 
-    return chunks
-      .map((chunk) => {
-        const score = this.scoreChunk(query, terms, `${chunk.document.title}\n${chunk.content}`);
-        return {
-          documentId: chunk.document.id,
-          title: chunk.document.title,
-          content: chunk.content,
-          familyId: chunk.document.familyId,
-          sourceType: chunk.document.sourceType,
-          category: this.getDocumentCategory(chunk.document.metadata),
-          score,
-          chunkIndex: chunk.chunkIndex,
-          retrieval: 'lexical' as const,
-        };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, Math.max(1, Math.min(limit, 5)));
+      return chunks
+        .map((chunk) => {
+          const score = this.scoreChunk(query, terms, `${chunk.document.title}\n${chunk.content}`);
+          return {
+            documentId: chunk.document.id,
+            title: chunk.document.title,
+            content: chunk.content,
+            familyId: chunk.document.familyId,
+            sourceType: chunk.document.sourceType,
+            category: this.getDocumentCategory(chunk.document.metadata),
+            score,
+            chunkIndex: chunk.chunkIndex,
+            retrieval: 'lexical' as const,
+          };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, Math.max(1, Math.min(limit, RAG_MAX_CANDIDATES)));
+    } catch (err: any) {
+      this.logger.warn(`Lexical search failed: ${err.message}`);
+      return [];
+    }
   }
 
   formatRagContext(results: RagSearchResult[]) {
@@ -398,7 +498,7 @@ export class RagService {
         `,
         familyId,
         vector,
-        Math.max(1, Math.min(limit, 5)),
+        Math.max(1, Math.min(limit, RAG_MAX_CANDIDATES)),
       );
 
       // Apply a threshold of 0.65 to ensure only highly relevant matches are retrieved

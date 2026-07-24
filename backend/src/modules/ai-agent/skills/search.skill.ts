@@ -40,7 +40,8 @@ export class SearchSkill implements AiSkill {
   getSystemPrompt(_context: AiSkillContext): string {
     return [
       'WEB SEARCH RULES:',
-      '- Do NOT say you do not know without trying the tool first.',
+      '- For current events, news, or real-time facts you do not already know, do NOT say you do not know without trying the tool first.',
+      '- Do NOT use this tool for topics another skill already answers directly (e.g. horoscope/auspicious-hour questions, meal suggestions, gold prices) — let that skill answer from its own knowledge instead of searching the web for it.',
       '- Summarize search results clearly and cite sources.',
     ].join('\n');
   }

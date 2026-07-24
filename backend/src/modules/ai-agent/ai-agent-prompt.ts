@@ -2,7 +2,10 @@ function getDateContext() {
   const now = new Date();
   const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
   const today = ictDate.toISOString().split('T')[0];
-  const days = ['Chu nhat', 'Thu hai', 'Thu ba', 'Thu tu', 'Thu nam', 'Thu sau', 'Thu bay'];
+  // Full diacritics on purpose: an unaccented "Thu sau" reads as ambiguous shorthand rather
+  // than an explicit day-of-week value, and models were observed re-deriving (and getting
+  // wrong) the weekday themselves instead of just repeating this string verbatim.
+  const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
   return {
     today,
@@ -20,11 +23,12 @@ If FAMILY WIKI RETRIEVED CONTEXT is present, use it as retrieved family notes. D
 
 export function buildSystemPrompt(familyInfo: string = ''): string {
   const { today, dayName } = getDateContext();
-  const common = `You are a helpful family assistant AI. Today's date is ${today} (${dayName}).
+  const common = `You are a helpful family assistant AI. Today's date is ${today}, and the day of week is "${dayName}".
+When telling the user today's date or day of week, always state it EXACTLY as given above — never calculate or re-derive the day of week yourself, manual weekday arithmetic is unreliable and has produced wrong answers before.
 Answer in the same language as the user.
 Be concise, natural, and practical.
 When performing actions, always use the appropriate tools.
-When creating or reading dates, pay attention to the day of week and avoid date calculation errors.
+When creating or reading OTHER dates (not today), pay attention to the day of week and avoid date calculation errors.
 CRITICAL LANGUAGE CONSTRAINT:
 - NEVER mix external languages (like Chinese characters: 作为, etc.) in your Vietnamese responses.
 - Ensure the response is 100% in pure Vietnamese. For example, translate terms like "as" to "làm" or "là" instead of "作为".`;
@@ -41,17 +45,32 @@ CRITICAL LANGUAGE CONSTRAINT:
     '- NEVER write pseudo-function calls like <function=name(...)> in your response. Use native tool calling only.\n' +
     '- CRITICAL: NEVER merge the tool name with its JSON arguments (e.g., do NOT output "name{...}"). Always provide them as separate fields in the tool call response.\n' +
     '- NEVER loop: if you already asked which family and the user answered, proceed with execution immediately.',
+    'CRITICAL RULE — NEVER FABRICATE "NO DATA" ANSWERS:\n' +
+    '- Never tell the user there are no events, no notes, no memories, or no records of any kind unless you actually called the matching tool (e.g. getEventsByMonth, searchFamilyNotes) THIS turn and it returned an empty result.\n' +
+    '- If the question does not require checking stored family data (e.g. "what is today\'s date", general knowledge, small talk), just answer it directly — do NOT mention events, calendars, or checking any data source at all.\n' +
+    '- When in doubt whether a tool applies, either call the tool or answer generally — never guess that something is empty or missing.',
   ];
 
   return sections.join('\n\n');
 }
 
 /**
- * Compose the base prompt plus the persona/rule prose of only the most-recently-invoked
- * skill, if any — every skill's tools remain available every turn regardless of this filter
- * (the tool list is never filtered; only this supplementary persona/rule prose is). When
- * recentSkillName is omitted or matches no registered skill, no skill-specific persona prose
- * is included at all — just the base prompt.
+ * Compose the base prompt plus persona/rule prose — every skill's tools remain available
+ * every turn regardless of this filter (the tool list is never filtered; only this
+ * supplementary persona/rule prose is).
+ *
+ * When recentSkillName matches a registered skill (i.e. we have a real signal for which
+ * skill was just used), only that skill's persona prose is included, to save tokens on
+ * the common case of an ongoing conversation. When recentSkillName is omitted or matches
+ * no registered skill — i.e. we have no signal yet, typically the first message of a
+ * session — ALL registered skills' persona prose is included instead of none, so the model
+ * still gets each skill's specific tool-usage guidance on a cold start. Eval runs found this
+ * blind spot: bare tool descriptions alone were not enough for the model to reliably call
+ * the right tool on a first message with no prior lastIntent.
+ *
+ * Returns the two pieces separately (rather than one joined string) so callers can place
+ * personaSuffix at the very end of what's sent to the model, keeping basePrompt + accumulated
+ * history as a stable, cacheable prefix for Groq/Gemini's automatic prompt caching.
  *
  * Takes a minimal structural type for the registry parameter instead of the
  * concrete AiSkillRegistry class, to avoid adding a new import dependency to
@@ -61,13 +80,29 @@ export function composeFullPrompt(
   skillRegistry: { getAllSkills(): Array<{ name: string; getSystemPrompt(context: any): string }> },
   skillContext: { familyContext?: string; [key: string]: any },
   recentSkillName?: string,
-): string {
-  const base = buildSystemPrompt(skillContext.familyContext || '');
-  const relevantSkills = recentSkillName
-    ? skillRegistry.getAllSkills().filter((skill) => skill.name === recentSkillName)
-    : [];
-  const skillPrompts = relevantSkills
+): { basePrompt: string; personaSuffix: string } {
+  const basePrompt = buildSystemPrompt(skillContext.familyContext || '');
+  const allSkills = skillRegistry.getAllSkills();
+  const matchedSkill = recentSkillName
+    ? allSkills.find((skill) => skill.name === recentSkillName)
+    : undefined;
+  const relevantSkills = matchedSkill ? [matchedSkill] : allSkills;
+  const personaProse = relevantSkills
     .map((candidateSkill) => candidateSkill.getSystemPrompt(skillContext))
-    .filter(Boolean);
-  return [base, ...skillPrompts].join('\n\n');
+    .filter(Boolean)
+    .join('\n\n');
+  // recentSkillName reflects whichever skill's tool was invoked most recently for this
+  // user — persisted across sessions (AiConversationStateService keys on userId, not on
+  // a chat session, and its 60-minute TTL slides forward on every tool-invoking turn).
+  // So a "matched" skill here is NOT a guarantee the current message is on-topic for it —
+  // it may simply be stale carry-over from an unrelated earlier conversation. Observed in
+  // practice: without a scoping preamble, a stale CalendarSkill match made the model answer
+  // an unrelated date question ("hom nay la ngay bao nhieu") in event-checking language
+  // ("Khong co su kien nao...") despite calling zero tools. Always scope persona prose —
+  // matched or bundled — to "apply only if relevant" so staleness degrades to silently
+  // unused text, never to tone bleeding into an unrelated reply.
+  const personaSuffix = personaProse
+    ? `The following are topic-specific rules from the skill(s) most recently used. Apply them ONLY if relevant to what the user is actually asking right now; if the current message is on a different topic, ignore them entirely.\n\n${personaProse}`
+    : personaProse;
+  return { basePrompt, personaSuffix };
 }

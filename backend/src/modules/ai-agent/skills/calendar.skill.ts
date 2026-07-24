@@ -22,6 +22,7 @@ export class CalendarSkill implements AiSkill {
   getSystemPrompt(_context: AiSkillContext): string {
     const year = new Date().getFullYear().toString();
     return `CALENDAR TOOL RULES:
+- When asked about Lunar dates, Lunar holidays (Trung Thu, Rằm, Mùng 1, Tết, Vu Lan, Tết Đoan Ngọ, etc.), or converting between Lunar and Solar dates, ALWAYS call getSolarDateFromLunar(day, month, year) to get the EXACT solar date! NEVER guess or calculate lunar/solar conversions from memory.
 - If the system prompt packages "[PRE-FETCHED CALENDAR EVENTS FOR ...]" for the targeted date/month, do NOT call getEventsByMonth database tool to retrieve events for those dates. Use the provided list of events directly to reply and construct your plans/menus.
 - Use createEvent only when the user explicitly asks to create/add/schedule an event.
 - When creating an event, always set scope. Default to FAMILY unless the user explicitly says it is private/personal.
@@ -32,9 +33,10 @@ export class CalendarSkill implements AiSkill {
 - Use getSolarDateFromLunar before creating lunar recurring events.
 - Never nest tool calls. If lunar conversion is needed, call getSolarDateFromLunar first, then createEvent in the next step.
 - If the user mentions birthday, use type BIRTHDAY.
-- "Ram" = lunar day 15, recurring MONTHLY, useLunar true.
-- "Mung 1" = lunar day 1, recurring MONTHLY, useLunar true.
-- "Gio" = yearly lunar anniversary, recurring YEARLY, useLunar true.
+- "Ram" = lunar day 15, recurring MONTHLY, useLunar boolean true.
+- "Mung 1" = lunar day 1, recurring MONTHLY, useLunar boolean true.
+- "Gio" = yearly lunar anniversary, recurring YEARLY, useLunar boolean true.
+- Always output useLunar as boolean true or false (not a string).
 - If the user gives a date like "21/3", convert it to ${year}-MM-DD.`;
   }
 
@@ -163,8 +165,15 @@ export class CalendarSkill implements AiSkill {
       const requiresLlmReasoning =
         /(\bke\s*hoach\b|\bgoi\s*y\b|\bthuc\s*don\b|\bmenu\b|\ban\s*gi\b|\bnau\s*gi\b|\bmon\s*an\b|\blien\s*hoan\b|\bto\s*chuc\b|\bsap\s*xep\b|\bplan\b|\bsuggest\b|\bparty\b|\borganize\b|\bcook\b|\beat\b)/i.test(normalized);
 
+      // parseCalendarDate() matches bare words like "hom nay"/"ngay mai" so it can resolve a
+      // date out of ANY message that happens to mention "today"/"tomorrow" — including ones
+      // that have nothing to do with checking events (e.g. "hom nay la ngay bao nhieu" = "what
+      // is today's date"). Without requiring an actual calendar-object word alongside it, this
+      // branch would deterministically short-circuit straight to a hardcoded "no events on
+      // <date>" reply — bypassing the LLM (and its own, correct "today's date is ..." knowledge)
+      // entirely. Require hasCalendarObjectWord so a bare date/day reference alone is not enough.
       const targetDate = parseCalendarDate(context.userMessage);
-      if (targetDate) {
+      if (targetDate && this.hasCalendarObjectWord(normalized)) {
         const events = await this.eventsService.getEventsByMonth(
           getCalendarReadFamilyId(context),
           targetDate.month,
@@ -295,7 +304,7 @@ export class CalendarSkill implements AiSkill {
 
           this.logger.debug(`createEvent: familyId=${createFamilyId}, date=${args.date}, endDate=${args.endDate || '-'}, title=${args.title}, recurring=${args.recurring}`);
 
-          let eventDate = new Date(args.date);
+          const eventDate = new Date(args.date);
           const eventEndDate = args.endDate ? new Date(args.endDate) : undefined;
           if (args.time) {
             const [hours, minutes] = args.time.split(':').map(Number);
@@ -320,7 +329,7 @@ export class CalendarSkill implements AiSkill {
 
         case 'updateEvent': {
           const updateFamilyId = getMutationFamilyId(context) || args.familyId || context.familyId;
-          let eventDate = args.date ? new Date(args.date) : undefined;
+          const eventDate = args.date ? new Date(args.date) : undefined;
           const eventEndDate = args.endDate ? new Date(args.endDate) : undefined;
           if (eventDate && args.time) {
             const [hours, minutes] = args.time.split(':').map(Number);
@@ -348,9 +357,16 @@ export class CalendarSkill implements AiSkill {
         case 'getSolarDateFromLunar': {
           const date = convertLunarToSolar(args.day, args.month, args.year);
           if (!date) return toolError(toolName, 'Khong tim thay ngay duong lich');
+          // IMPORTANT: Use local date components, NOT toISOString() which converts to UTC
+          // and shifts the date by -1 day for UTC+7 timezone
+          const yyyy = date.getFullYear();
+          const mm = String(date.getMonth() + 1).padStart(2, '0');
+          const dd = String(date.getDate()).padStart(2, '0');
+          const solarDateStr = `${yyyy}-${mm}-${dd}`;
           return toolSuccess(toolName, {
-            solarDate: date.toISOString().split('T')[0],
+            solarDate: solarDateStr,
             formatted: date.toLocaleDateString('vi-VN'),
+            dayOfWeek: date.toLocaleDateString('vi-VN', { weekday: 'long' }),
           });
         }
 
@@ -462,10 +478,13 @@ export class CalendarSkill implements AiSkill {
     return /\b(ca nhan|private|rieng toi)\b/.test(normalizedMessage);
   }
 
+  private hasCalendarObjectWord(normalizedMessage: string) {
+    return /\b(lich|su kien|event|birthday|sinh nhat|hen|anniversary|ky niem)\b/.test(normalizedMessage);
+  }
+
   private looksLikeCalendarMutation(normalizedMessage: string) {
     const hasMutation = /\b(tao|them|len lich|dat lich|sua|cap nhat|doi|doi ten|xoa|huy|delete|update|remove)\b/.test(normalizedMessage);
-    const hasCalendarObject = /\b(lich|su kien|event|birthday|sinh nhat|hen|anniversary|ky niem)\b/.test(normalizedMessage);
-    return hasMutation && hasCalendarObject;
+    return hasMutation && this.hasCalendarObjectWord(normalizedMessage);
   }
 
   private eventOccursOnDate(event: any, isoDate: string) {

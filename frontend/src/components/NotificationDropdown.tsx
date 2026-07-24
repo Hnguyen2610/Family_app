@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useTranslation } from '@/lib/i18n';
 import {
@@ -12,10 +11,10 @@ import {
   FiCheck,
   FiChevronRight,
   FiSettings,
-  FiX,
   FiTrash2
 } from 'react-icons/fi';
 import Link from 'next/link';
+import DailySummaryModal from './DailySummaryModal';
 
 interface NotificationItemProps {
     n: any;
@@ -104,25 +103,28 @@ const NotificationItem = ({ n, language, markAsRead, deleteNotification, setSele
                     >
                         <FiTrash2 size={14} /> {language === 'vi' ? 'Xóa' : 'Delete'}
                     </button>
-                    {n.metadata?.path && (
-                        <Link
-                            href={n.metadata.path}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if(!n.isRead) markAsRead(n.id);
-                            }}
-                            className="text-xs font-bold text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400  flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all"
-                        >
-                            {language === 'vi' ? 'Xem chi tiết' : 'View Details'} <FiChevronRight size={14} />
-                        </Link>
-                    )}
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if(!n.isRead) markAsRead(n.id);
+                            setSelectedNotification(n);
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all"
+                    >
+                        {language === 'vi' ? 'Xem chi tiết' : 'View Details'} <FiChevronRight size={14} />
+                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
-export default function NotificationDropdown() {
+interface NotificationDropdownProps {
+  onOpenAiChat?: (prompt?: string) => void;
+}
+
+export default function NotificationDropdown({ onOpenAiChat }: NotificationDropdownProps) {
   const { t, language } = useTranslation();
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
@@ -144,15 +146,7 @@ export default function NotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'BIRTHDAY': return <div className="p-2 bg-rose-100 text-rose-600 rounded-xl"><FiCalendar /></div>;
-      case 'ANNIVERSARY': return <div className="p-2 bg-amber-100 text-amber-600 rounded-xl"><FiCalendar /></div>;
-      case 'HOLIDAY': return <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><FiCalendar /></div>;
-      case 'MEAL_ADDED': return <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><FiLayout /></div>;
-      default: return <div className="p-2 bg-slate-100 text-slate-600 rounded-xl"><FiBell /></div>;
-    }
-  };
+
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -242,81 +236,18 @@ export default function NotificationDropdown() {
         </div>
       )}
 
-      {selectedNotification && isMounted && createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-          <button
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300 cursor-default border-none"
-            onClick={() => setSelectedNotification(null)}
-            aria-label="Close modal"
-          />
-          <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-md border border-border p-8 animate-in zoom-in-95 fade-in duration-300">
-            <button
-              onClick={() => setSelectedNotification(null)}
-              className="absolute top-6 right-6 w-10 h-10 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center transition-all active:scale-90"
-            >
-              <FiX size={20} />
-            </button>
-
-            <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-3xl mb-6 shadow-inner ring-8 ring-indigo-50/50 dark:ring-indigo-900/10">
-                {getIcon(selectedNotification.type)}
-              </div>
-
-              <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2 leading-tight">
-                {selectedNotification.title}
-              </h3>
-
-              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400  mb-6">
-                {new Date(selectedNotification.createdAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })}
-              </p>
-
-              <div className="w-full p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 text-left">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {selectedNotification.message}
-                </p>
-              </div>
-
-              <div className="w-full flex gap-3 mt-8">
-                {selectedNotification.metadata?.path && (
-                  <Link href={selectedNotification.metadata.path} className="flex-1">
-                    <button
-                      onClick={() => {
-                        setSelectedNotification(null);
-                        setIsOpen(false);
-                      }}
-                      className="w-full p-4 rounded-2xl bg-indigo-600 dark:bg-indigo-500 text-white font-bold text-sm shadow-md shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                    >
-                      {language === 'vi' ? 'Đi đến mục liên quan' : 'Go to Action'} <FiChevronRight />
-                    </button>
-                  </Link>
-                )}
-                <button
-                  onClick={() => {
-                    deleteNotification(selectedNotification.id);
-                    setSelectedNotification(null);
-                  }}
-                  className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold text-sm hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all active:scale-[0.98] flex items-center justify-center"
-                  title={language === 'vi' ? 'Xóa thông báo' : 'Delete notification'}
-                >
-                  <FiTrash2 size={20} />
-                </button>
-                <button
-                  onClick={() => setSelectedNotification(null)}
-                  className={`p-4 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] ${selectedNotification.metadata?.path ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
-                >
-                  {language === 'vi' ? 'Đóng' : 'Close'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {/* Option 1: Daily Executive Summary Card Modal */}
+      {selectedNotification && isMounted && (
+        <DailySummaryModal
+          isOpen={!!selectedNotification}
+          onClose={() => {
+            setSelectedNotification(null);
+            setIsOpen(false);
+          }}
+          notification={selectedNotification}
+          language={language}
+          onOpenAiChat={onOpenAiChat}
+        />
       )}
     </div>
   );

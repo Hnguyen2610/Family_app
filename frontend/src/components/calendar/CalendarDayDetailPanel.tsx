@@ -83,7 +83,7 @@ export function CalendarDayDetailPanel({
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-500 font-semibold flex items-center gap-2">
-                      <FiClock className="text-primary" /> {event.time || '00:00'} // {event.type}
+                      <FiClock className="text-primary" /> {event.time || '00:00'} • {event.type}
                     </p>
                   </div>
                 </div>

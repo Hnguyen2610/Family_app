@@ -58,7 +58,6 @@ export class FamilyKnowledgeSkill implements AiSkill {
             properties: {
               title: { type: 'string', description: 'Brief title for this knowledge' },
               content: { type: 'string', description: 'Detailed information to save' },
-              familyId: { type: 'string' },
             },
             required: ['title', 'content'],
           },

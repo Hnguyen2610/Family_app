@@ -130,3 +130,95 @@
   background-image: radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
   background-size: 24px 24px;
 }
+
+/* Mascot Animations */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes wave-hand {
+
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  20% {
+    transform: rotate(18deg);
+  }
+
+  40% {
+    transform: rotate(-10deg);
+  }
+
+  60% {
+    transform: rotate(16deg);
+  }
+
+  80% {
+    transform: rotate(-6deg);
+  }
+}
+
+@keyframes blink {
+
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-wave-hand {
+  animation: wave-hand 2s ease-in-out infinite;
+}
+
+.animate-blink {
+  animation: blink 4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes person-wave {
+
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+
+  20% {
+    transform: translateY(-4px) rotate(-6deg);
+  }
+
+  40% {
+    transform: translateY(-8px) rotate(8deg);
+  }
+
+  60% {
+    transform: translateY(-4px) rotate(-5deg);
+  }
+
+  80% {
+    transform: translateY(-2px) rotate(6deg);
+  }
+}
+
+.animate-person-wave {
+  animation: person-wave 2.4s ease-in-out infinite;
+  transform-origin: bottom center;
+}

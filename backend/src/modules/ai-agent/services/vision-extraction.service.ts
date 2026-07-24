@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { DEFAULT_GEMINI_VISION_EXTRACTION_MODEL, DEFAULT_GROQ_VISION_MODEL } from '../ai-model-defaults';
 
 type VisionDraftKind = 'auto' | 'receipt' | 'medicine' | 'school_plan';
 
@@ -20,8 +21,8 @@ type DraftStatus = 'DRAFT' | 'CONFIRMED' | 'DISMISSED';
 export class VisionExtractionService {
   private readonly gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
   private readonly groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY || 'missing', baseURL: 'https://api.groq.com/openai/v1' });
-  private readonly groqModelName = process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b';
-  private readonly geminiModelName = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+  private readonly groqModelName = process.env.GROQ_VISION_MODEL || DEFAULT_GROQ_VISION_MODEL;
+  private readonly geminiModelName = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || DEFAULT_GEMINI_VISION_EXTRACTION_MODEL;
   private readonly preferredProvider = process.env.AI_VISION_PROVIDER || 'groq';
 
   constructor(private readonly prisma: PrismaService) {}

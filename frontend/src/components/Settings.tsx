@@ -122,7 +122,7 @@ const ProfileSection = ({ user, refreshUser, language }: ProfileSectionProps) =>
         </button>
       </div>
       <p className="text-primary font-semibold text-xs mt-2 opacity-75">
-        {user?.email} // {user?.globalRole === 'SUPER_ADMIN' ? (language === 'vi' ? 'Quyền tối cao' : 'Root Access') : (language === 'vi' ? 'Thành viên' : 'Node User')}
+        {user?.email} • {user?.globalRole === 'SUPER_ADMIN' ? (language === 'vi' ? 'Quyền tối cao' : 'Root Access') : (language === 'vi' ? 'Thành viên' : 'Node User')}
       </p>
     </>
   );

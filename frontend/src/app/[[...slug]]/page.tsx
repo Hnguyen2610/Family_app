@@ -20,12 +20,12 @@ import FamilyNotes from '@/components/FamilyNotes';
 import VisionDrafts from '@/components/VisionDrafts';
 import WeatherBadge from '@/components/WeatherBadge';
 import DailyTasks from '@/components/DailyTasks';
-
-
+import MascotAvatar from '@/components/MascotAvatar';
+import WelcomeOverlay from '@/components/WelcomeOverlay';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
-import { FiPlus,FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage, FiCheckCircle } from 'react-icons/fi';
+import { FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage, FiCheckCircle } from 'react-icons/fi';
 
 type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory' | 'daily-tasks';
 
@@ -37,7 +37,6 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
   const { t, language } = useTranslation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
-  const [isFabOpen, setIsFabOpen] = useState(false);
   const familyDropdownRef = useRef<HTMLDivElement>(null);
   const stickyFamilyDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -95,6 +94,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden transition-colors duration-500">
       <ThemeManager />
+      <WelcomeOverlay userName={user?.name} onNavigateToChat={() => setActiveTab('chat')} />
       {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
 
       {/* Main static header area */}
@@ -277,7 +277,11 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
                   )}
                 </div>
               )}
-               <NotificationDropdown />
+               <NotificationDropdown onOpenAiChat={(prompt) => {
+                 if (prompt) sessionStorage.setItem('pending_chat_prompt', prompt);
+                 setActiveTab('chat');
+               }} />
+
             </div>
           </div>
         </header>
@@ -312,62 +316,17 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
         </div>
       </footer>
 
-      {/* Floating Action Button (FAB) - Mobile/Desktop Quick Actions */}
-      <div className="fixed bottom-6 right-6 z-[150] md:bottom-10 md:right-10 flex flex-col items-end gap-3">
-        {/* Quick Menu Items */}
-        {isFabOpen && (
-          <div className="flex flex-col items-end gap-3 mb-2 animate-in slide-in-from-bottom-10 fade-in duration-300">
-            <button
-              onClick={() => { setActiveTab('finance'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-emerald-300 transition-all text-emerald-600 dark:text-emerald-400 font-semibold text-sm"
-            >
-              <span>{language === 'vi' ? 'Sổ chi tiêu' : 'Finance'}</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
-                <FiTrendingUp />
-              </div>
-            </button>
-            <button
-              onClick={() => { setActiveTab('calendar'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-primary/40 transition-all text-primary font-semibold text-sm"
-            >
-              <span>{language === 'vi' ? 'Sự kiện' : 'New Event'}</span>
-              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-                <FiCalendar />
-              </div>
-            </button>
-            <button
-              onClick={() => { setActiveTab('chat'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-indigo-300 transition-all text-indigo-600 dark:text-indigo-400 font-semibold text-sm"
-            >
-              <span>AI Chat</span>
-              <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center relative">
-                <FiActivity />
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse border-2 border-white dark:border-slate-900" />
-              </div>
-            </button>
-            <button
-              onClick={() => { setActiveTab('meals'); setIsFabOpen(false); }}
-              className="flex items-center gap-3 px-4 py-2.5 bg-card rounded-xl shadow-md border border-border hover:border-amber-300 transition-all text-amber-600 dark:text-amber-400 font-semibold text-sm"
-            >
-              <span>{language === 'vi' ? 'Bữa ăn' : 'Meals'}</span>
-              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
-                <FiCoffee />
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Main Tigger Button */}
-        <button
-          onClick={() => setIsFabOpen(!isFabOpen)}
-          className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl text-white shadow-lg transition-all duration-300 active:scale-95 ${
-            isFabOpen
-              ? 'bg-slate-900 dark:bg-white dark:text-slate-950 rotate-[135deg]'
-              : 'bg-primary hover:bg-primary/90 shadow-primary/40'
-          }`}
-        >
-          <FiPlus />
-        </button>
+      {/* Floating AI Mascot Assistant Button (Bottom Right Corner) */}
+      <div className="fixed bottom-6 right-6 z-[150] md:bottom-8 md:right-8 flex items-center justify-center">
+        <MascotAvatar
+          size="md"
+          isWaving={true}
+          showBubble={activeTab !== 'chat'}
+          hoverOnlyBubble={true}
+          bubbleText={language === 'vi' ? 'Trò chuyện với AI ✨' : 'Chat with AI ✨'}
+          bubblePosition="left"
+          onClick={() => setActiveTab('chat')}
+        />
       </div>
 
       {/* Premium Sidebar Overlay */}

@@ -7,7 +7,7 @@ export function createDefaultUsageByModel(): Partial<Record<AiModelProvider, Cha
   return {
     groq: {
       provider: 'groq',
-      model: 'openai/gpt-oss-120b',
+      model: 'qwen/qwen3.6-27b',
       contextWindow: 131072,
       totalTokens: 0,
       maxOutputTokens: 1024,
@@ -15,13 +15,27 @@ export function createDefaultUsageByModel(): Partial<Record<AiModelProvider, Cha
     } as ChatUsage,
     gemini: {
       provider: 'gemini',
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.5-flash',
       contextWindow: 1048576,
       totalTokens: 0,
       maxOutputTokens: 2048,
       quota: { source: 'unavailable' },
     } as ChatUsage,
   };
+}
+
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  'openai/gpt-oss-120b': 'GPT-OSS 120B',
+  'openai/gpt-oss-20b': 'GPT-OSS 20B',
+  'qwen/qwen3.6-27b': 'Qwen3.6 27B',
+  'gemini-3.5-flash': 'Gemini 3.5 Flash',
+  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+  'gemini-1.5-flash': 'Gemini 1.5 Flash',
+};
+
+export function formatModelLabel(model?: string): string {
+  if (!model) return '';
+  return MODEL_DISPLAY_NAMES[model] || model;
 }
 
 export function formatTokens(value?: number) {
@@ -38,8 +52,7 @@ export function formatQuota(usage: ChatUsage | undefined, language: string) {
 
 export function getContextLabel(usage?: ChatUsage) {
   if (!usage) return '--';
-  if (usage.totalTokens > 0) return formatTokens(usage.totalTokens);
-  return formatTokens(usage.contextWindow);
+  return formatTokens(usage.totalTokens);
 }
 
 export function getContextNote(usage?: ChatUsage) {
@@ -104,27 +117,35 @@ export function getQuotaBarColor(usage?: ChatUsage) {
 }
 
 export function getStatusLabel(status: string, language: string) {
-  if (!status) return language === 'vi' ? 'Đang tạo câu trả lời' : 'Generating answer';
-  const imageLabels: Record<string, string> = {
-    compressing_image: language === 'vi' ? 'Đang nén ảnh' : 'Compressing image',
-    uploading_image: language === 'vi' ? 'Đang gửi ảnh' : 'Uploading image',
-    gemini_reading_image: language === 'vi' ? 'Gemini đang đọc ảnh' : 'Gemini is reading image',
-  };
-  if (imageLabels[status]) return imageLabels[status];
+  const isVi = language === 'vi';
+  if (!status) return isVi ? 'Đang suy nghĩ...' : 'Thinking...';
 
-  const labels: Record<string, string> = {
-    direct_response: language === 'vi' ? 'Đang trả kết quả trực tiếp' : 'Returning direct result',
-    fetching_gold_price: language === 'vi' ? 'Đang lấy giá vàng' : 'Fetching gold price',
-    building_menu: language === 'vi' ? 'Đang gợi ý thực đơn' : 'Building menu',
-    checking_calendar: language === 'vi' ? 'Đang kiểm tra lịch' : 'Checking calendar',
-    updating_calendar: language === 'vi' ? 'Đang cập nhật lịch' : 'Updating calendar',
-    generating_answer: language === 'vi' ? 'Đang tạo câu trả lời' : 'Generating answer',
-    reading_horoscope: language === 'vi' ? 'Đang xem tử vi' : 'Reading horoscope',
-    reading_image: language === 'vi' ? 'Đang đọc hình ảnh' : 'Reading image',
-    model_call: language === 'vi' ? 'Đang gọi AI' : 'Calling AI',
-    model_stream_open: language === 'vi' ? 'Đang mở luồng trả lời' : 'Opening response stream',
+  const labels: Record<string, { vi: string; en: string }> = {
+    analyzing_prompt: { vi: 'Đang suy nghĩ & phân tích yêu cầu', en: 'Analyzing prompt' },
+    compressing_image: { vi: 'Đang nén ảnh', en: 'Compressing image' },
+    uploading_image: { vi: 'Đang gửi ảnh', en: 'Uploading image' },
+    gemini_reading_image: { vi: 'Gemini đang phân tích ảnh', en: 'Gemini is analyzing image' },
+    direct_response: { vi: 'Đang trả kết quả trực tiếp', en: 'Returning direct result' },
+    checking_calendar: { vi: 'Đang tra cứu lịch gia đình', en: 'Checking calendar' },
+    updating_calendar: { vi: 'Đang cập nhật lịch gia đình', en: 'Updating calendar' },
+    fetching_weather: { vi: 'Đang tra cứu dự báo thời tiết', en: 'Fetching weather' },
+    fetching_gold_price: { vi: 'Đang cập nhật giá vàng hôm nay', en: 'Fetching gold price' },
+    searching_market: { vi: 'Đang tra cứu giá thị trường', en: 'Searching market prices' },
+    searching_notes: { vi: 'Đang tìm trong sổ tay gia đình', en: 'Searching family notes' },
+    checking_tasks: { vi: 'Đang kiểm tra danh sách việc', en: 'Checking task list' },
+    checking_football: { vi: 'Đang tra cứu lịch thi đấu bóng đá', en: 'Checking football schedule' },
+    executing_tool: { vi: 'Đang tra cứu dữ liệu bổ sung', en: 'Fetching extra data' },
+    building_menu: { vi: 'Đang gợi ý thực đơn món ăn', en: 'Building menu' },
+    reading_horoscope: { vi: 'Đang xem tử vi', en: 'Reading horoscope' },
+    reading_image: { vi: 'Đang đọc hình ảnh', en: 'Reading image' },
+    generating_answer: { vi: 'Đang suy luận & soạn câu trả lời', en: 'Reasoning & generating answer' },
+    model_call: { vi: 'Đang xử lý thông tin', en: 'Processing information' },
+    model_stream_open: { vi: 'Đang mở luồng phản hồi', en: 'Opening response stream' },
   };
-  return labels[status] || status;
+
+  const matched = labels[status];
+  if (matched) return isVi ? matched.vi : matched.en;
+  return status;
 }
 
 function clampPercent(value: number) {

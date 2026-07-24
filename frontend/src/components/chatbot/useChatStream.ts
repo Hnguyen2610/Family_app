@@ -58,7 +58,7 @@ export function useChatStream({
     setSelectedImage(null);
     setMessages((prev) => [...prev, { role: 'user', content: userMessage + (currentImage ? '\n\n[Attached Image]' : '') }]);
     setIsLoading(true);
-    setStreamStatus(language === 'vi' ? 'Dang phan tich yeu cau' : 'Routing request');
+    setStreamStatus(getStatusLabel('analyzing_prompt', language));
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
@@ -146,7 +146,7 @@ export function useChatStream({
         );
       } catch (streamError) {
         if (abortController.signal.aborted) {
-          assistantResponse = assistantResponse || (language === 'vi' ? 'Da huy yeu cau.' : 'Request cancelled.');
+          assistantResponse = assistantResponse || (language === 'vi' ? 'Đã hủy yêu cầu.' : 'Request cancelled.');
           flushAssistantResponse();
           return;
         }

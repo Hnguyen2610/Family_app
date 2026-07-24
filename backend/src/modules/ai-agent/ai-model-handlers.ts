@@ -7,6 +7,8 @@ import { getTools, getGeminiTools } from './ai-agent-tools';
 import { AiIntentRoute } from './ai-intent-router';
 import { AiTrace, measureAiStep } from './ai-observability';
 import { sanitizeAiResponse } from './ai-response-sanitizer';
+import { DEFAULT_GROQ_TOOL_MODEL } from './ai-model-defaults';
+import { buildUsageSnapshot, parseGroqRateLimitQuota, unavailableQuota } from './ai-usage';
 
 export interface ModelHandlerDeps {
   logger: Logger;
@@ -34,6 +36,7 @@ export interface ChatHandlerInput {
   sessionId?: string;
   trace?: AiTrace;
   systemPromptOverride?: string;
+  dynamicSuffix?: string;
   toolsOverride?: any[];
   image?: string;
   responseSchema?: any;
@@ -41,17 +44,11 @@ export interface ChatHandlerInput {
 
 export interface StreamHandlerInput extends ChatHandlerInput {
   res: any;
+  accumulatedContent?: string;
 }
 
-function buildPromptText(familyInfo: string, history: any[], userMessage: string, override?: string) {
-  return `${override || buildSystemPrompt(familyInfo)}\n\nHistory: ${JSON.stringify(history)}\n\nUser: ${userMessage}`;
-}
-
-function buildUsageSnapshot(data: any) {
-  return {
-    ...data,
-    timestamp: new Date().toISOString(),
-  };
+function buildPromptText(familyInfo: string, history: any[], userMessage: string, override?: string, dynamicSuffix?: string) {
+  return `${override || buildSystemPrompt(familyInfo)}\n\nHistory: ${JSON.stringify(history)}\n\n${dynamicSuffix ? `${dynamicSuffix}\n\n` : ''}User: ${userMessage}`;
 }
 
 function isActionProposalResult(value: any) {
@@ -64,7 +61,8 @@ function getActionProposalContent(value: any) {
 }
 
 async function returnActionProposalChat(deps: ModelHandlerDeps, input: ChatHandlerInput, proposal: any, usage: any) {
-  const content = getActionProposalContent(proposal);
+  const baseContent = getActionProposalContent(proposal);
+  const content = `${baseContent}\n<!-- action_proposal:${proposal.proposalId} -->`;
   await deps.chatService.saveMessage(input.familyId, 'assistant', content, input.sessionId);
   return {
     content,
@@ -161,22 +159,6 @@ async function executePseudoFunctionCalls(content: string, deps: ModelHandlerDep
   return calls.length;
 }
 
-function unavailableQuota(note: string) {
-  return { source: 'unavailable', note };
-}
-
-function parseGroqRateLimitQuota(headers: any) {
-  return {
-    source: 'headers',
-    limitRequests: parseInt(headers['x-ratelimit-limit-requests'] || '0', 10),
-    remainingRequests: parseInt(headers['x-ratelimit-remaining-requests'] || '0', 10),
-    resetRequests: headers['x-ratelimit-reset-requests'],
-    limitTokens: parseInt(headers['x-ratelimit-limit-tokens'] || '0', 10),
-    remainingTokens: parseInt(headers['x-ratelimit-remaining-tokens'] || '0', 10),
-    resetTokens: headers['x-ratelimit-reset-tokens'],
-  };
-}
-
 function isRetryableGeminiError(error: any): boolean {
   const status = error?.status;
   const message = String(error?.message || error || '').toLowerCase();
@@ -213,65 +195,9 @@ function getGeminiVisionBusyMessage() {
   return 'Gemini vision đang quá tải tạm thời nên chưa đọc được ảnh lúc này. Bạn thử gửi lại sau vài giây, hoặc chọn ảnh nhỏ hơn/lớn hơn nhe.';
 }
 
-async function runCriticAudit(content: string, deps: ModelHandlerDeps): Promise<string> {
-  const { openai, logger } = deps;
-
-  const isSuspicious =
-    content.includes('<function') ||
-    content.includes('</function>') ||
-    content.includes('{"') ||
-    content.includes('"}') ||
-    content.includes('"ok":') ||
-    content.includes('"error":') ||
-    /(\btoolResponse\b|\btool_call\b)/i.test(content);
-
-  if (!isSuspicious) {
-    return content;
-  }
-
-  logger.log(`[CriticAudit] Detected suspicious content. Running LLM critic check...`);
-
-  try {
-    const criticPrompt = `Bạn là một AI Critic chuyên duyệt tin nhắn của trợ lý thông thái để gửi cho gia đình.
-Hãy kiểm tra xem tin nhắn hiển thị có bị rò rỉ:
-1. Cú pháp gọi công cụ hệ thống (như thẻ <function ...>, </function>, hoặc các từ khóa kỹ thuật thô thiển).
-2. Dữ liệu JSON thô (ví dụ: {"status":"success", "data":...}).
-3. Mã lỗi lập trình hoặc chi tiết hệ thống không thân thiện với khách hàng.
-
-Nếu tin nhắn hoàn toàn sạch sẽ, lịch sự và thân thiện: Cho isValid = true và giữ nguyên tin nhắn.
-Nếu tin nhắn có chứa các lỗi trên: Cho isValid = false, liệt kê lý do, và TRẢ VỀ bản tin nhắn mới trong trường fixedContent đã loại bỏ hết sạch các ký tự kỹ thuật thô thiển đó, viết lại một câu trả lời tự nhiên, ấm áp, trôi chảy bằng tiếng Việt cho gia đình.
-
-Trả về kết quả dưới định dạng JSON duy nhất và chính xác sau:
-{
-  "isValid": boolean,
-  "reasons": string[],
-  "fixedContent": string
-}`;
-
-    const response = await openai.chat.completions.create({
-      model: 'openai/gpt-oss-120b',
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: criticPrompt },
-        { role: 'user', content: `Tin nhắn cần kiểm duyệt:\n"""\n${content}\n"""` },
-      ],
-      max_tokens: 300,
-    });
-
-    const raw = response.choices[0]?.message?.content || '';
-    const parsed = JSON.parse(raw);
-
-    if (parsed.isValid === false) {
-      logger.warn(`[CriticAudit] Critic flagged output! Reasons: ${parsed.reasons?.join(', ')}`);
-      logger.log(`[CriticAudit] Original: "${content}"`);
-      logger.log(`[CriticAudit] Fixed: "${parsed.fixedContent}"`);
-      return parsed.fixedContent || content;
-    }
-  } catch (err) {
-    logger.error(`[CriticAudit] Error executing critic audit: ${err}`);
-  }
-
+async function runCriticAudit(content: string, _deps: ModelHandlerDeps): Promise<string> {
+  // Fast regex-based sanitization is already handled by sanitizeAiResponse (1ms).
+  // Bypassing the redundant secondary LLM Critic call saves 2-3 seconds of latency per turn.
   return content;
 }
 
@@ -306,7 +232,7 @@ function decorateFinalAssistantContent(content: string, deps: ModelHandlerDeps, 
 
 export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandlerInput) {
   const { gemini, chatService, logger, executeTool, geminiModel, geminiContextWindow, aiMaxTokens, historyLimit } = deps;
-  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, systemPromptOverride, toolsOverride, image } = input;
+  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, systemPromptOverride, dynamicSuffix, toolsOverride, image } = input;
 
   const systemPrompt = systemPromptOverride || buildSystemPrompt(familyInfo);
   const tools = toolsOverride ?
@@ -331,19 +257,22 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
 
   const chat = genModel.startChat({ history: geminiHistory });
 
+  const applyDynamicSuffix = (text: string) => dynamicSuffix ? `${dynamicSuffix}\n\n${text}` : text;
+
   let currentInput: any;
   if (image) {
     const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
     if (match) {
+      const imageCaption = finalUserMessage || 'Phân tích và mô tả chi tiết hình ảnh này.';
       currentInput = [
-        { text: finalUserMessage || 'Phân tích và mô tả chi tiết hình ảnh này.' },
+        { text: applyDynamicSuffix(imageCaption) },
         { inlineData: { data: match[2].replace(/\s/g, ''), mimeType: match[1] } }
       ];
     } else {
-      currentInput = finalUserMessage;
+      currentInput = applyDynamicSuffix(finalUserMessage);
     }
   } else {
-    currentInput = finalUserMessage;
+    currentInput = applyDynamicSuffix(finalUserMessage);
   }
 
   let assistantContent = '';
@@ -381,7 +310,7 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
         if (isActionProposalResult(res)) {
           const usage = buildUsageSnapshot({
             provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
-            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
             completionText: getActionProposalContent(res), apiUsage: result.response.usageMetadata,
             quota: unavailableQuota('Gemini API does not expose quota.'),
           });
@@ -400,7 +329,7 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
   assistantContent = await sanitizeFinalAssistantContent(assistantContent, deps, 'gemini_chat');
   const usage = buildUsageSnapshot({
     provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
-    historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+    historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
     completionText: assistantContent, apiUsage, quota: unavailableQuota('Gemini API does not expose quota.'),
   });
 
@@ -410,10 +339,14 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
 
 export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerInput) {
   const { openai, chatService, groqModel, aiMaxTokens, groqContextWindow, historyLimit, logger, executeTool } = deps;
-  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, systemPromptOverride, toolsOverride } = input;
+  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, systemPromptOverride, dynamicSuffix, toolsOverride } = input;
 
-  const systemPrompt = systemPromptOverride || buildSystemPrompt(familyInfo);
-  const messages = [{ role: 'system', content: systemPrompt }, ...[...history].reverse().map(m => ({ role: m.role as any, content: m.content })), { role: 'user', content: finalUserMessage }];
+  const systemPrompt = [systemPromptOverride || buildSystemPrompt(familyInfo), dynamicSuffix].filter(Boolean).join('\n\n');
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...[...history].reverse().map(m => ({ role: m.role as any, content: m.content })),
+    { role: 'user', content: finalUserMessage },
+  ];
   const tools = toolsOverride || getTools();
 
   let loopCount = 0;
@@ -426,7 +359,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
     const result = await measureAiStep(logger, 'model_call', trace, { provider: 'groq', phase: 'chat_loop', loop: loopCount + 1 }, () => openai.chat.completions.create({
       model: groqModel,
       messages,
-      max_tokens: aiMaxTokens,
+      max_tokens: Math.min(aiMaxTokens, 1800),
       tools: tools as any,
       tool_choice: 'auto',
       parallel_tool_calls: false,
@@ -442,6 +375,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
       messages.push(msg as any);
 
       let toolExecuted = false;
+      let loopGuardTriggered = false;
       for (const tc of msg.tool_calls) {
         let toolName = tc.function.name;
         if (toolName.includes('{')) {
@@ -456,7 +390,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
             tool_call_id: tc.id,
             content: JSON.stringify({ error: 'You have already performed this exact tool call. Use previous results or reply directly.' }),
           } as any);
-          toolExecuted = true;
+          loopGuardTriggered = true;
           break;
         }
 
@@ -465,7 +399,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
         if (isActionProposalResult(res)) {
           const usage = buildUsageSnapshot({
             provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens,
-            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
             completionText: getActionProposalContent(res), apiUsage, quota,
           });
           return returnActionProposalChat(deps, input, res, usage);
@@ -475,7 +409,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
         toolExecuted = true;
       }
 
-      if (!toolExecuted) {
+      if (loopGuardTriggered || !toolExecuted) {
         break;
       }
     } else {
@@ -495,7 +429,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
   assistantContent = await sanitizeFinalAssistantContent(assistantContent, deps, 'groq_chat');
   const usage = buildUsageSnapshot({
     provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens, historyLimit,
-    promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+    promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
     completionText: assistantContent, apiUsage, quota,
   });
 
@@ -505,7 +439,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
 
 export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHandlerInput) {
   const { gemini, chatService, executeTool, geminiModel, geminiContextWindow, aiMaxTokens, historyLimit } = deps;
-  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, res, systemPromptOverride, toolsOverride, image } = input;
+  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, res, systemPromptOverride, dynamicSuffix, toolsOverride, image } = input;
 
   const systemPrompt = systemPromptOverride || buildSystemPrompt(familyInfo);
   const tools = toolsOverride ?
@@ -519,19 +453,22 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
 
   const chat = genModel.startChat({ history: geminiHistory });
 
+  const applyDynamicSuffix = (text: string) => dynamicSuffix ? `${dynamicSuffix}\n\n${text}` : text;
+
   let currentInput: any;
   if (image) {
     const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
     if (match) {
+      const imageCaption = finalUserMessage || 'Phân tích và mô tả chi tiết hình ảnh này.';
       currentInput = [
-        { text: finalUserMessage || 'Phân tích và mô tả chi tiết hình ảnh này.' },
+        { text: applyDynamicSuffix(imageCaption) },
         { inlineData: { data: match[2].replace(/\s/g, ''), mimeType: match[1] } }
       ];
     } else {
-      currentInput = finalUserMessage;
+      currentInput = applyDynamicSuffix(finalUserMessage);
     }
   } else {
-    currentInput = finalUserMessage;
+    currentInput = applyDynamicSuffix(finalUserMessage);
   }
 
   let assistantContent = '';
@@ -559,6 +496,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
       throw error;
     }
     let isTool = false;
+    let loopGuardBreak = false;
     for await (const chunk of result.stream) {
       const part = chunk.candidates?.[0]?.content?.parts?.[0];
       if (part?.functionCall) {
@@ -566,18 +504,19 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
         const callCheck = `${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}`;
         if (calledCalls.has(callCheck)) {
           deps.logger.warn(`[LoopGuard] AI is repeating tool call: ${callCheck}. Forcing response.`);
-          currentInput = [{ functionResponse: { name: part.functionCall.name, response: { error: 'You have already performed this exact search. Use the previous results to answer the user now.' } } }];
+          loopGuardBreak = true;
         } else {
           calledCalls.add(callCheck);
           const toolRes = await executeTool(part.functionCall.name, part.functionCall.args, familyId, userId, trace);
           if (isActionProposalResult(toolRes)) {
             const usage = buildUsageSnapshot({
               provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
-              historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+              historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
               completionText: getActionProposalContent(toolRes), apiUsage,
               quota: unavailableQuota('Gemini API does not expose quota.'),
             });
-            await chatService.saveMessage(familyId, 'assistant', getActionProposalContent(toolRes), sessionId);
+            const proposalContent = `${getActionProposalContent(toolRes)}\n<!-- action_proposal:${toolRes.proposalId} -->`;
+            await chatService.saveMessage(familyId, 'assistant', proposalContent, sessionId);
             writeActionProposalStream(res, toolRes, usage);
             return;
           }
@@ -588,6 +527,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
       try {
         const text = chunk.text();
         assistantContent += text;
+        input.accumulatedContent = assistantContent;
         res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
         if (chunk.usageMetadata) apiUsage = chunk.usageMetadata;
       } catch (e) {
@@ -595,7 +535,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
         continue;
       }
     }
-    if (!isTool) break;
+    if (!isTool || loopGuardBreak) break;
     loopCount++;
   }
 
@@ -611,7 +551,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
   assistantContent = await sanitizeFinalAssistantContent(assistantContent, deps, 'gemini_stream', res);
   const usage = buildUsageSnapshot({
     provider: 'gemini', model: geminiModel, contextWindow: geminiContextWindow, maxOutputTokens: aiMaxTokens,
-    historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+    historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
     completionText: assistantContent, apiUsage, quota: unavailableQuota('Gemini API does not expose stream quota.'),
   });
 
@@ -624,10 +564,14 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
 
 export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHandlerInput) {
   const { openai, chatService, groqModel, logger, executeTool, aiMaxTokens, groqContextWindow, historyLimit } = deps;
-  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, res, systemPromptOverride, toolsOverride } = input;
+  const { familyId, history, familyInfo, finalUserMessage, userId, intentRoute, sessionId, trace, res, systemPromptOverride, dynamicSuffix, toolsOverride } = input;
 
-  const systemPrompt = systemPromptOverride || buildSystemPrompt(familyInfo);
-  const messages = [{ role: 'system', content: systemPrompt }, ...[...history].reverse().map(m => ({ role: m.role as any, content: m.content })), { role: 'user', content: finalUserMessage }];
+  const systemPrompt = [systemPromptOverride || buildSystemPrompt(familyInfo), dynamicSuffix].filter(Boolean).join('\n\n');
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...[...history].reverse().map(m => ({ role: m.role as any, content: m.content })),
+    { role: 'user', content: finalUserMessage },
+  ];
   const tools = toolsOverride || getTools();
 
   let loopCount = 0;
@@ -638,7 +582,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
 
   while (loopCount < 5) {
     const streamResponse = await measureAiStep(logger, 'model_call', trace, { provider: 'groq', phase: 'stream_loop', loop: loopCount + 1 }, () => openai.chat.completions.create({
-      model: groqModel, messages, max_tokens: aiMaxTokens, stream: true,
+      model: groqModel, messages, max_tokens: Math.min(aiMaxTokens, 1800), stream: true,
       stream_options: { include_usage: true },
       tools: tools as any,
       tool_choice: 'auto',
@@ -650,11 +594,17 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
     const toolCalls = new Map<number, { id?: string; name?: string; arguments: string }>();
     assistantContent = '';
 
+    let isTruncated = false;
     for await (const chunk of stream) {
       if (chunk.usage) apiUsage = chunk.usage;
-      const delta = chunk.choices[0]?.delta;
+      const choice = chunk.choices[0];
+      if (choice?.finish_reason === 'length') {
+        isTruncated = true;
+      }
+      const delta = choice?.delta;
       const text = delta?.content || '';
       assistantContent += text;
+      input.accumulatedContent = assistantContent;
       // Trả content về client ngay lập tức nếu không phải là tool call
       if (text) res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
 
@@ -667,6 +617,10 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
           arguments: existing.arguments + (toolCall.function?.arguments || ''),
         });
       }
+    }
+
+    if (isTruncated) {
+      throw new Error('Groq stream truncated by max_tokens limit');
     }
 
     if (toolCalls.size > 0) {
@@ -696,6 +650,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
       } as any);
 
       let toolExecuted = false;
+      let loopGuardTriggered = false;
       for (const toolCall of normalizedToolCalls) {
         let toolName = toolCall.name || '';
         if (toolName.includes('{')) {
@@ -711,7 +666,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
             tool_call_id: toolCall.id,
             content: JSON.stringify({ error: 'You have already performed this exact tool call. Use previous results or reply directly.' }),
           } as any);
-          toolExecuted = true;
+          loopGuardTriggered = true;
           break;
         }
 
@@ -727,10 +682,11 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
         if (isActionProposalResult(toolResult)) {
           const usage = buildUsageSnapshot({
             provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens,
-            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+            historyLimit, promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
             completionText: getActionProposalContent(toolResult), apiUsage, quota,
           });
-          await chatService.saveMessage(familyId, 'assistant', getActionProposalContent(toolResult), sessionId);
+          const proposalContent = `${getActionProposalContent(toolResult)}\n<!-- action_proposal:${toolResult.proposalId} -->`;
+          await chatService.saveMessage(familyId, 'assistant', proposalContent, sessionId);
           writeActionProposalStream(res, toolResult, usage);
           return;
         }
@@ -743,7 +699,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
         toolExecuted = true;
       }
 
-      if (!toolExecuted) {
+      if (loopGuardTriggered || !toolExecuted) {
         break;
       }
     } else {
@@ -763,7 +719,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
   assistantContent = await sanitizeFinalAssistantContent(assistantContent, deps, 'groq_stream', res);
   const usage = buildUsageSnapshot({
     provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens, historyLimit,
-    promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride),
+    promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
     completionText: assistantContent, apiUsage, quota,
   });
 

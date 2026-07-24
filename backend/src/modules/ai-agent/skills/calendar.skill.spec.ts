@@ -122,6 +122,18 @@ describe('CalendarSkill', () => {
     expect(result?.content).toContain('Hop phu huynh');
   });
 
+  it('tryDirectAnswer defers to the model for a bare "what is today\'s date" question (no calendar-object word), even though parseCalendarDate matches "hom nay"', async () => {
+    const result = await skill.tryDirectAnswer({
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage: 'hom nay la ngay bao nhieu',
+      intent: 'general_chat',
+    });
+
+    expect(result).toBeUndefined();
+    expect(eventsService.getEventsByMonth).not.toHaveBeenCalled();
+  });
+
   it('tryDirectAnswer returns undefined for a message with no parseable date/month', async () => {
     const result = await skill.tryDirectAnswer({
       userId: 'user-1',

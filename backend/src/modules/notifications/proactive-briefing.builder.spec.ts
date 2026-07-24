@@ -71,4 +71,53 @@ describe('ProactiveBriefingBuilder', () => {
     expect(result).toContain('Hôm nay có vài điểm đáng chú ý:');
     expect(result).toContain('- Lịch: Hôm nay: Sinh nhật bé Tin.');
   });
+
+  describe('buildWeatherBriefingItem', () => {
+    const rainyForecast = {
+      location: 'Ha Noi',
+      date: '2026-07-24',
+      condition: 'Mưa rào nhẹ',
+      chanceOfRain: 80,
+      totalPrecipMm: 5,
+      maxTempC: 33,
+      minTempC: 26,
+    };
+    const clearForecast = {
+      location: 'Ha Noi',
+      date: '2026-07-23',
+      condition: 'Có mây rải rác',
+      chanceOfRain: 10,
+      totalPrecipMm: 0,
+      maxTempC: 39,
+      minTempC: 28,
+    };
+
+    it('uses today forecast and "Hôm nay" wording when today is rainy', () => {
+      const item = (builder as any).buildWeatherBriefingItem(rainyForecast, clearForecast);
+
+      expect(item.reason).toBe('rain_or_bad_weather_today');
+      expect(item.message).toContain('Hôm nay');
+      expect(item.metadata.forecastFor).toBe('today');
+    });
+
+    it('falls back to tomorrow forecast and "Ngày mai" wording when today is clear but tomorrow is rainy', () => {
+      const item = (builder as any).buildWeatherBriefingItem(clearForecast, rainyForecast);
+
+      expect(item.reason).toBe('rain_or_bad_weather_tomorrow');
+      expect(item.message).toContain('Ngày mai');
+      expect(item.metadata.forecastFor).toBe('tomorrow');
+    });
+
+    it('returns null when neither today nor tomorrow is rainy', () => {
+      const item = (builder as any).buildWeatherBriefingItem(clearForecast, clearForecast);
+
+      expect(item).toBeNull();
+    });
+
+    it('returns null when both forecasts are unavailable', () => {
+      const item = (builder as any).buildWeatherBriefingItem(null, null);
+
+      expect(item).toBeNull();
+    });
+  });
 });

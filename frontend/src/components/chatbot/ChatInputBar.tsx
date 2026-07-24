@@ -2,14 +2,12 @@ import type { ChangeEvent, FormEvent, RefObject } from 'react';
 import { FiImage, FiSend, FiX, FiLoader } from 'react-icons/fi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { AiModelProvider } from './chatbot-usage';
 
 type ChatInputBarProps = {
   fileInputRef: RefObject<HTMLInputElement>;
   input: string;
   isLoading: boolean;
   language: string;
-  model: AiModelProvider;
   selectedImage: string | null;
   onCancelStream: () => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -24,7 +22,6 @@ export function ChatInputBar({
   input,
   isLoading,
   language,
-  model,
   selectedImage,
   onCancelStream,
   onFileChange,
@@ -47,7 +44,7 @@ export function ChatInputBar({
             </button>
           </div>
           <p className="text-xs font-semibold text-slate-500 bg-slate-100 dark:bg-white/5 px-3 py-1 rounded-full">
-            Image Ready // {model} context
+            Image Ready // Gemini Vision context
           </p>
         </div>
       )}

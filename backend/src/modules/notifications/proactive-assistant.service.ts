@@ -36,7 +36,10 @@ export class ProactiveAssistantService {
 
     const now = getIctNow();
     this.logger.log('Starting proactive assistant cron job...');
-    const weatherForecast = await this.weatherService.getTodayForecast();
+    const [weatherForecast, tomorrowWeatherForecast] = await Promise.all([
+      this.weatherService.getTodayForecast(),
+      this.weatherService.getTomorrowForecast(),
+    ]);
 
     const users = await this.prisma.user.findMany({
       select: {
@@ -56,7 +59,7 @@ export class ProactiveAssistantService {
         if (settings.proactiveAssistant === false) continue;
         if (options.respectUserTime && !shouldRunProactiveAtConfiguredHour(settings, now)) continue;
 
-        const briefingResult = await this.sendDailyBriefing(user, now, weatherForecast);
+        const briefingResult = await this.sendDailyBriefing(user, now, weatherForecast, tomorrowWeatherForecast);
         summary.dailyBriefings += briefingResult.sent;
         summary.eventSuggestions += briefingResult.eventItems;
         summary.financeSuggestions += briefingResult.financeItems;
@@ -77,6 +80,7 @@ export class ProactiveAssistantService {
     user: any,
     now: Date,
     weatherForecast: Awaited<ReturnType<WeatherService['getTodayForecast']>>,
+    tomorrowWeatherForecast: Awaited<ReturnType<WeatherService['getTomorrowForecast']>>,
   ) {
     const result = {
       sent: 0,
@@ -87,7 +91,7 @@ export class ProactiveAssistantService {
       familyNoteItems: 0,
     };
     const settings = (user.notificationSettings || {}) as Record<string, any>;
-    const briefing = await this.proactiveBriefingBuilder.buildDailyBriefing(user, now, weatherForecast);
+    const briefing = await this.proactiveBriefingBuilder.buildDailyBriefing(user, now, weatherForecast, tomorrowWeatherForecast);
 
     result.eventItems = briefing.eventItems;
     result.financeItems = briefing.financeItems;

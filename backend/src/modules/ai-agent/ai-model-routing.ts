@@ -1,3 +1,5 @@
+import { DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_TOOL_MODEL } from './ai-model-defaults';
+
 export type RoutedModel = {
   provider: 'groq' | 'gemini';
   model: string;
@@ -14,7 +16,7 @@ export function routeAiModel(selection: string | undefined, hasImage: boolean): 
   if (hasImage) {
     return {
       provider: 'gemini',
-      model: process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
+      model: process.env.GEMINI_VISION_MODEL || DEFAULT_GEMINI_MODEL,
       route: 'vision',
       reason: 'image input requires a vision-capable model',
     };
@@ -26,8 +28,8 @@ export function routeAiModel(selection: string | undefined, hasImage: boolean): 
       provider: explicitProvider,
       model:
         explicitProvider === 'gemini'
-          ? process.env.GEMINI_MODEL || 'gemini-3.5-flash'
-          : process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+          ? process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL
+          : process.env.GROQ_MODEL || DEFAULT_GROQ_TOOL_MODEL,
       route: 'explicit',
       reason: `user selected ${explicitProvider}`,
     };
@@ -35,7 +37,7 @@ export function routeAiModel(selection: string | undefined, hasImage: boolean): 
 
   return {
     provider: 'groq',
-    model: process.env.AI_TOOL_MODEL || process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    model: process.env.AI_TOOL_MODEL || process.env.GROQ_MODEL || DEFAULT_GROQ_TOOL_MODEL,
     route: 'tool',
     reason: 'every turn can call tools now, so the tool-capable model is the default',
   };

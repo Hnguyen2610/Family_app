@@ -6,6 +6,7 @@ import { composeFullPrompt } from '../ai-agent-prompt';
 import { getSkillToolsForContext } from '../ai-tool-policy';
 import { mergeUniqueTools } from '../ai-tool-dispatcher';
 import { AiModelClientsService } from './ai-model-clients.service';
+import { buildFamilyScopeNotice } from '../ai-family-scope-policy';
 
 @Injectable()
 export class AiEvalService {
@@ -82,13 +83,18 @@ export class AiEvalService {
     let failCount = 0;
 
     for (const testCase of cases) {
+      const familyContext = buildFamilyScopeNotice({
+        familyId: 'eval-family',
+        families: [{ id: 'eval-family', name: 'Eval Family' }],
+        resolvedFamilyId: 'eval-family',
+      });
       const skillContext: AiSkillContext = {
         userId: 'eval-user',
         familyId: 'eval-family',
         resolvedFamilyId: 'eval-family',
         userMessage: testCase.input,
         intent: 'general_chat',
-        familyContext: '',
+        familyContext,
         memoryContext: '',
         ragContext: '',
         ragSources: [],
@@ -102,14 +108,18 @@ export class AiEvalService {
       let actualTool: string | undefined;
       let callError: string | undefined;
       try {
+        const { basePrompt, personaSuffix } = composeFullPrompt(this.skillRegistry, skillContext);
+        const systemPrompt = [basePrompt, personaSuffix].filter(Boolean).join('\n\n');
         const response = await this.modelClients.openai.chat.completions.create({
           model: this.modelClients.groqModel,
           messages: [
-            { role: 'system', content: composeFullPrompt(this.skillRegistry, skillContext) },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: testCase.input },
           ],
           tools: combinedTools as any,
-          max_tokens: 300,
+          tool_choice: 'auto',
+          parallel_tool_calls: false,
+          max_tokens: Number.parseInt(process.env.AI_MAX_TOKENS || '800', 10),
         });
         actualTool = response.choices[0]?.message?.tool_calls?.[0]?.function?.name;
       } catch (err: any) {
@@ -119,7 +129,9 @@ export class AiEvalService {
 
       const errors: string[] = [];
       if (callError) errors.push(`Model call failed: ${callError}`);
-      if (!callError && testCase.expectedTool && actualTool !== testCase.expectedTool) {
+      if (!callError && testCase.expectedTool === '' && actualTool) {
+        errors.push(`Expected no tool call, got ${actualTool}`);
+      } else if (!callError && testCase.expectedTool && actualTool !== testCase.expectedTool) {
         errors.push(`Expected tool ${testCase.expectedTool}, got ${actualTool || 'none'}`);
       }
 

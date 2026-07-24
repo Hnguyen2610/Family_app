@@ -1,6 +1,7 @@
-import { FiActivity, FiCpu, FiMessageCircle } from 'react-icons/fi';
+import { FiCpu, FiMessageCircle } from 'react-icons/fi';
 import type { ChatUsage } from '@/lib/api-client';
 import {
+  formatModelLabel,
   formatQuota,
   formatTokens,
   getContextBarColor,
@@ -12,6 +13,8 @@ import {
   getQuotaPercent,
   type AiModelProvider,
 } from './chatbot-usage';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import MascotAvatar from '@/components/MascotAvatar';
 
 type ChatbotHeaderProps = {
   activeUsage?: ChatUsage;
@@ -20,6 +23,7 @@ type ChatbotHeaderProps = {
   model: AiModelProvider;
   setIsSidebarOpen: (value: boolean) => void;
   setModel: (model: AiModelProvider) => void;
+  usageByModel: Partial<Record<AiModelProvider, ChatUsage>>;
 };
 
 const AI_MODELS: AiModelProvider[] = ['gemini', 'groq'];
@@ -31,6 +35,7 @@ export function ChatbotHeader({
   model,
   setIsSidebarOpen,
   setModel,
+  usageByModel,
 }: ChatbotHeaderProps) {
   return (
     <header className="px-4 py-3 md:px-6 md:py-4 border-b border-border flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 bg-card sticky top-0 z-20">
@@ -41,8 +46,8 @@ export function ChatbotHeader({
         >
           <FiMessageCircle className="w-4 h-4 md:w-5 md:h-5" />
         </button>
-        <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-xl md:text-2xl shrink-0">
-          <FiActivity />
+        <div className="shrink-0 flex items-center justify-center">
+          <MascotAvatar size="sm" isWaving={false} showBubble={false} />
         </div>
         <div className="min-w-0">
           <h2 className="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight truncate">Family<span className="text-primary">GPT</span></h2>
@@ -87,20 +92,20 @@ export function ChatbotHeader({
         </div>
 
         <div className="flex flex-col gap-1 min-w-0">
-          <div className="px-1 text-[10px] font-semibold text-slate-500 dark:text-slate-500">
-            Model <span className="text-primary">{model}</span>
-          </div>
-          <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg border border-black/5 dark:border-white/5 w-full">
-            {AI_MODELS.map((item) => (
-              <button
-                key={item}
-                onClick={() => setModel(item)}
-                className={`flex-1 px-2 md:px-4 py-1.5 rounded text-xs font-semibold transition-all ${model === item ? 'bg-primary text-primary-foreground shadow-sm' : 'text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
+          <Select value={model} onValueChange={(next) => setModel(next as AiModelProvider)}>
+            <SelectTrigger className="h-auto py-1.5 px-2 text-xs font-semibold bg-slate-200 dark:bg-slate-800">
+              <SelectValue>
+                {(value: AiModelProvider) => formatModelLabel(usageByModel[value]?.model) || value}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent side="bottom" alignItemWithTrigger={false}>
+              {AI_MODELS.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {formatModelLabel(usageByModel[item]?.model) || item}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </header>

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const ACCESS_TOKEN_KEY = 'family_token';
 const REFRESH_TOKEN_KEY = 'family_refresh_token';
 export const AUTH_EXPIRED_EVENT = 'family_auth_expired';
@@ -420,8 +420,8 @@ export const weatherAPI = {
 
 export const notificationsAPI = {
   getAll: (userId: string) => apiClient.get('/api/notifications', { params: { userId } }),
-  markAsRead: (id: string, userId: string) => apiClient.patch(`/api/notifications/${id}/read`, null, { params: { userId } }),
-  markAllAsRead: (userId: string) => apiClient.post('/api/notifications/read-all', null, { params: { userId } }),
+  markAsRead: (id: string, userId?: string) => apiClient.patch(`/api/notifications/${id}/read`, {}, { params: { userId } }),
+  markAllAsRead: (userId?: string) => apiClient.post('/api/notifications/read-all', {}, { params: { userId } }),
   delete: (id: string, userId: string) => apiClient.delete(`/api/notifications/${id}`, { params: { userId } }),
   deleteAll: (userId: string) => apiClient.delete('/api/notifications/all', { params: { userId } }),
   subscribePush: (userId: string, subscription: any) =>

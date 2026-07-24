@@ -44,7 +44,7 @@ import { AiModelClientsService } from './ai-model-clients.service';
 @Injectable()
 export class AiAgentService {
   private readonly logger = new Logger(AiAgentService.name);
-  private readonly aiMaxTokens = Number.parseInt(process.env.AI_MAX_TOKENS || '800', 10);
+  private readonly aiMaxTokens = Number.parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
   private readonly historyLimit = Number.parseInt(process.env.AI_HISTORY_LIMIT || '6', 10);
   private readonly groqContextWindow = Number.parseInt(process.env.GROQ_CONTEXT_WINDOW || '131072', 10);
   private readonly geminiContextWindow = Number.parseInt(process.env.GEMINI_CONTEXT_WINDOW || '1048576', 10);
@@ -77,15 +77,33 @@ export class AiAgentService {
   }
 
   /**
-   * Compose the base prompt plus the persona/rule prose of only the most-recently-invoked
+   * Compose the base prompt plus the persona/rule prose of the most-recently-invoked
    * skill (if any) — every skill's tools stay available every turn regardless (see
    * setupModelDepsAndTools' combinedTools, which is never filtered); only this supplementary
-   * persona text is conditionally included, based on the last-invoked-skill signal persisted
-   * in conversation state (AiConversationStatePayload.lastIntent). With no recent signal
-   * (e.g. first message in a session), no skill-specific persona prose is included at all.
+   * persona text is conditionally scoped, based on the last-invoked-skill signal persisted
+   * in conversation state (AiConversationStatePayload.lastIntent).
+   *
+   * lastIntent is keyed on userId, not sessionId — it survives across separate chat
+   * sessions and only expires after 60 minutes of no tool-invoking turns at all (see
+   * AiConversationStateService). So it can easily be stale carry-over from a previous,
+   * unrelated conversation. This turn's history is fetched by sessionId (AiFamilyResolver's
+   * buildSkillContext) — but that fetch runs AFTER chat() already saves the current user
+   * message (see saveMessage at the top of chat()/chatStream(), which runs before
+   * executeEarlyReturnPipeline -> buildSkillContext -> chatService.getHistory). So
+   * skillContext.history always contains at least the just-saved current message: a
+   * genuinely first message of a session yields length 1 (itself), never 0. Checking
+   * `=== 0` here was a bug — it can never be true, so the "ignore stale lastIntent on a
+   * new session" gate silently never fired. `<= 1` is the correct check.
+   * composeFullPrompt's scoping preamble is the remaining backstop for staleness that
+   * develops mid-session (topic switches within one conversation).
+   *
+   * Returns basePrompt/personaSuffix separately so the caller can keep basePrompt as a
+   * stable, cacheable prefix and place personaSuffix at the very end of what's sent to the
+   * model (see dynamicSuffix in executeEarlyReturnPipeline's caller).
    */
-  private async composePrompt(skillContext: AiSkillContext): Promise<string> {
-    const state = await this.conversationState.getState(skillContext.userId);
+  private async composePrompt(skillContext: AiSkillContext): Promise<{ basePrompt: string; personaSuffix: string }> {
+    const isFirstMessageOfSession = !skillContext.history || skillContext.history.length <= 1;
+    const state = isFirstMessageOfSession ? undefined : await this.conversationState.getState(skillContext.userId);
     return composeFullPrompt(this.skillRegistry, skillContext, state?.lastIntent);
   }
 
@@ -426,6 +444,7 @@ export class AiAgentService {
       needsClarification: boolean;
       invokedToolNames: string[];
     },
+    res?: any,
   ) {
     const deps = this.getModelHandlerDeps(
       routedModel.provider === 'groq'
@@ -460,6 +479,23 @@ export class AiAgentService {
     });
 
     deps.executeTool = async (toolName: string, args: any, currentFamilyId: string, currentUserId: string) => {
+      if (res) {
+        const toolStatusMap: Record<string, string> = {
+          getEventsByMonth: 'checking_calendar',
+          createEvent: 'updating_calendar',
+          updateEvent: 'updating_calendar',
+          deleteEvent: 'updating_calendar',
+          getWeather: 'fetching_weather',
+          getGoldPrice: 'fetching_gold_price',
+          searchMarket: 'searching_market',
+          searchFamilyNotes: 'searching_notes',
+          getDailyTasks: 'checking_tasks',
+          getFootballSchedule: 'checking_football',
+        };
+        const statusKey = toolStatusMap[toolName] || 'executing_tool';
+        res.write(`data: ${JSON.stringify({ type: 'status', status: statusKey })}\n\n`);
+      }
+
       if ((toolName === 'updateEvent' || toolName === 'deleteEvent') && (!args.id || args.id === 'this' || args.id === 'that' || /^\d+$/.test(args.id))) {
         const resolution = await this.entityResolver.resolveEvent(currentUserId, skillContext.userMessage || '', currentFamilyId);
         debugState.resolverTelemetry = this.buildResolverLog(resolution);
@@ -572,13 +608,25 @@ export class AiAgentService {
       userMessage,
       intentRoute!,
       debugState,
+      res,
     );
 
-    const basePrompt = await this.composePrompt(skillContext!);
-    const wordCount = (userMessage || '').trim().split(/\s+/).filter(Boolean).length;
-    const systemPromptOverride = wordCount > 10
-      ? `${basePrompt}\n\n[CHAIN_OF_THOUGHT RULE]\nBạn BẮT BUỘC phải suy nghĩ từng bước trước khi bắt đầu trả lời hoặc gọi công cụ. Viết toàn bộ suy nghĩ (reasoning steps/thought process) của bạn bằng tiếng Việt bên trong cặp thẻ <thought>...</thought> ở ngay đầu câu trả lời (Ví dụ: <thought>Phân tích câu hỏi... Xác định tool...</thought>). Thẻ này phải nằm trên cùng và bao quanh toàn bộ logic suy nghĩ của bạn. Không được bỏ qua thẻ này.`
-      : basePrompt;
+    const { basePrompt, personaSuffix } = await this.composePrompt(skillContext!);
+    const chainOfThoughtBlock = `[QUY TẮC CẤU TRÚC BẮT BUỘC 100%]
+Mọi câu trả lời của bạn BẮT BUỘC phải bắt đầu bằng thẻ <thought> và đóng lại bằng thẻ </thought> ở ngay đầu câu trả lời:
+
+<thought>
+Phân tích yêu cầu và kế hoạch thực hiện...
+</thought>
+
+(Nội dung câu trả lời gửi cho người dùng bắt đầu ở đây)
+
+BẮT BUỘC: Không được bỏ qua cặp thẻ <thought>...</thought> này.
+
+[DINH DANG LAYOUT]
+Khi hiển thị danh sách/lịch trình dưới dạng Bảng Markdown (Markdown Table), bạn BẮT BUỘC phải xuống dòng thực sự giữa các hàng của bảng, KHÔNG ĐƯỢC dùng thẻ HTML <br> và KHÔNG ĐƯỢC gộp cả bảng lên 1 dòng.`;
+    const dynamicSuffix = [personaSuffix, chainOfThoughtBlock].filter(Boolean).join('\n\n');
+    const fullSystemPrompt = [basePrompt, dynamicSuffix].filter(Boolean).join('\n\n');
 
     const modelInput = buildAiModelInput({
       familyId,
@@ -590,7 +638,8 @@ export class AiAgentService {
       trace: trace!,
       res,
       image,
-      systemPromptOverride,
+      systemPromptOverride: fullSystemPrompt,
+      dynamicSuffix,
       toolsOverride: combinedTools,
     });
 
@@ -772,12 +821,54 @@ export class AiAgentService {
     });
     res.write(`data: ${JSON.stringify({ type: 'request_log_id', requestLogId: requestLog.id })}\n\n`);
     try {
-      if (routedModel.provider === 'gemini') {
-        await handleGeminiStream(deps, streamInput);
-      } else {
-        await handleGroqStream(deps, streamInput);
+      try {
+        if (routedModel.provider === 'gemini') {
+          await handleGeminiStream(deps, streamInput);
+        } else {
+          await handleGroqStream(deps, streamInput);
+        }
+        this.markProviderSuccess(routedModel.provider);
+      } catch (err: any) {
+        this.markProviderFailure(routedModel.provider);
+        if (!image) {
+          const fallbackModel = this.getAlternateModel(routedModel, `${routedModel.provider} stream failed; retried with fallback provider`);
+          const fallbackDeps = this.getModelHandlerDeps(
+            fallbackModel.provider === 'groq'
+              ? { groqModel: fallbackModel.model }
+              : { geminiModel: fallbackModel.model },
+          );
+          fallbackDeps.onSanitizerIncident = deps.onSanitizerIncident;
+          fallbackDeps.decorateAssistantContent = deps.decorateAssistantContent;
+          fallbackDeps.executeTool = deps.executeTool;
+
+          // Mid-stream Continuation logic:
+          // If streamInput.accumulatedContent has partial text, inject it into history so fallback model continues seamlessly
+          let fallbackInput = streamInput;
+          const partialContent = streamInput.accumulatedContent?.trim();
+          if (partialContent && partialContent.length > 20) {
+            this.logger.warn(`[chatStream] Mid-stream continuation triggered for ${fallbackModel.provider} after ${partialContent.length} chars generated.`);
+            fallbackInput = {
+              ...streamInput,
+              history: [
+                ...streamInput.history,
+                { role: 'assistant', content: partialContent },
+              ],
+              finalUserMessage: 'Hệ thống vừa bị gián đoạn kết nối. Hãy VIẾT TIẾP phần còn lại của câu trả lời trên ngay từ vị trí bị dừng, giữ nguyên định dạng Bảng/văn bản.',
+            };
+          } else {
+            this.logger.warn(`[chatStream] ${routedModel.provider} stream failed (${err?.message}). Falling back to ${fallbackModel.provider}`);
+          }
+
+          if (fallbackModel.provider === 'gemini') {
+            await handleGeminiStream(fallbackDeps, fallbackInput);
+          } else {
+            await handleGroqStream(fallbackDeps, fallbackInput);
+          }
+          this.markProviderSuccess(fallbackModel.provider);
+        } else {
+          throw err;
+        }
       }
-      this.markProviderSuccess(routedModel.provider);
     } catch (err: any) {
       streamError = err?.message || 'Unknown error';
       this.markProviderFailure(routedModel.provider);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FiArrowLeft, FiRefreshCw } from 'react-icons/fi';
-import { chatAPI } from '@/lib/api-client';
+import { API_URL, chatAPI } from '@/lib/api-client';
 import { useTranslation } from '@/lib/i18n';
 import toast from 'react-hot-toast';
 import { AiDashboardRequestLogs } from './AiDashboardRequestLogs';
@@ -74,7 +74,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
 
   const fetchEvalCases = useCallback(async () => {
     try {
-      const res = await fetch('/api/chat/admin/eval-cases', {
+      const res = await fetch(`${API_URL}/api/chat/admin/eval-cases`, {
         headers: { 'x-admin-secret': cronSecret },
       });
       const data = await res.json();
@@ -93,7 +93,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
   const runEvals = async () => {
     setRunningEval(true);
     try {
-      const res = await fetch('/api/chat/admin/eval-cases/run', {
+      const res = await fetch(`${API_URL}/api/chat/admin/eval-cases/run`, {
         method: 'POST',
         headers: { 'x-admin-secret': cronSecret },
       });
@@ -111,7 +111,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
   const toggleEvalStatus = async (id: string, currentStatus: string) => {
     try {
       const nextStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      await fetch(`/api/chat/admin/eval-cases/${id}`, {
+      await fetch(`${API_URL}/api/chat/admin/eval-cases/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +128,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
   const deleteEval = async (id: string) => {
     if (!confirm('Xóa case này?')) return;
     try {
-      await fetch(`/api/chat/admin/eval-cases/${id}`, {
+      await fetch(`${API_URL}/api/chat/admin/eval-cases/${id}`, {
         method: 'DELETE',
         headers: { 'x-admin-secret': cronSecret },
       });
@@ -192,7 +192,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
             statusFilter={statusFilter}
           />
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 shadow-sm space-y-6">
+          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-slate-50 dark:bg-slate-900/60 p-6 shadow-sm space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-3">
                 🧪 AI Evaluation Quality Cases ({evalCases.length})
@@ -200,63 +200,75 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
               <button
                 onClick={runEvals}
                 disabled={runningEval}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-70 flex items-center gap-2"
               >
-                🚀 Run Suite
+                {runningEval ? (
+                  <>
+                    <FiRefreshCw className="animate-spin" size={14} />
+                    {language === 'vi' ? 'Đang chạy...' : 'Running...'}
+                  </>
+                ) : (
+                  <>🚀 Run Suite</>
+                )}
               </button>
             </div>
 
             {evalResult && (
-              <div className="bg-slate-950 p-4 rounded-xl border border-white/10 space-y-3">
-                <h4 className="text-sm font-bold text-white">Kết quả Chạy thử:</h4>
-                <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-300">
-                  <span className="text-emerald-400">PASS: {evalResult.passCount}</span>
-                  <span className="text-rose-400">FAIL: {evalResult.failCount}</span>
-                </div>
+              <details open className="rounded-xl border border-black/5 dark:border-white/10 bg-slate-100 dark:bg-slate-950 p-4">
+                <summary className="cursor-pointer text-sm font-bold text-slate-900 dark:text-white flex flex-wrap items-center gap-3">
+                  Kết quả Chạy thử:
+                  <span className="text-emerald-600 dark:text-emerald-400">PASS: {evalResult.passCount}</span>
+                  <span className="text-rose-600 dark:text-rose-400">FAIL: {evalResult.failCount}</span>
+                </summary>
                 {evalResult.results && (
-                  <div className="max-h-60 overflow-y-auto space-y-2 mt-2">
+                  <div className="max-h-60 overflow-y-auto space-y-2 mt-3">
                     {evalResult.results.map((res: any, idx: number) => (
-                      <div key={idx} className={`p-2 rounded border text-[11px] ${res.passed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-rose-500/10 border-rose-500/20 text-rose-300'}`}>
-                        <div className="font-bold">"${res.input}"</div>
+                      <div key={idx} className={`p-2 rounded border text-[11px] ${res.passed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/10 border-rose-500/20 text-rose-700 dark:text-rose-300'}`}>
+                        <div className="font-bold">"{res.input}"</div>
                         <div className="mt-1 font-semibold opacity-85">
                           Intent: {res.actualIntent} (Expected: {res.expectedIntent}) | Skill: {res.actualSkill}
                         </div>
                         {res.errors.length > 0 && (
-                          <div className="mt-1 font-bold text-rose-400">{res.errors.join(', ')}</div>
+                          <div className="mt-1 font-bold text-rose-600 dark:text-rose-400">{res.errors.join(', ')}</div>
                         )}
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </details>
             )}
 
-            <div className="max-h-80 overflow-y-auto space-y-3">
-              {evalCases.map((cs) => (
-                <div key={cs.id} className="flex items-center justify-between p-4 bg-white/5 dark:bg-slate-950/30 rounded-xl border border-white/5">
-                  <div className="space-y-1">
-                    <div className="text-xs font-bold text-slate-900 dark:text-slate-100 italic">"${cs.input}"</div>
-                    <div className="text-[11px] text-slate-500 font-bold opacity-60">
-                      Sản sinh từ Log: {cs.sourceLogId || '-'} | Intent mong đợi: <span className="text-primary">{cs.expectedIntent || '-'}</span> | Skill: <span className="text-primary">{cs.expectedSkill || '-'}</span>
+            <details className="rounded-xl border border-black/5 dark:border-white/10 bg-slate-100 dark:bg-slate-950/30 p-4">
+              <summary className="cursor-pointer text-sm font-bold text-slate-900 dark:text-slate-100">
+                Danh sách case ({evalCases.length})
+              </summary>
+              <div className="mt-3 max-h-80 overflow-y-auto space-y-3">
+                {evalCases.map((cs) => (
+                  <div key={cs.id} className="flex items-center justify-between p-4 bg-white dark:bg-slate-950/30 rounded-xl border border-black/5 dark:border-white/5">
+                    <div className="space-y-1">
+                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 italic">"{cs.input}"</div>
+                      <div className="text-[11px] text-slate-500 font-bold">
+                        Sản sinh từ Log: {cs.sourceLogId || '-'} | Intent mong đợi: <span className="text-primary">{cs.expectedIntent || '-'}</span> | Skill: <span className="text-primary">{cs.expectedSkill || '-'}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => toggleEvalStatus(cs.id, cs.status)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${cs.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/10'}`}
+                      >
+                        {cs.status}
+                      </button>
+                      <button
+                        onClick={() => deleteEval(cs.id)}
+                        className="p-2 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-all"
+                      >
+                        Xóa
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => toggleEvalStatus(cs.id, cs.status)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${cs.status === 'ACTIVE' ? 'bg-emerald-505/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/10'}`}
-                    >
-                      {cs.status}
-                    </button>
-                    <button
-                      onClick={() => deleteEval(cs.id)}
-                      className="p-2 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-all"
-                    >
-                      Xóa
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </details>
           </div>
 
           <FeedbackReportSection language={language} stats={stats} />

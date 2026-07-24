@@ -10,6 +10,8 @@ const INTERNAL_TOOL_NAMES = [
   'generateFamilyMenu',
   'getGoldPrice',
   'get_matches',
+  'getSolarDateFromLunar',
+  'getWeather',
 ] as const;
 
 const FALLBACK_MESSAGE =
@@ -25,17 +27,26 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function compactContent(content: string) {
+function stripThoughtTags(content: string) {
   return content
+    .replace(/<\/?thought>/gi, '')
+    .replace(/<thought[^>]*>[\s\S]*?<\/thought>/gi, '')
+    .trim();
+}
+
+function compactContent(content: string) {
+  return stripThoughtTags(content)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function containsToolName(content: string) {
-  return INTERNAL_TOOL_NAMES.some((toolName) =>
-    new RegExp(`\\b${escapeRegex(toolName)}\\s*\\(`, 'i').test(content),
-  );
+  return INTERNAL_TOOL_NAMES.some((toolName) => {
+    const escaped = escapeRegex(toolName);
+    // Match toolName( or `toolName` or "toolName"
+    return new RegExp(`(?:\\b${escaped}\\s*\\(|\`${escaped}\`|"${escaped}")`, 'i').test(content);
+  });
 }
 
 function containsFencedToolCall(content: string) {
@@ -69,6 +80,17 @@ function removeRawToolCalls(content: string) {
   return output;
 }
 
+/**
+ * Remove sentences/lines that mention internal tool names in a narrative way.
+ * e.g. "Tôi đã gọi công cụ `getSolarDateFromLunar` cho ngày..." → removed
+ */
+function stripToolMentionSentences(content: string) {
+  const toolPattern = INTERNAL_TOOL_NAMES.map(escapeRegex).join('|');
+  // Match whole lines/sentences containing a tool name reference (with or without backticks)
+  const lineRegex = new RegExp(`^[^\\n]*(?:\`(?:${toolPattern})\`|\\b(?:${toolPattern})\\b)[^\\n]*$`, 'gim');
+  return content.replace(lineRegex, '').trim();
+}
+
 function stripToolPrelude(content: string) {
   const normalized = content.toLowerCase();
   const likelyPrelude =
@@ -93,13 +115,18 @@ function detectReasons(original: string) {
 export function sanitizeAiResponse(content: string, fallback = FALLBACK_MESSAGE): SanitizedAiResponse {
   const original = String(content || '');
   const reasons = detectReasons(original);
+  const hasThought = /<\/?thought>/i.test(original);
 
-  if (reasons.length === 0) {
+  if (reasons.length === 0 && !hasThought) {
     return { content: original, sanitized: false, reasons: [] };
   }
 
+  if (hasThought) reasons.push('thought_tag');
+
   const stripped = compactContent(
-    stripToolPrelude(removeRawToolCalls(removePseudoFunctionTags(removeFencedToolCalls(original)))),
+    stripToolMentionSentences(
+      stripToolPrelude(removeRawToolCalls(removePseudoFunctionTags(removeFencedToolCalls(original)))),
+    ),
   );
 
   return {

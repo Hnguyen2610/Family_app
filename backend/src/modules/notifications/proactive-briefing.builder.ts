@@ -35,6 +35,7 @@ export class ProactiveBriefingBuilder {
     user: any,
     now: Date,
     weatherForecast: WeatherForecastSummary | null,
+    tomorrowWeatherForecast: WeatherForecastSummary | null = null,
   ): Promise<DailyBriefingBuildResult> {
     const result: DailyBriefingBuildResult = {
       items: [],
@@ -71,7 +72,7 @@ export class ProactiveBriefingBuilder {
     }
 
     if (isProactiveTypeEnabled(settings, 'weather')) {
-      const weatherItem = this.buildWeatherBriefingItem(weatherForecast);
+      const weatherItem = this.buildWeatherBriefingItem(weatherForecast, tomorrowWeatherForecast);
       if (weatherItem) {
         result.items.push(weatherItem);
         result.weatherItems = 1;
@@ -186,28 +187,39 @@ Hãy giữ thông tin ngắn gọn, súc tích (khoảng 3-6 câu), có tính li
       });
   }
 
-  private buildWeatherBriefingItem(forecast: WeatherForecastSummary | null): ProactiveBriefingItem | null {
-    if (!forecast) return null;
-
-    const shouldNotify =
+  private isRainyForecast(forecast: WeatherForecastSummary): boolean {
+    return (
       forecast.chanceOfRain >= 50 ||
       forecast.totalPrecipMm >= 2 ||
-      /rain|mưa|drizzle|shower|storm|thunder/i.test(forecast.condition);
+      /rain|mưa|drizzle|shower|storm|thunder/i.test(forecast.condition)
+    );
+  }
 
-    if (!shouldNotify) return null;
+  private buildWeatherBriefingItem(
+    forecast: WeatherForecastSummary | null,
+    tomorrowForecast: WeatherForecastSummary | null,
+  ): ProactiveBriefingItem | null {
+    const isToday = forecast && this.isRainyForecast(forecast);
+    const isTomorrow = !isToday && tomorrowForecast && this.isRainyForecast(tomorrowForecast);
+
+    if (!isToday && !isTomorrow) return null;
+
+    const target = isToday ? forecast! : tomorrowForecast!;
+    const dayLabel = isToday ? 'Hôm nay' : 'Ngày mai';
 
     return {
       kind: 'weather',
-      title: `Thời tiết ${forecast.location}`,
-      message: `Hôm nay ${forecast.condition.toLowerCase()}, khả năng mưa ${forecast.chanceOfRain}%, ${Math.round(forecast.minTempC)}-${Math.round(forecast.maxTempC)}°C.`,
+      title: `Thời tiết ${target.location}`,
+      message: `${dayLabel} ${target.condition.toLowerCase()}, khả năng mưa ${target.chanceOfRain}%, ${Math.round(target.minTempC)}-${Math.round(target.maxTempC)}°C.`,
       path: '/calendar',
-      reason: 'rain_or_bad_weather_today',
+      reason: isToday ? 'rain_or_bad_weather_today' : 'rain_or_bad_weather_tomorrow',
       metadata: {
         provider: process.env.WEATHER_PROVIDER || 'weatherapi',
-        location: forecast.location,
-        forecastDate: forecast.date,
-        chanceOfRain: forecast.chanceOfRain,
-        totalPrecipMm: forecast.totalPrecipMm,
+        location: target.location,
+        forecastDate: target.date,
+        chanceOfRain: target.chanceOfRain,
+        totalPrecipMm: target.totalPrecipMm,
+        forecastFor: isToday ? 'today' : 'tomorrow',
       },
     };
   }
