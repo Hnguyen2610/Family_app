@@ -224,7 +224,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
                   <div className="max-h-60 overflow-y-auto space-y-2 mt-3">
                     {evalResult.results.map((res: any, idx: number) => (
                       <div key={idx} className={`p-2 rounded border text-[11px] ${res.passed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/10 border-rose-500/20 text-rose-700 dark:text-rose-300'}`}>
-                        <div className="font-bold">"{res.input}"</div>
+                        <div className="font-bold">&quot;{res.input}&quot;</div>
                         <div className="mt-1 font-semibold opacity-85">
                           Intent: {res.actualIntent} (Expected: {res.expectedIntent}) | Skill: {res.actualSkill}
                         </div>
@@ -246,7 +246,7 @@ export default function AiDashboard({ onBack }: AiDashboardProps) {
                 {evalCases.map((cs) => (
                   <div key={cs.id} className="flex items-center justify-between p-4 bg-white dark:bg-slate-950/30 rounded-xl border border-black/5 dark:border-white/5">
                     <div className="space-y-1">
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 italic">"{cs.input}"</div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 italic">&quot;{cs.input}&quot;</div>
                       <div className="text-[11px] text-slate-500 font-bold">
                         Sản sinh từ Log: {cs.sourceLogId || '-'} | Intent mong đợi: <span className="text-primary">{cs.expectedIntent || '-'}</span> | Skill: <span className="text-primary">{cs.expectedSkill || '-'}</span>
                       </div>

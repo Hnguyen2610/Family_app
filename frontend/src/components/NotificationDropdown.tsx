@@ -15,6 +15,7 @@ import {
 } from 'react-icons/fi';
 import Link from 'next/link';
 import DailySummaryModal from './DailySummaryModal';
+import HoroscopeModal from './HoroscopeModal';
 
 interface NotificationItemProps {
     n: any;
@@ -236,18 +237,29 @@ export default function NotificationDropdown({ onOpenAiChat }: NotificationDropd
         </div>
       )}
 
-      {/* Option 1: Daily Executive Summary Card Modal */}
       {selectedNotification && isMounted && (
-        <DailySummaryModal
-          isOpen={!!selectedNotification}
-          onClose={() => {
-            setSelectedNotification(null);
-            setIsOpen(false);
-          }}
-          notification={selectedNotification}
-          language={language}
-          onOpenAiChat={onOpenAiChat}
-        />
+        selectedNotification.type === 'HOROSCOPE' ? (
+          <HoroscopeModal
+            isOpen={!!selectedNotification}
+            onClose={() => {
+              setSelectedNotification(null);
+              setIsOpen(false);
+            }}
+            notification={selectedNotification}
+            language={language}
+          />
+        ) : (
+          <DailySummaryModal
+            isOpen={!!selectedNotification}
+            onClose={() => {
+              setSelectedNotification(null);
+              setIsOpen(false);
+            }}
+            notification={selectedNotification}
+            language={language}
+            onOpenAiChat={onOpenAiChat}
+          />
+        )
       )}
     </div>
   );

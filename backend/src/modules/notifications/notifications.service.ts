@@ -147,7 +147,7 @@ export class NotificationsService {
             type: 'HOROSCOPE',
             title: '🔮 Tử vi tuần mới',
             message: 'Bản tin tử vi tuần mới đã được cá nhân hóa dựa trên lịch trình của bạn. Chúc bạn một tuần mới tốt lành!',
-            metadata: { path: '/settings' }
+            metadata: { fullContent: horoscope }
           }, { skipTelegram: true });
 
           // 5. Send full horoscope text message directly over Telegram
