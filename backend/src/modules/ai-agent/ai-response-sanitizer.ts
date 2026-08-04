@@ -29,8 +29,8 @@ function escapeRegex(value: string) {
 
 function stripThoughtTags(content: string) {
   return content
-    .replace(/<\/?thought>/gi, '')
-    .replace(/<thought[^>]*>[\s\S]*?<\/thought>/gi, '')
+    .replace(/<(think|thought)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(think|thought)[^>]*>[\s\S]*$/gi, '')
     .trim();
 }
 
@@ -115,7 +115,7 @@ function detectReasons(original: string) {
 export function sanitizeAiResponse(content: string, fallback = FALLBACK_MESSAGE): SanitizedAiResponse {
   const original = String(content || '');
   const reasons = detectReasons(original);
-  const hasThought = /<\/?thought>/i.test(original);
+  const hasThought = /<\/?(think|thought)>/i.test(original);
 
   if (reasons.length === 0 && !hasThought) {
     return { content: original, sanitized: false, reasons: [] };

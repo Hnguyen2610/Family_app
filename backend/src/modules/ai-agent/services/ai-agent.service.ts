@@ -942,9 +942,13 @@ Khi hiển thị danh sách/lịch trình dưới dạng Bảng Markdown (Markdo
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 500,
+        // Reasoning-capable Groq models (e.g. qwen3) spend part of this budget on an
+        // internal <think> block before the real answer; 500 was too tight and left
+        // the response truncated mid-thought. sanitizeAiResponse strips the block below
+        // regardless, this just gives the model room to actually reach the answer.
+        max_tokens: 1200,
       });
-      return response.choices[0].message.content || '';
+      return sanitizeAiResponse(response.choices[0].message.content || '', '').content;
     } catch (err) {
       this.logger.warn(`Failed to generate briefing via Groq, falling back to Gemini: ${err}`);
       try {
@@ -953,7 +957,7 @@ Khi hiển thị danh sách/lịch trình dưới dạng Bảng Markdown (Markdo
           systemInstruction: systemPrompt,
         });
         const result = await model.generateContent(userPrompt);
-        return result.response.text();
+        return sanitizeAiResponse(result.response.text(), '').content;
       } catch (geminiErr) {
         this.logger.error(`Failed to generate briefing via Gemini as well: ${geminiErr}`);
         throw new Error('All LLM providers failed for daily briefing generation.');

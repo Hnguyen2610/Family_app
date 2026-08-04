@@ -43,4 +43,28 @@ internetSearch({
     expect(result).toEqual({ content, sanitized: false, reasons: [] });
     expect(hasRawToolLeakage(content)).toBe(false);
   });
+
+  it('strips <think> reasoning blocks and their content, keeping the real answer', () => {
+    const result = sanitizeAiResponse('<think>Let me analyze this step by step...</think>Chào cả nhà, hôm nay trời đẹp!');
+
+    expect(result.sanitized).toBe(true);
+    expect(result.reasons).toContain('thought_tag');
+    expect(result.content).toBe('Chào cả nhà, hôm nay trời đẹp!');
+    expect(result.content).not.toContain('analyze');
+  });
+
+  it('strips a truncated/unclosed <think> block through end of string instead of leaking it', () => {
+    const result = sanitizeAiResponse('<think>Here is a thinking process: 1. Analyze user input...', '');
+
+    expect(result.sanitized).toBe(true);
+    expect(result.content).toBe('');
+  });
+
+  it('strips <thought> reasoning blocks and their content (legacy tag name)', () => {
+    const result = sanitizeAiResponse('<thought>internal reasoning</thought>Câu trả lời thật.');
+
+    expect(result.sanitized).toBe(true);
+    expect(result.content).toBe('Câu trả lời thật.');
+    expect(result.content).not.toContain('internal reasoning');
+  });
 });
