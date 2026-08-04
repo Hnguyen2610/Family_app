@@ -72,6 +72,27 @@ export function useChatSessions({
     if (familyId) fetchSessions();
   }, [familyId, fetchSessions]);
 
+  // Restore the last active session for this family so a page reload (F5) lands back in the
+  // same conversation instead of the blank "no chat yet" screen.
+  useEffect(() => {
+    if (!familyId) return;
+    const savedSessionId = localStorage.getItem(`chat_session_${familyId}`);
+    if (savedSessionId) loadSession(savedSessionId);
+    // Only run when familyId changes (mount / family switch) — not on every loadSession identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyId]);
+
+  // Keep the persisted session id in sync so it always reflects what's on screen (new session,
+  // switched session, or explicitly started a fresh one).
+  useEffect(() => {
+    if (!familyId) return;
+    if (currentSessionId) {
+      localStorage.setItem(`chat_session_${familyId}`, currentSessionId);
+    } else {
+      localStorage.removeItem(`chat_session_${familyId}`);
+    }
+  }, [familyId, currentSessionId]);
+
   return {
     currentSessionId,
     deleteSession,

@@ -12,6 +12,7 @@ const INTERNAL_TOOL_NAMES = [
   'get_matches',
   'getSolarDateFromLunar',
   'getWeather',
+  'getHoroscope',
 ] as const;
 
 const FALLBACK_MESSAGE =

@@ -1,4 +1,4 @@
-import { handleGroqChat, handleGeminiChat, handleGeminiStream } from './ai-model-handlers';
+import { handleGroqChat, handleGeminiChat, handleGeminiStream, handleGroqStream } from './ai-model-handlers';
 
 describe('ai-model-handlers - Groq ReAct Loop', () => {
   let deps: any;
@@ -263,6 +263,95 @@ describe('ai-model-handlers - Groq ReAct Loop', () => {
 
     expect(capturedMessages).toHaveLength(2);
     expect(capturedMessages[1]).toEqual({ role: 'user', content: input.finalUserMessage });
+  });
+});
+
+describe('ai-model-handlers - Groq stream tool-call narration duplication', () => {
+  let deps: any;
+  let input: any;
+  let mockOpenai: any;
+  let mockChatService: any;
+  let mockLogger: any;
+  let mockRes: any;
+
+  function buildGroqStream(chunks: any[]) {
+    return (async function* () {
+      for (const c of chunks) yield c;
+    })();
+  }
+
+  beforeEach(() => {
+    mockChatService = { saveMessage: jest.fn().mockResolvedValue(null) };
+    mockLogger = { debug: jest.fn(), warn: jest.fn(), log: jest.fn(), error: jest.fn() };
+    mockRes = { write: jest.fn(), end: jest.fn() };
+    mockOpenai = { chat: { completions: { create: jest.fn() } } };
+
+    deps = {
+      openai: mockOpenai,
+      chatService: mockChatService,
+      logger: mockLogger,
+      groqModel: 'qwen/qwen3.6-27b',
+      aiMaxTokens: 800,
+      groqContextWindow: 131072,
+      historyLimit: 6,
+      executeTool: jest.fn(),
+    };
+
+    input = {
+      familyId: 'family-1',
+      history: [],
+      familyInfo: 'Family info text',
+      finalUserMessage: 'bao giờ ngoại hạng anh bắt đầu mùa giải mới',
+      userId: 'user-1',
+      intentRoute: { intent: 'football', requiresTools: true },
+      res: mockRes,
+    };
+  });
+
+  it('does not leave pre-tool-call narration duplicated alongside the final answer on the client', async () => {
+    // Round 1: model narrates BEFORE calling a tool (observed with reasoning-capable Groq
+    // models like qwen3) — this text streams to the client via raw `content` deltas even
+    // though it is not the final answer.
+    const round1 = {
+      data: buildGroqStream([
+        { choices: [{ delta: { content: 'Để mình tra lịch thi đấu mới nhất nhé...' }, finish_reason: null }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', function: { name: 'get_matches', arguments: '{}' } }] }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]),
+      response: { headers: new Map() as any },
+    };
+    // Round 2: the real final answer, grounded by the tool result — naturally restates the
+    // same facts, which is what makes round 1's narration read as an exact duplicate.
+    const round2 = {
+      data: buildGroqStream([
+        { choices: [{ delta: { content: 'Mùa giải mới khởi tranh 21/8/2026.' }, finish_reason: null }], usage: { prompt_tokens: 5, completion_tokens: 5 } },
+        { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      ]),
+      response: { headers: new Map() as any },
+    };
+
+    let callCount = 0;
+    mockOpenai.chat.completions.create.mockImplementation(() => {
+      callCount++;
+      const res = callCount === 1 ? round1 : round2;
+      return { withResponse: jest.fn().mockResolvedValue(res) };
+    });
+    deps.executeTool.mockResolvedValue({ ok: true, data: [{ title: 'Arsenal vs Coventry City' }] });
+
+    const result = await handleGroqStream(deps, input);
+
+    expect(result?.content).toBe('Mùa giải mới khởi tranh 21/8/2026.');
+
+    // The client must receive an authoritative replace_content sync with exactly the final
+    // round's text — not the two rounds concatenated — so any narration it already rendered
+    // from round 1's raw content deltas gets corrected instead of staying duplicated.
+    const replaceEvents = mockRes.write.mock.calls
+      .map((call: any[]) => call[0])
+      .filter((line: string) => line.includes('"type":"replace_content"'))
+      .map((line: string) => JSON.parse(line.replace(/^data: /, '').trim()));
+
+    expect(replaceEvents.length).toBeGreaterThan(0);
+    expect(replaceEvents.at(-1).content).toBe('Mùa giải mới khởi tranh 21/8/2026.');
   });
 });
 

@@ -102,55 +102,23 @@ export class NotificationsService {
 
       this.logger.log(`Found ${users.length} users with email to process.`);
 
-      const now = new Date();
-      // Shift by 7 hours to get ICT time accurately
-      const ictNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      const nextWeek = new Date(ictNow.getTime() + 7 * 24 * 60 * 60 * 1000);
-
       for (const user of users) {
         try {
-          // 1. Get events for the next 7 days
-          // We get events for current month and next month to be safe
-          const currentMonth = ictNow.getUTCMonth() + 1;
-          const currentYear = ictNow.getUTCFullYear();
-          const nextMonth = nextWeek.getUTCMonth() + 1;
-          const nextYear = nextWeek.getUTCFullYear();
+          // 1. Generate Horoscope using AI (Gemini)
+          const horoscope = await this.horoscopeService.generateWeeklyHoroscope(user.name, user.birthday || undefined);
 
-          const eventsCurrent = await this.eventsService.findAll('all', currentMonth, currentYear, user.id);
-          let allUpcomingEvents = [...eventsCurrent];
-
-          if (currentMonth !== nextMonth) {
-            const eventsNext = await this.eventsService.findAll('all', nextMonth, nextYear, user.id);
-            allUpcomingEvents = [...allUpcomingEvents, ...eventsNext];
-          }
-
-          // Filter for the next 7 days
-          const weekEvents = allUpcomingEvents.filter(e => {
-            const eventDate = new Date(e.date);
-            return eventDate >= ictNow && eventDate <= nextWeek;
-          });
-
-          const eventContext = weekEvents.length > 0
-            ? weekEvents.map(e => `- Ngày ${new Date(e.date).toLocaleDateString('vi-VN')}: ${e.title}${e.description ? ' (' + e.description + ')' : ''}`).join('\n')
-            : 'Không có sự kiện đặc biệt nào được ghi nhận trong lịch trình tuần này.';
-
-          const context = `Lịch trình/Sự kiện của người dùng trong 7 ngày tới:\n${eventContext}\n\nVai trò trong gia đình: ${user.role || 'Thành viên'}.`;
-
-          // 2. Generate Horoscope using AI (Gemini)
-          const horoscope = await this.horoscopeService.generateWeeklyHoroscope(user.name, user.birthday || undefined, context);
-
-          // 3. Send Email
+          // 2. Send Email
           await this.mailService.sendHoroscopeEmail(user.email, user.name, horoscope);
 
-          // 4. Send Push Notification (Skip short Telegram message)
+          // 3. Send Push Notification (Skip short Telegram message)
           await this.createNotification(user.id, {
             type: 'HOROSCOPE',
             title: '🔮 Tử vi tuần mới',
-            message: 'Bản tin tử vi tuần mới đã được cá nhân hóa dựa trên lịch trình của bạn. Chúc bạn một tuần mới tốt lành!',
+            message: 'Bản tin tử vi tuần mới đã sẵn sàng. Chúc bạn một tuần mới tốt lành!',
             metadata: { fullContent: horoscope }
           }, { skipTelegram: true });
 
-          // 5. Send full horoscope text message directly over Telegram
+          // 4. Send full horoscope text message directly over Telegram
           const cleanedHoroscope = cleanHtmlForTelegram(horoscope);
           const telegramMsg = `<b>🔮 TỬ VI TUẦN MỚI DÀNH CHO ${user.name.toUpperCase()}</b>\n\n${cleanedHoroscope}`;
           await this.telegramService.sendMessageToUser(user.id, telegramMsg);

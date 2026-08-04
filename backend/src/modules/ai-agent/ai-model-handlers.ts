@@ -717,6 +717,18 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
 
   assistantContent = decorateFinalAssistantContent(assistantContent, deps, res);
   assistantContent = await sanitizeFinalAssistantContent(assistantContent, deps, 'groq_stream', res);
+
+  // assistantContent is reset to '' at the top of every tool-calling round (see above), so it
+  // only ever holds the LAST round's text — correct for what gets saved/returned. But some Groq
+  // models (reasoning-capable ones observed to do this) stream narrative text alongside/before
+  // a tool_call in an earlier round, and that text was already forwarded to the client via raw
+  // `content` deltas with no signal to discard it. The client just appends every delta it sees
+  // (see useChatStream.ts), so that earlier narration stays visible once the final round streams
+  // in and naturally restates the same (now tool-grounded) facts — showing as an exact duplicate.
+  // Force-sync the client to the true final content so any such leftover narration is corrected,
+  // regardless of whether anything above needed to touch assistantContent.
+  res.write(`data: ${JSON.stringify({ type: 'replace_content', content: assistantContent })}\n\n`);
+
   const usage = buildUsageSnapshot({
     provider: 'groq', model: groqModel, contextWindow: groqContextWindow, maxOutputTokens: aiMaxTokens, historyLimit,
     promptText: buildPromptText(familyInfo, history, finalUserMessage, systemPromptOverride, dynamicSuffix),
