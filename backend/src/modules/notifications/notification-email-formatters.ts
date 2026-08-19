@@ -1,3 +1,8 @@
+export type DailyReminderEventContext = {
+  explanation: string;
+  advice?: string;
+};
+
 type EventCategoryInfo = {
   emoji: string;
   title: string;
@@ -67,11 +72,24 @@ export function buildDailyEmailHtml(familyName: string, events: any[], specialMs
   const sections = Object.entries(categories).map(([title, catEvents]) => {
     const info = getEventCategoryInfo(catEvents[0].type);
     const items = catEvents.map((event) => {
-      const desc = event.description ? `<br/><span style="color: #666; font-size: 0.9em;">- ${event.description}</span>` : '';
+      const context = getDailyReminderEventContext(event);
+      const explanationLabel = event.type === 'HOLIDAY' ? 'Vì sao có ngày này' : 'Vì sao nhắc';
+      const explanation = context.explanation
+        ? `<br/><span style="color: #666; font-size: 0.9em;"><strong>${explanationLabel}:</strong> ${context.explanation}</span>`
+        : '';
+      const advice = context.advice
+        ? `<br/><span style="color: #666; font-size: 0.9em;"><strong>Lời nhắn:</strong> ${context.advice}</span>`
+        : '';
+      const sourceNote = event.dailyReminderSource
+        ? `<br/><span style="color: #6b7280; font-size: 0.85em;"><strong>Nguồn:</strong> ${event.dailyReminderSource}</span>`
+        : '';
+
       return `
         <div style="margin-bottom: 12px; padding: 12px; background: ${info.bgColor}; border-left: 4px solid ${info.color}; border-radius: 4px;">
           <strong style="color: #111827;">${event.title}</strong>
-          ${desc}
+          ${sourceNote}
+          ${explanation}
+          ${advice}
         </div>
       `;
     }).join('');
@@ -109,4 +127,38 @@ function groupEventsByCategory(events: any[]) {
     categories[info.title].push(event);
   });
   return categories;
+}
+
+export function getDailyReminderEventContext(event: any): DailyReminderEventContext {
+  const aiContext = event?.dailyReminderContext;
+  if (isUsableContext(aiContext)) {
+    return {
+      explanation: aiContext.explanation.trim(),
+      advice: aiContext.advice?.trim() || undefined,
+    };
+  }
+
+  if (event?.type === 'HOLIDAY') {
+    return {
+      explanation: '',
+      advice: '',
+    };
+  }
+
+  const description = String(event?.description || '').trim();
+  if (description) {
+    return {
+      explanation: description,
+      advice: 'Hãy xem đây như một lời nhắc nhẹ để cả nhà chủ động chuẩn bị và dành sự quan tâm đúng lúc.',
+    };
+  }
+
+  return {
+    explanation: 'Sự kiện này có trong lịch gia đình để mọi người cùng nhớ và chủ động chuẩn bị.',
+    advice: 'Nếu sự kiện cần phối hợp, cả nhà nên xác nhận lại thời gian, người phụ trách và việc cần chuẩn bị.',
+  };
+}
+
+function isUsableContext(context: any): context is DailyReminderEventContext {
+  return typeof context?.explanation === 'string' && context.explanation.trim().length > 0;
 }

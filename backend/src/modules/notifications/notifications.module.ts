@@ -13,6 +13,7 @@ import { ProactiveBriefingBuilder } from './proactive-briefing.builder';
 import { NotificationDeliveryService } from './notification-delivery.service';
 import { ProactiveAssistantService } from './proactive-assistant.service';
 import { NotificationLogService } from './notification-log.service';
+import { DailyReminderAiContentService } from './daily-reminder-ai-content.service';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationLogService } from './notification-log.service';
     NotificationDeliveryService,
     ProactiveAssistantService,
     NotificationLogService,
+    DailyReminderAiContentService,
   ],
   exports: [NotificationsService, WebPushService, NotificationLogService],
 })

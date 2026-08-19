@@ -8,7 +8,7 @@ import { HoroscopeService } from '../ai-agent/services/horoscope.service';
 import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
 import { TelegramService } from '../telegram/telegram.service';
-import { buildDailyEmailHtml, buildMonthlyEmailHtml } from './notification-email-formatters';
+import { buildDailyEmailHtml, buildMonthlyEmailHtml, getDailyReminderEventContext } from './notification-email-formatters';
 import {
   cleanHtmlForTelegram,
   isValidEmail,
@@ -19,6 +19,7 @@ import {
 } from './notification-types';
 import { NotificationDeliveryService } from './notification-delivery.service';
 import { ProactiveAssistantService } from './proactive-assistant.service';
+import { DailyReminderAiContentService } from './daily-reminder-ai-content.service';
 
 @Injectable()
 export class NotificationsService {
@@ -36,6 +37,7 @@ export class NotificationsService {
     private readonly telegramService: TelegramService,
     private readonly notificationDeliveryService: NotificationDeliveryService,
     private readonly proactiveAssistantService: ProactiveAssistantService,
+    private readonly dailyReminderAiContentService: DailyReminderAiContentService,
   ) {}
 
   // --- In-App Notifications ---
@@ -269,79 +271,187 @@ export class NotificationsService {
     const isRam = lunarNow.day === 15;
     const lunarSpecialMsg = isMungMot ? "Hôm nay là Mùng 1 Âm lịch. Chúc gia đình tháng mới an lành!" : isRam ? "Hôm nay là ngày Rằm Âm lịch (15/12). Chúc gia đình vạn sự hanh thông!" : "";
 
-    // Track users who already received private event emails to avoid duplicates
-    const privateEmailsSent = new Map<string, any[]>();
+    const familyNameById = new Map(families.map((family) => [family.id, family.name]));
+    const remindersByUser = new Map<string, {
+      user: any;
+      familyNames: Set<string>;
+      eventsByKey: Map<string, any>;
+      hasLunarSpecial: boolean;
+    }>();
+
+    const getReminder = (user: any) => {
+      let reminder = remindersByUser.get(user.id);
+      if (!reminder) {
+        reminder = {
+          user,
+          familyNames: new Set<string>(),
+          eventsByKey: new Map<string, any>(),
+          hasLunarSpecial: false,
+        };
+        remindersByUser.set(user.id, reminder);
+      }
+      return reminder;
+    };
+
+    const addEventForUser = (user: any, familyName: string, event: any, source: string) => {
+      const reminder = getReminder(user);
+      reminder.familyNames.add(familyName);
+
+      const dateKey = event.date ? new Date(event.date).toISOString().slice(0, 10) : '';
+      const key = `${event.id || event.title}:${dateKey}:${event.scope || event.type || ''}`;
+      if (!reminder.eventsByKey.has(key)) {
+        reminder.eventsByKey.set(key, {
+          ...event,
+          dailyReminderSource: source,
+        });
+      }
+    };
 
     for (const family of families) {
-      const familyEmails = family.users
-        .map((u) => u.email)
-        .filter((e) => e && isValidEmail(e));
-
       // 1. Send FAMILY/GLOBAL events to all family members
       const allEvents = await this.eventsService.findAll(family.id, currentMonth, currentYear);
       const todayFamilyEvents = allEvents.filter(
         (e) => new Date(e.date).getDate() === currentDay && e.scope !== 'PRIVATE',
       );
 
-      if ((todayFamilyEvents.length > 0 || isMungMot || isRam) && familyEmails.length > 0) {
-        const html = buildDailyEmailHtml(family.name, todayFamilyEvents, lunarSpecialMsg);
-        await this.mailService.sendMail(
-          familyEmails,
-          isMungMot ? `[Family Calendar] Chúc mừng Mùng 1 tháng mới - ${currentDay}/${currentMonth}` : 
-          isRam ? `[Family Calendar] Nhắc nhở ngày Rằm - ${currentDay}/${currentMonth}` :
-          `[Family Calendar] Nhắc nhở sự kiện hôm nay - ${currentDay}/${currentMonth}`,
-          html,
-        );
-
-        // Push to family members
+      if (todayFamilyEvents.length > 0 || isMungMot || isRam) {
         for (const user of family.users) {
-          const pushTitle = isMungMot ? `🔮 Mùng 1 Âm lịch` : isRam ? `🔮 Nhắc nhở ngày Rằm` : `🔮 Nhắc nhở sự kiện hôm nay`;
-          const pushBody = lunarSpecialMsg || `Gia đình bạn có ${todayFamilyEvents.length} sự kiện diễn ra vào hôm nay.`;
+          const reminder = getReminder(user);
+          reminder.familyNames.add(family.name);
+          reminder.hasLunarSpecial = reminder.hasLunarSpecial || isMungMot || isRam;
 
-          await this.webPushService.sendToUser(user.id, {
-            title: pushTitle,
-            body: pushBody,
-            url: '/calendar'
-          });
+          for (const event of todayFamilyEvents) {
+            const source = event.type === 'HOLIDAY'
+              ? 'Lịch hệ thống'
+              : event.scope === 'GLOBAL'
+                ? 'Toàn hệ thống'
+                : `Gia đình ${family.name}`;
+            addEventForUser(user, family.name, event, source);
+          }
         }
       }
 
       // 2. Send PRIVATE events only to their creators
       for (const user of family.users) {
-        if (!user.email || !isValidEmail(user.email)) continue;
-
         const userEvents = await this.eventsService.findAll(family.id, currentMonth, currentYear, user.id);
         const todayPrivateEvents = userEvents.filter(
           (e) => new Date(e.date).getDate() === currentDay && e.scope === 'PRIVATE',
         );
 
         if (todayPrivateEvents.length > 0) {
-          // Accumulate private events across families for the same user
-          const existing = privateEmailsSent.get(user.id) || [];
-          privateEmailsSent.set(user.id, [...existing, ...todayPrivateEvents.map(e => ({ ...e, userEmail: user.email }))]);
+          for (const event of todayPrivateEvents) {
+            const sourceFamilyName = familyNameById.get(event.familyId) || family.name;
+            addEventForUser(
+              user,
+              sourceFamilyName,
+              { ...event, userEmail: user.email },
+              `Cá nhân · Gia đình ${sourceFamilyName}`,
+            );
+          }
         }
       }
     }
 
-    // Send one consolidated private event email per user
-    for (const [userId, events] of privateEmailsSent) {
-      const email = events[0].userEmail;
-      const html = buildDailyEmailHtml('Cá nhân', events);
-      await this.mailService.sendMail(
-        [email],
-        `[Family Calendar] Nhắc nhở sự kiện cá nhân hôm nay - ${currentDay}/${currentMonth}`,
-        html,
-      );
+    // Send one consolidated reminder per user across all families.
+    for (const [userId, reminder] of remindersByUser) {
+      const events = [...reminder.eventsByKey.values()];
+      if (events.length === 0 && !reminder.hasLunarSpecial) continue;
 
-      // Send Push notification
+      const familyNames = [...reminder.familyNames];
+      const audienceName = familyNames.length === 1
+        ? familyNames[0]
+        : `${reminder.user.name || 'bạn'} · ${familyNames.join(', ')}`;
+      const enrichedEvents = await this.dailyReminderAiContentService.enrichEvents(
+        events,
+        now,
+        audienceName,
+      );
+      const reminderTitle = isMungMot ? `[Family Calendar] Chúc mừng Mùng 1 tháng mới - ${currentDay}/${currentMonth}` :
+        isRam ? `[Family Calendar] Nhắc nhở ngày Rằm - ${currentDay}/${currentMonth}` :
+        `[Family Calendar] Nhắc nhở sự kiện hôm nay - ${currentDay}/${currentMonth}`;
+      const specialMsg = reminder.hasLunarSpecial ? lunarSpecialMsg : '';
+      const html = buildDailyEmailHtml(audienceName, enrichedEvents, specialMsg);
+
+      if (reminder.user.email && isValidEmail(reminder.user.email)) {
+        await this.mailService.sendMail([reminder.user.email], reminderTitle, html);
+      }
+
       await this.webPushService.sendToUser(userId, {
-        title: `🔔 Nhắc nhở cá nhân hôm nay`,
-        body: `Bạn có ${events.length} sự kiện cá nhân diễn ra vào hôm nay.`,
+        title: isMungMot ? `🔮 Mùng 1 Âm lịch` : isRam ? `🔮 Nhắc nhở ngày Rằm` : `🔮 Nhắc nhở sự kiện hôm nay`,
+        body: this.buildDailyPushBody(enrichedEvents, specialMsg),
         url: '/calendar'
       });
+      await this.telegramService.sendMessageToUser(
+        userId,
+        this.buildDailyTelegramMessage(
+          audienceName,
+          reminderTitle.replace('[Family Calendar] ', ''),
+          enrichedEvents,
+          specialMsg,
+        ),
+      );
 
-      this.logger.log(`Sent private event reminder to user ${userId}`);
+      this.logger.log(`Sent daily reminder to user ${userId}`);
     }
+  }
+
+  private buildDailyTelegramMessage(
+    familyName: string,
+    title: string,
+    events: any[],
+    specialMsg?: string,
+  ) {
+    const audienceLine = familyName === 'Cá nhân'
+      ? 'Lịch Cá nhân'
+      : familyName.includes(' · ')
+        ? `Tổng hợp: ${this.escapeTelegramHtml(familyName)}`
+      : `Gia đình ${this.escapeTelegramHtml(familyName)}`;
+    const lines = [
+      `<b>${this.escapeTelegramHtml(title)}</b>`,
+      audienceLine,
+    ];
+
+    if (specialMsg) {
+      lines.push('', this.escapeTelegramHtml(specialMsg));
+    }
+
+    if (events.length > 0) {
+      lines.push('', 'Các sự kiện hôm nay:');
+      for (const event of events) {
+        const context = getDailyReminderEventContext(event);
+        const explanationLabel = event.type === 'HOLIDAY' ? 'Vì sao' : 'Vì sao nhắc';
+        lines.push(`• ${this.escapeTelegramHtml(event.title)}`);
+        if (event.dailyReminderSource) {
+          lines.push(`  Nguồn: ${this.escapeTelegramHtml(event.dailyReminderSource)}`);
+        }
+        if (context.explanation) {
+          lines.push(`  ${explanationLabel}: ${this.escapeTelegramHtml(context.explanation)}`);
+        }
+        if (context.advice) {
+          lines.push(`  Lời nhắn: ${this.escapeTelegramHtml(context.advice)}`);
+        }
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  private buildDailyPushBody(events: any[], specialMsg?: string) {
+    if (events.length === 1) {
+      const event = events[0];
+      const context = getDailyReminderEventContext(event);
+      const note = context.advice || context.explanation;
+      return note ? `${event.title}: ${note}` : `Hôm nay có sự kiện: ${event.title}.`;
+    }
+    if (specialMsg) return specialMsg;
+    return `Gia đình bạn có ${events.length} sự kiện diễn ra vào hôm nay.`;
+  }
+
+  private escapeTelegramHtml(value: unknown) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
 }
