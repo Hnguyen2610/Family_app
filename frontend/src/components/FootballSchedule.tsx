@@ -5,8 +5,10 @@ import type { ComponentType, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FiAlertCircle,
+  FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
+  FiChevronUp,
   FiClock,
   FiList,
   FiRefreshCw,
@@ -36,6 +38,7 @@ import {
 type FootballView = 'today' | 'schedule' | 'standings' | 'teams';
 
 const ALL_LEAGUES = 'ALL';
+const VIETNAM_LEAGUE_CODES = new Set(['VLEAGUE', 'VIETNAM']);
 
 const STATUS_LABEL: Record<string, { vi: string; en: string }> = {
   FINISHED: { vi: 'Đã kết thúc', en: 'Finished' },
@@ -57,10 +60,12 @@ const FALLBACK_LEAGUES: FootballLeague[] = [
   { code: 'DED', name: 'Eredivisie', area: 'Netherlands' },
   { code: 'PPL', name: 'Primeira Liga', area: 'Portugal' },
   { code: 'ELC', name: 'Championship', area: 'England' },
-  { code: 'BSA', name: 'Brazil Serie A', area: 'Brazil' },
+  { code: 'BSA', name: 'Campeonato Brasileiro Serie A', area: 'Brazil' },
   { code: 'CL', name: 'Champions League', area: 'Europe' },
-  { code: 'WC', name: 'World Cup', area: 'World' },
+  { code: 'WC', name: 'FIFA World Cup', area: 'World' },
   { code: 'EC', name: 'European Championship', area: 'Europe' },
+  { code: 'VLEAGUE', name: 'V-League 1', area: 'Việt Nam' },
+  { code: 'VIETNAM', name: 'Đội tuyển Việt Nam', area: 'Việt Nam' },
 ];
 
 const VIEW_META: Record<FootballView, { icon: ComponentType<{ className?: string }>; vi: string; en: string }> = {
@@ -86,6 +91,32 @@ function scoreText(match: FootballMatch) {
   const hasPenalties = match.homePenalties !== undefined && match.homePenalties !== null
     && match.awayPenalties !== undefined && match.awayPenalties !== null;
   return hasPenalties ? `${base} pen ${match.homePenalties}-${match.awayPenalties}` : base;
+}
+
+function groupMatchesByCompetition(matches: FootballMatch[]) {
+  const groups = new Map<string, {
+    key: string;
+    name: string;
+    emblem: string | null;
+    matches: FootballMatch[];
+  }>();
+
+  for (const match of matches) {
+    const key = match.competitionCode || match.competitionName || 'football';
+    const existing = groups.get(key);
+    if (existing) {
+      existing.matches.push(match);
+    } else {
+      groups.set(key, {
+        key,
+        name: match.competitionName || 'Football',
+        emblem: match.competitionEmblem,
+        matches: [match],
+      });
+    }
+  }
+
+  return [...groups.values()];
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -120,6 +151,65 @@ function ErrorState({ onRetry, language }: { onRetry: () => void; language: stri
   );
 }
 
+function CompetitionMatchGroup({
+  group,
+  language,
+  onOpenMatch,
+}: {
+  group: ReturnType<typeof groupMatchesByCompetition>[number];
+  language: string;
+  onOpenMatch: (match: FootballMatch) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-900/50"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
+            {group.emblem ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={group.emblem} alt="" className="h-8 w-8 object-contain" />
+            ) : (
+              <FiShield className="h-7 w-7 text-emerald-500" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-black text-slate-900 dark:text-slate-100 sm:text-lg">
+              {group.name}
+            </h3>
+            <p className="text-xs font-semibold text-slate-400">
+              {group.matches.length} {language === 'vi' ? 'trận' : group.matches.length === 1 ? 'match' : 'matches'}
+            </p>
+          </div>
+        </div>
+        {isOpen ? (
+          <FiChevronUp className="h-6 w-6 shrink-0 text-slate-700 dark:text-slate-200" />
+        ) : (
+          <FiChevronDown className="h-6 w-6 shrink-0 text-slate-700 dark:text-slate-200" />
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="divide-y divide-border">
+          {group.matches.map((match) => (
+            <MatchRow
+              key={match.id}
+              match={match}
+              language={language}
+              onClick={match.detailAvailable === false ? undefined : () => onOpenMatch(match)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MatchRow({
   match,
   language,
@@ -127,49 +217,67 @@ function MatchRow({
 }: {
   match: FootballMatch;
   language: string;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
   const { time, day } = formatMatchTime(match.utcDate, language);
   const statusLabel = STATUS_LABEL[match.status];
   const isLive = match.status === 'LIVE' || match.status === 'IN_PLAY' || match.status === 'PAUSED';
+  const isFinished = match.status === 'FINISHED';
   const score = scoreText(match);
-
-  return (
-    <button
-      onClick={onClick}
-      className="w-full bg-card border border-border rounded-2xl p-3 sm:px-4 sm:py-3 hover:shadow-sm hover:border-primary/40 transition-all text-left"
-    >
-      <div className="grid grid-cols-[4rem_minmax(0,1fr)] gap-3 sm:flex sm:items-center sm:gap-4">
-        <div className="w-16 shrink-0 text-center">
-          <div className="text-[11px] sm:text-xs text-slate-400 font-semibold uppercase">{day}</div>
-          <div className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">{time}</div>
+  const centerLabel = score
+    ? isFinished
+      ? language === 'vi' ? 'KT' : 'FT'
+      : statusLabel ? (language === 'vi' ? statusLabel.vi : statusLabel.en) : match.status
+    : day;
+  const rowContent = (
+    <>
+      <div className="min-w-0 text-right text-sm font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+        <span className="block truncate">{match.homeTeam}</span>
+      </div>
+      <TeamCrest name={match.homeTeam} crest={match.homeTeamCrest} />
+      <div className="text-center">
+        <div className={`text-lg font-black tabular-nums sm:text-2xl ${isLive ? 'text-rose-500' : 'text-slate-900 dark:text-slate-100'}`}>
+          {score || time}
         </div>
-        <div className="min-w-0 sm:flex-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-primary/80 mb-0.5">
-            {match.competitionEmblem && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={match.competitionEmblem} alt="" className="w-4 h-4 object-contain" />
-            )}
-            <span className="truncate">{match.competitionName}</span>
-          </div>
-          <div className="font-semibold text-sm sm:text-base text-slate-800 dark:text-slate-100 break-words sm:truncate">
-            {match.homeTeam} <span className="text-slate-400">vs</span> {match.awayTeam}
-          </div>
-        </div>
-        <div className="col-span-2 flex items-center justify-between gap-3 border-t border-border/70 pt-2 sm:col-span-1 sm:block sm:border-0 sm:pt-0 sm:shrink-0 sm:text-right">
-          {score ? (
-            <div className={`font-bold text-sm sm:text-base ${isLive ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200'}`}>
-              {score}
-            </div>
-          ) : (
-            <span className="text-xs text-slate-400 font-semibold sm:hidden">-</span>
-          )}
-          <div className="text-[11px] text-slate-400 font-semibold">
-            {statusLabel ? (language === 'vi' ? statusLabel.vi : statusLabel.en) : match.status}
-          </div>
+        <div className="mt-0.5 truncate text-[10px] font-black uppercase text-slate-400 sm:text-xs">
+          {centerLabel}
         </div>
       </div>
-    </button>
+      <TeamCrest name={match.awayTeam} crest={match.awayTeamCrest} />
+      <div className="min-w-0 text-left text-sm font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+        <span className="block truncate">{match.awayTeam}</span>
+      </div>
+    </>
+  );
+  const rowClassName = `grid w-full grid-cols-[minmax(0,1fr)_2rem_4.5rem_2rem_minmax(0,1fr)] items-center gap-2 bg-card px-3 py-4 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_2.5rem_5.5rem_2.5rem_minmax(0,1fr)] sm:gap-3 sm:px-5 ${
+    onClick ? 'hover:bg-slate-50 dark:hover:bg-slate-900/50' : 'cursor-default'
+  }`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={rowClassName}>
+        {rowContent}
+      </button>
+    );
+  }
+
+  return (
+    <div className={rowClassName}>
+      {rowContent}
+    </div>
+  );
+}
+
+function TeamCrest({ name, crest }: { name: string; crest: string | null }) {
+  return (
+    <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-50 dark:bg-slate-900 sm:h-10 sm:w-10">
+      {crest ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={crest} alt="" title={name} className="h-7 w-7 object-contain sm:h-9 sm:w-9" />
+      ) : (
+        <FiShield className="h-5 w-5 text-slate-300" />
+      )}
+    </div>
   );
 }
 
@@ -288,7 +396,7 @@ export default function FootballSchedule() {
 
   const leaguesState = useAsync(
     () => cachedFootballRequest(
-      ['leagues'],
+      ['leagues-vietnam-v1'],
       () => footballAPI.getLeagues().then((res) => res.data),
       24 * 60 * 60 * 1000,
       7 * 24 * 60 * 60 * 1000,
@@ -297,7 +405,7 @@ export default function FootballSchedule() {
   );
   const todayState = useAsync(
     () => cachedFootballRequest(
-      ['today'],
+      ['today-vietnam-v1'],
       () => footballAPI.getTodayMatches().then((res) => res.data),
       5 * 60 * 1000,
     ),
@@ -306,7 +414,7 @@ export default function FootballSchedule() {
   const concreteLeague = selectedLeague === ALL_LEAGUES ? 'PL' : selectedLeague;
   const scheduleState = useAsync(
     () => cachedFootballRequest(
-      ['matches', weekOffset, selectedLeague],
+      ['matches-vietnam-v1', weekOffset, selectedLeague],
       () => footballAPI.getMatches(
         weekOffset,
         selectedLeague === ALL_LEAGUES ? undefined : selectedLeague,
@@ -335,15 +443,21 @@ export default function FootballSchedule() {
 
   const leagues = leaguesState.data?.leagues?.length ? leaguesState.data.leagues : FALLBACK_LEAGUES;
   const supportsAllLeagues = activeView === 'schedule';
+  const leaguesForView = useMemo(
+    () => activeView === 'schedule'
+      ? leagues
+      : leagues.filter((league) => !VIETNAM_LEAGUE_CODES.has(league.code)),
+    [activeView, leagues],
+  );
   const leagueOptions = useMemo(
     () => supportsAllLeagues
       ? [{
           code: ALL_LEAGUES,
           name: language === 'vi' ? 'Tất cả trận đấu' : 'All matches',
-          area: language === 'vi' ? 'Tất cả giải free' : 'All free competitions',
-        }, ...leagues]
-      : leagues,
-    [language, leagues, supportsAllLeagues],
+          area: '',
+        }, ...leaguesForView]
+      : leaguesForView,
+    [language, leaguesForView, supportsAllLeagues],
   );
   const selectedLeagueInfo = useMemo(
     () => leagueOptions.find((league) => league.code === selectedLeague) || leagueOptions[0],
@@ -363,9 +477,9 @@ export default function FootballSchedule() {
 
   useEffect(() => {
     if (!supportsAllLeagues && selectedLeague === ALL_LEAGUES) {
-      setSelectedLeague(leagues[0]?.code || 'PL');
+      setSelectedLeague(leaguesForView[0]?.code || 'PL');
     }
-  }, [leagues, selectedLeague, supportsAllLeagues]);
+  }, [leaguesForView, selectedLeague, supportsAllLeagues]);
 
   useEffect(() => {
     if (!selectedTeam) return;
@@ -395,14 +509,16 @@ export default function FootballSchedule() {
 
   const renderMatches = (matches: FootballMatch[], emptyText: string) => {
     if (!matches.length) return <EmptyState>{emptyText}</EmptyState>;
+    const groups = groupMatchesByCompetition(matches);
+
     return (
-      <div className="space-y-2">
-        {matches.map((match) => (
-          <MatchRow
-            key={match.id}
-            match={match}
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <CompetitionMatchGroup
+            key={group.key}
+            group={group}
             language={language}
-            onClick={() => router.push(`/football/matches/${match.id}`)}
+            onOpenMatch={(match) => router.push(`/football/matches/${match.id}`)}
           />
         ))}
       </div>
@@ -415,7 +531,7 @@ export default function FootballSchedule() {
       if (todayState.error) return <ErrorState language={language} onRetry={todayState.refetch} />;
       return renderMatches(
         todayState.data?.matches || [],
-        language === 'vi' ? 'Không có trận nào hôm nay trong các giải free.' : 'No free-tier matches today.',
+        language === 'vi' ? 'Không có trận nào hôm nay.' : 'No matches today.',
       );
     }
 
@@ -426,8 +542,8 @@ export default function FootballSchedule() {
         scheduleState.data?.matches || [],
         selectedLeague === ALL_LEAGUES
           ? language === 'vi'
-            ? 'Không có trận nào trong tuần này trong các giải free.'
-            : 'No matches scheduled this week across free competitions.'
+            ? 'Không có trận nào trong tuần này.'
+            : 'No matches scheduled this week.'
           : language === 'vi'
             ? 'Không có trận nào trong tuần này cho giải đã chọn.'
             : 'No matches scheduled this week for the selected competition.',
@@ -494,7 +610,7 @@ export default function FootballSchedule() {
           </h3>
           {!selectedTeam ? (
             <p className="text-sm text-slate-500 font-semibold">
-              {language === 'vi' ? 'Bấm vào đội để xem vài trận sắp tới nếu free API trả dữ liệu.' : 'Pick a team to fetch upcoming matches when the free API provides them.'}
+              {language === 'vi' ? 'Bấm vào đội để xem vài trận sắp tới nếu hệ thống có dữ liệu.' : 'Pick a team to fetch upcoming matches when data is available.'}
             </p>
           ) : teamMatchesLoading ? (
             <LoadingState />
@@ -532,12 +648,12 @@ export default function FootballSchedule() {
           </div>
           <div className="min-w-0">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              {language === 'vi' ? 'Bóng đá' : 'Football'}
+              {language === 'vi' ? 'Lịch Bóng đá' : 'Football Calendar'}
             </h2>
             <p className="text-xs text-slate-500 font-semibold mt-1 leading-relaxed">
               {language === 'vi'
-                ? 'Lịch, kết quả, bảng xếp hạng và đội bóng từ các giải free'
-                : 'Schedules, scores, standings and teams from free-tier competitions'}
+                ? 'Lịch, kết quả, bảng xếp hạng và đội bóng'
+                : 'Schedules, scores, standings and teams'}
             </p>
           </div>
         </div>
@@ -590,16 +706,11 @@ export default function FootballSchedule() {
             <SelectContent align="start" alignItemWithTrigger={false} className="min-w-[260px]">
               {leagueOptions.map((league) => (
                 <SelectItem key={league.code} value={league.code}>
-                  {league.code === ALL_LEAGUES ? league.name : `${league.name} (${league.code})`}
+                  {league.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {selectedLeagueInfo && (
-            <span className="text-xs font-semibold text-slate-500 sm:ml-1">
-              {selectedLeagueInfo.area}
-            </span>
-          )}
         </div>
       )}
 

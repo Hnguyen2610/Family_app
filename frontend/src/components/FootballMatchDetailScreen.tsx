@@ -71,7 +71,7 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
   const { language } = useTranslation();
   const { data, isLoading, error, refetch } = useAsync(
     () => cachedFootballRequest(
-      ['match-detail-enriched-v1', matchId],
+      ['match-detail-enriched-v2', matchId],
       () => footballAPI.getMatchDetail(matchId).then((res) => res.data),
       20 * 60 * 1000,
     ),

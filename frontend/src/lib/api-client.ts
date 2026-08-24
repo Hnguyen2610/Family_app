@@ -430,6 +430,7 @@ export type FootballMatch = {
   awayTeam: string;
   awayTeamCrest: string | null;
   status: string;
+  detailAvailable?: boolean;
   matchday?: number | null;
   stage?: string | null;
   group?: string | null;

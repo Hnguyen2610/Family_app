@@ -12,6 +12,7 @@ export type FootballMatch = {
   awayTeam: string;
   awayTeamCrest: string | null;
   status: string;
+  detailAvailable?: boolean;
   matchday?: number | null;
   stage?: string | null;
   group?: string | null;
@@ -134,6 +135,7 @@ export class FootballService {
   private readonly teamMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly todayMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly allMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
+  private readonly vietnamMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly europaLeagueCache = new Map<string, { expiresAt: number; summary: string }>();
   private readonly cacheTtlMs = 10 * 60 * 1000;
 
@@ -150,6 +152,8 @@ export class FootballService {
     { code: 'CL', name: 'Champions League', area: 'Europe' },
     { code: 'WC', name: 'FIFA World Cup', area: 'World' },
     { code: 'EC', name: 'European Championship', area: 'Europe' },
+    { code: 'VLEAGUE', name: 'V-League 1', area: 'Việt Nam' },
+    { code: 'VIETNAM', name: 'Đội tuyển Việt Nam', area: 'Việt Nam' },
   ];
 
   // Keep the legacy multi-league schedule narrow. The UI uses single-league calls to stay under
@@ -165,6 +169,10 @@ export class FootballService {
 
   async getMatchesForLeague(leagueCode: string, dateFrom: string, dateTo: string): Promise<FootballMatch[]> {
     const code = this.normalizeLeagueCode(leagueCode);
+    if (this.isVietnamLeagueCode(code)) {
+      return this.getVietnamFootballMatches(code, dateFrom, dateTo);
+    }
+
     const cacheKey = `${code}:${dateFrom}:${dateTo}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
@@ -216,8 +224,8 @@ export class FootballService {
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
 
     if (!this.apiKey) {
-      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or empty all-football matches.');
-      return cached?.matches || [];
+      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or Vietnam-only all-football matches.');
+      return cached?.matches || this.getAllVietnamFootballMatches(dateFrom, dateTo);
     }
 
     const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
@@ -233,9 +241,11 @@ export class FootballService {
     }
 
     const data = (await response.json()) as any;
-    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code));
-    const matches = this.mapMatches(data.matches || [])
+    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code).filter((code) => !this.isVietnamLeagueCode(code)));
+    const apiMatches = this.mapMatches(data.matches || [])
       .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
+    const vietnamMatches = await this.getAllVietnamFootballMatches(dateFrom, dateTo);
+    const matches = [...apiMatches, ...vietnamMatches];
 
     matches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
     this.allMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
@@ -248,8 +258,8 @@ export class FootballService {
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
 
     if (!this.apiKey) {
-      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or empty today football matches.');
-      return cached?.matches || [];
+      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or Vietnam-only today football matches.');
+      return cached?.matches || this.getAllVietnamFootballMatches(dateKey, dateKey);
     }
 
     const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateKey}&dateTo=${dateKey}`, {
@@ -265,9 +275,11 @@ export class FootballService {
     }
 
     const data = (await response.json()) as any;
-    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code));
-    const matches = this.mapMatches(data.matches || [])
+    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code).filter((code) => !this.isVietnamLeagueCode(code)));
+    const apiMatches = this.mapMatches(data.matches || [])
       .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
+    const vietnamMatches = await this.getAllVietnamFootballMatches(dateKey, dateKey);
+    const matches = [...apiMatches, ...vietnamMatches];
 
     this.todayMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
     return matches;
@@ -497,12 +509,17 @@ export class FootballService {
     const response = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.tavilyApiKey}` },
-      body: JSON.stringify({ query, include_answer: true, max_results: 5, search_depth: 'basic' }),
+      body: JSON.stringify({
+        query,
+        include_answer: false,
+        include_raw_content: true,
+        max_results: 5,
+        search_depth: 'advanced',
+      }),
     });
     if (!response.ok) throw new Error(`Tavily API returned ${response.status}`);
 
     const data = (await response.json().catch(() => ({}))) as any;
-    const answer = typeof data.answer === 'string' ? data.answer.trim() : '';
     const rawResults = Array.isArray(data.results) ? data.results : [];
     const sources = rawResults
       .slice(0, 5)
@@ -511,24 +528,19 @@ export class FootballService {
         url: String(result.url || ''),
       }))
       .filter((source: FootballMatchEnrichmentSource) => source.url);
-    const fallbackSummary = answer || rawResults
-      .map((result: any) => String(result.content || result.raw_content || '').trim())
-      .filter(Boolean)
-      .join('\n\n')
-      .slice(0, 1200);
-    const searchableText = [
-      answer,
-      ...rawResults.map((result: any) => `${result.title || ''}\n${result.content || ''}\n${result.raw_content || ''}`),
-    ].join('\n');
+    const searchableText = rawResults
+      .map((result: any) => `${result.title || ''}\n${result.content || ''}\n${result.raw_content || ''}`)
+      .join('\n');
 
     const fields: FootballMatchEnrichment['fields'] = {};
     const filledFields: FootballDeepFieldKey[] = [];
     for (const field of missingFields) {
-      const filled = Boolean(fallbackSummary) && this.hasEnrichmentSignal(field, searchableText);
+      const summary = this.extractEnrichmentSummary(field, searchableText);
+      const filled = Boolean(summary);
       fields[field] = {
         provider: 'tavily',
         status: filled ? 'filled' : 'missing',
-        summary: filled ? fallbackSummary : null,
+        summary,
         sources,
       };
       if (filled) filledFields.push(field);
@@ -564,16 +576,248 @@ export class FootballService {
     return terms[field];
   }
 
-  private hasEnrichmentSignal(field: FootballDeepFieldKey, text: string) {
-    const patterns: Record<FootballDeepFieldKey, RegExp> = {
-      events: /\b(goal|scorer|assist|yellow|red|card|booking|substitution|lineup|possession|shots?|corners?)\b/i,
-      goals: /\b(goal|goals|scored|scorer|equaliser|equalizer|winner|assist)\b/i,
-      cards: /\b(yellow card|red card|booking|booked|sent off|dismissed|card)\b/i,
-      substitutions: /\b(substitution|substituted|replaced|came on|off the bench)\b/i,
-      lineups: /\b(lineups?|starting xi|starting 11|starters|formation|substitutes|bench)\b/i,
-      statistics: /\b(possession|shots?|corners?|xg|passes|fouls|offsides|saves)\b/i,
+  private extractEnrichmentSummary(field: FootballDeepFieldKey, text: string) {
+    const lines = this.toEnrichmentCandidateLines(text);
+    const patterns = this.getEnrichmentPatterns(field);
+    const matches = lines.filter((line) => (
+      patterns.some((pattern) => pattern.test(line)) &&
+      this.isSpecificEnrichmentLine(field, line) &&
+      !this.isNegatedEnrichmentLine(field, line)
+    ));
+    const unique = Array.from(new Set(matches.map((line) => line.replace(/\s+/g, ' ').trim())));
+    return unique.length ? unique.slice(0, 12).join('\n') : null;
+  }
+
+  private toEnrichmentCandidateLines(text: string) {
+    return text
+      .replace(/\r/g, '\n')
+      .split(/\n+|[.!?]\s+/)
+      .map((line) => line.trim())
+      .filter((line) => line.length >= 8 && line.length <= 320);
+  }
+
+  private getEnrichmentPatterns(field: FootballDeepFieldKey) {
+    const patterns: Record<FootballDeepFieldKey, RegExp[]> = {
+      events: [/\b(goal!|yellow card|red card|substitution|replaces|booked|sent off)\b/i],
+      goals: [/\bgoal!?\b/i, /\b(scored|scores|equaliser|equalizer|winner|headed home|assist(?:ed)? by)\b/i],
+      cards: [/\b(yellow card|red card|booking|booked|sent off|dismissed)\b/i],
+      substitutions: [/\b(substitution|substituted|replaces|replaced|came on|off the bench)\b/i],
+      lineups: [/\b(starting lineups?|starting xi|starting 11|lineup:|formation|substitutes:)\b/i],
+      statistics: [/\b(possession|shots? on target|shots?|corners?|passes?|pass accuracy|fouls|offsides|saves|xg)\b/i],
     };
-    return patterns[field].test(text);
+    return patterns[field];
+  }
+
+  private isSpecificEnrichmentLine(field: FootballDeepFieldKey, line: string) {
+    const lower = line.toLowerCase();
+    if (/live stats h2h|video summary|rounds standings|analysis preview|lineups events news/.test(lower)) return false;
+    if (field === 'statistics') return /(\d|%)/.test(line);
+    if (field === 'lineups') return /\b(starting lineups?|starting xi|starting 11|lineup:|formation|substitutes:)\b/i.test(line);
+    return true;
+  }
+
+  private isNegatedEnrichmentLine(field: FootballDeepFieldKey, line: string) {
+    const lower = line.toLowerCase();
+    if (field === 'cards' || field === 'events') {
+      return /\b(no|without)\b.{0,40}\b(yellow|red|cards?|bookings?)\b/.test(lower);
+    }
+    if (field === 'goals') {
+      return /\b(no goals?|goalless|scoreless)\b/.test(lower);
+    }
+    return false;
+  }
+
+  private isVietnamLeagueCode(code: string) {
+    return code === 'VLEAGUE' || code === 'VIETNAM';
+  }
+
+  private async getAllVietnamFootballMatches(dateFrom: string, dateTo: string) {
+    const results = await Promise.allSettled([
+      this.getVietnamFootballMatches('VLEAGUE', dateFrom, dateTo),
+      this.getVietnamFootballMatches('VIETNAM', dateFrom, dateTo),
+    ]);
+    const matches = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+    return this.dedupeMatches(matches);
+  }
+
+  private async getVietnamFootballMatches(code: 'VLEAGUE' | 'VIETNAM', dateFrom: string, dateTo: string): Promise<FootballMatch[]> {
+    const cacheKey = `vietnam:${code}:${dateFrom}:${dateTo}`;
+    const cached = this.vietnamMatchesCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.matches;
+
+    if (!this.tavilyApiKey) {
+      this.logger.warn(`TAVILY_API_KEY missing; returning cached or empty ${code} matches.`);
+      return cached?.matches || [];
+    }
+
+    const query = code === 'VLEAGUE'
+      ? `lịch thi đấu V-League từ ${dateFrom} đến ${dateTo}`
+      : `lịch thi đấu đội tuyển Việt Nam từ ${dateFrom} đến ${dateTo}`;
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.tavilyApiKey}` },
+      body: JSON.stringify({
+        query,
+        include_answer: false,
+        include_raw_content: true,
+        max_results: 5,
+        search_depth: 'basic',
+      }),
+    });
+    if (!response.ok) {
+      if (cached) return cached.matches;
+      throw new Error(`Tavily API returned ${response.status}`);
+    }
+
+    const data = (await response.json().catch(() => ({}))) as any;
+    const rawResults = Array.isArray(data.results) ? data.results : [];
+    const matches = this.dedupeMatches(
+      rawResults.flatMap((result: any) => this.extractVietnamMatchesFromText(
+        `${result.title || ''}\n${result.content || ''}\n${result.raw_content || ''}`,
+        code,
+        dateFrom,
+        dateTo,
+      )),
+    ).sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
+
+    this.vietnamMatchesCache.set(cacheKey, { expiresAt: Date.now() + 6 * 60 * 60 * 1000, matches });
+    return matches;
+  }
+
+  private extractVietnamMatchesFromText(
+    text: string,
+    code: 'VLEAGUE' | 'VIETNAM',
+    dateFrom: string,
+    dateTo: string,
+  ): FootballMatch[] {
+    const lines = text
+      .replace(/\r/g, '\n')
+      .split(/\n+|[;|]/)
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter((line) => line.length >= 12 && line.length <= 260);
+    const matches: FootballMatch[] = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const context = [lines[index - 2], lines[index - 1], lines[index]].filter(Boolean).join(' ');
+      const parsed = this.parseVietnamScheduleLine(context, code, dateFrom, dateTo);
+      if (parsed) matches.push(parsed);
+    }
+
+    return this.dedupeMatches(matches);
+  }
+
+  private parseVietnamScheduleLine(
+    line: string,
+    code: 'VLEAGUE' | 'VIETNAM',
+    dateFrom: string,
+    dateTo: string,
+  ): FootballMatch | null {
+    if (!this.isLikelyVietnamScheduleLine(line, code)) return null;
+
+    const parsedDate = this.parseVietnamMatchDate(line, dateFrom, dateTo);
+    if (!parsedDate) return null;
+
+    const teams = this.parseMatchTeams(line);
+    if (!teams) return null;
+
+    const utcDate = this.buildVietnamMatchUtcDate(parsedDate.dateKey, parsedDate.time);
+    return {
+      id: -Math.abs(this.hashMatchId(`${code}:${utcDate}:${teams.home}:${teams.away}`)),
+      utcDate,
+      competitionCode: code,
+      competitionName: code === 'VLEAGUE' ? 'V-League 1' : 'Đội tuyển Việt Nam',
+      competitionEmblem: null,
+      homeTeam: teams.home,
+      homeTeamCrest: null,
+      awayTeam: teams.away,
+      awayTeamCrest: null,
+      status: 'TIMED',
+      detailAvailable: false,
+      matchday: null,
+      stage: null,
+      group: null,
+      homeScore: null,
+      awayScore: null,
+      homePenalties: null,
+      awayPenalties: null,
+    };
+  }
+
+  private isLikelyVietnamScheduleLine(line: string, code: 'VLEAGUE' | 'VIETNAM') {
+    const normalized = line.toLowerCase();
+    if (!/(vs| v |đấu với|gặp| - | – )/i.test(line)) return false;
+    if (code === 'VIETNAM') return /việt nam|vietnam|u23|u22|đội tuyển/.test(normalized);
+    return /v-league|vleague|v\.league|vô địch quốc gia|công an hà nội|hà nội|hoàng anh gia lai|thép xanh nam định|nam định|thể công|viettel|sông lam nghệ an|bình dương|thanh hóa|hải phòng|đà nẵng|quảng nam|bình định|phù đổng|ninh bình|tp\.? hcm|hồ chí minh/i.test(line);
+  }
+
+  private parseVietnamMatchDate(line: string, dateFrom: string, dateTo: string) {
+    const from = new Date(`${dateFrom}T00:00:00.000Z`);
+    const to = new Date(`${dateTo}T23:59:59.999Z`);
+    const year = Number.parseInt(dateFrom.slice(0, 4), 10);
+    const iso = line.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
+    const dmy = line.match(/\b(?:ngày\s*)?(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/i);
+    const timeMatch = line.match(/\b(\d{1,2})[:h](\d{2})\b/i);
+    const time = timeMatch
+      ? { hour: Math.min(23, Number.parseInt(timeMatch[1], 10)), minute: Math.min(59, Number.parseInt(timeMatch[2], 10)) }
+      : { hour: 19, minute: 0 };
+
+    let date: Date | null = null;
+    if (iso) {
+      date = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+    } else if (dmy) {
+      date = new Date(Date.UTC(Number(dmy[3] || year), Number(dmy[2]) - 1, Number(dmy[1])));
+    }
+    if (!date || Number.isNaN(date.getTime()) || date < from || date > to) return null;
+
+    return { dateKey: date.toISOString().slice(0, 10), time };
+  }
+
+  private buildVietnamMatchUtcDate(dateKey: string, time: { hour: number; minute: number }) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day, time.hour - 7, time.minute)).toISOString();
+  }
+
+  private parseMatchTeams(line: string) {
+    const cleaned = line
+      .replace(/\b(?:ngày\s*)?\d{1,2}[/-]\d{1,2}(?:[/-]20\d{2})?\b/gi, ' ')
+      .replace(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g, ' ')
+      .replace(/\b\d{1,2}[:h]\d{2}\b/gi, ' ')
+      .replace(/\b(vòng|round)\s+\d+\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const match = cleaned.match(/(.{2,80}?)\s+(?:vs|v|đấu với|gặp|[-–])\s+(.{2,80})/i);
+    if (!match) return null;
+    const home = this.cleanTeamName(match[1]);
+    const away = this.cleanTeamName(match[2]);
+    if (!home || !away || home === away) return null;
+    return { home, away };
+  }
+
+  private cleanTeamName(value: string) {
+    return value
+      .replace(/\b(lịch thi đấu|trực tiếp|link xem|nhận định|soi kèo|kết quả|highlights?)\b/gi, ' ')
+      .replace(/[()[\]{}]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/^[-–:,\s]+|[-–:,\s]+$/g, '')
+      .slice(0, 80)
+      .trim();
+  }
+
+  private dedupeMatches(matches: FootballMatch[]) {
+    const byKey = new Map<string, FootballMatch>();
+    for (const match of matches) {
+      const key = `${match.competitionCode}:${match.utcDate}:${match.homeTeam.toLowerCase()}:${match.awayTeam.toLowerCase()}`;
+      if (!byKey.has(key)) byKey.set(key, match);
+    }
+    return [...byKey.values()];
+  }
+
+  private hashMatchId(value: string) {
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+    }
+    return hash || 1;
   }
 
   private normalizeLeagueCode(leagueCode: string) {
