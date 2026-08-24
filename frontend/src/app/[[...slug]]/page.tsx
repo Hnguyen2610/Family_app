@@ -21,6 +21,7 @@ import VisionDrafts from '@/components/VisionDrafts';
 import WeatherBadge from '@/components/WeatherBadge';
 import DailyTasks from '@/components/DailyTasks';
 import FootballSchedule from '@/components/FootballSchedule';
+import FootballMatchDetailScreen from '@/components/FootballMatchDetailScreen';
 import MascotAvatar from '@/components/MascotAvatar';
 import WelcomeOverlay from '@/components/WelcomeOverlay';
 import { useAuth } from '@/hooks/useAuth';
@@ -58,6 +59,9 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
 
   const slugTab = params.slug?.[0] as TabType;
   const activeTab: TabType = slugTab || 'dashboard';
+  const footballMatchId = activeTab === 'football' && params.slug?.[1] === 'matches'
+    ? Number(params.slug?.[2])
+    : null;
 
   const families = user?.families || [];
   const currentFamily = currentFamilyId === 'all'
@@ -302,7 +306,11 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           {activeTab === 'notes' && <FamilyNotes />}
           {activeTab === 'vision-drafts' && <VisionDrafts />}
           {activeTab === 'daily-tasks' && <DailyTasks />}
-          {activeTab === 'football' && <FootballSchedule />}
+          {activeTab === 'football' && (
+            footballMatchId !== null
+              ? <FootballMatchDetailScreen matchId={footballMatchId} onBack={() => router.push('/football')} />
+              : <FootballSchedule />
+          )}
           {activeTab === 'admin' && <AdminDashboard />}
           {(activeTab === 'settings' || activeTab === 'profile') && <Settings onNavigate={setActiveTab} />}
           {activeTab === 'notifications' && <NotificationSettings onBack={() => setActiveTab('settings')} />}

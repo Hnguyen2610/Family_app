@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-slim AS builder
+FROM node:22-slim AS builder
 
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
@@ -22,7 +22,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18-slim
+FROM node:22-slim
 
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
@@ -40,6 +40,7 @@ RUN npm install
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/tsconfig*.json ./
 
 # Copy prisma schema for migrations
 COPY --from=builder /app/prisma ./prisma

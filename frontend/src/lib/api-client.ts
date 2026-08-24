@@ -536,7 +536,9 @@ export const footballAPI = {
   getTodayMatches: () =>
     apiClient.get<FootballTodaySchedule>('/api/football/matches/today'),
   getMatches: (weekOffset: number, league?: string) =>
-    apiClient.get<FootballWeekSchedule>('/api/football/matches', { params: { weekOffset, league } }),
+    apiClient.get<FootballWeekSchedule>('/api/football/matches', {
+      params: { weekOffset, ...(league ? { league } : {}) },
+    }),
   getStandings: (league: string) =>
     apiClient.get<{ league: string; standings: FootballStandingGroup[] }>('/api/football/standings', { params: { league } }),
   getTeams: (league: string) =>

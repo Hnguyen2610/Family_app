@@ -109,6 +109,7 @@ export class FootballService {
   private readonly teamsCache = new Map<string, { expiresAt: number; teams: FootballTeam[] }>();
   private readonly teamMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly todayMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
+  private readonly allMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly europaLeagueCache = new Map<string, { expiresAt: number; summary: string }>();
   private readonly cacheTtlMs = 10 * 60 * 1000;
 
@@ -175,6 +176,31 @@ export class FootballService {
     }
 
     matches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
+    return matches;
+  }
+
+  async getAllFreeMatches(dateFrom: string, dateTo: string): Promise<FootballMatch[]> {
+    const cacheKey = `all:${dateFrom}:${dateTo}`;
+    const cached = this.allMatchesCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.matches;
+
+    if (!this.apiKey) throw new Error('API Key missing');
+
+    const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
+      headers: { 'X-Auth-Token': this.apiKey },
+    });
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as any;
+      throw new Error(err.message || 'API Error');
+    }
+
+    const data = (await response.json()) as any;
+    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code));
+    const matches = this.mapMatches(data.matches || [])
+      .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
+
+    matches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
+    this.allMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
     return matches;
   }
 

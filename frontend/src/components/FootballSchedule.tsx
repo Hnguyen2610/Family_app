@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   FiAlertCircle,
   FiChevronLeft,
@@ -23,9 +24,17 @@ import {
 import { useTranslation } from '@/lib/i18n';
 import { useAsync } from '@/hooks/useAsync';
 import { getDateLocale } from '@/utils/date';
-import MatchDetailModal from './MatchDetailModal';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type FootballView = 'today' | 'schedule' | 'standings' | 'teams';
+
+const ALL_LEAGUES = 'ALL';
 
 const STATUS_LABEL: Record<string, { vi: string; en: string }> = {
   FINISHED: { vi: 'Đã kết thúc', en: 'Finished' },
@@ -127,32 +136,36 @@ function MatchRow({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-4 bg-card border border-border rounded-2xl px-4 py-3 hover:shadow-sm hover:border-primary/40 transition-all text-left"
+      className="w-full bg-card border border-border rounded-2xl p-3 sm:px-4 sm:py-3 hover:shadow-sm hover:border-primary/40 transition-all text-left"
     >
-      <div className="w-16 shrink-0 text-center">
-        <div className="text-xs text-slate-400 font-semibold uppercase">{day}</div>
-        <div className="font-bold text-slate-800 dark:text-slate-100">{time}</div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-primary/80 mb-0.5">
-          {match.competitionEmblem && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={match.competitionEmblem} alt="" className="w-4 h-4 object-contain" />
-          )}
-          <span className="truncate">{match.competitionName}</span>
+      <div className="grid grid-cols-[4rem_minmax(0,1fr)] gap-3 sm:flex sm:items-center sm:gap-4">
+        <div className="w-16 shrink-0 text-center">
+          <div className="text-[11px] sm:text-xs text-slate-400 font-semibold uppercase">{day}</div>
+          <div className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">{time}</div>
         </div>
-        <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-          {match.homeTeam} <span className="text-slate-400">vs</span> {match.awayTeam}
-        </div>
-      </div>
-      <div className="shrink-0 text-right">
-        {score && (
-          <div className={`font-bold ${isLive ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200'}`}>
-            {score}
+        <div className="min-w-0 sm:flex-1">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-primary/80 mb-0.5">
+            {match.competitionEmblem && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={match.competitionEmblem} alt="" className="w-4 h-4 object-contain" />
+            )}
+            <span className="truncate">{match.competitionName}</span>
           </div>
-        )}
-        <div className="text-[11px] text-slate-400 font-semibold">
-          {statusLabel ? (language === 'vi' ? statusLabel.vi : statusLabel.en) : match.status}
+          <div className="font-semibold text-sm sm:text-base text-slate-800 dark:text-slate-100 break-words sm:truncate">
+            {match.homeTeam} <span className="text-slate-400">vs</span> {match.awayTeam}
+          </div>
+        </div>
+        <div className="col-span-2 flex items-center justify-between gap-3 border-t border-border/70 pt-2 sm:col-span-1 sm:block sm:border-0 sm:pt-0 sm:shrink-0 sm:text-right">
+          {score ? (
+            <div className={`font-bold text-sm sm:text-base ${isLive ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200'}`}>
+              {score}
+            </div>
+          ) : (
+            <span className="text-xs text-slate-400 font-semibold sm:hidden">-</span>
+          )}
+          <div className="text-[11px] text-slate-400 font-semibold">
+            {statusLabel ? (language === 'vi' ? statusLabel.vi : statusLabel.en) : match.status}
+          </div>
         </div>
       </div>
     </button>
@@ -173,54 +186,88 @@ function StandingsTable({
   return (
     <div className="space-y-5">
       {groups.map((group, index) => (
-        <div key={`${group.stage || 'stage'}-${group.group || index}`} className="overflow-x-auto border border-border rounded-2xl bg-card">
+        <div key={`${group.stage || 'stage'}-${group.group || index}`} className="border border-border rounded-2xl bg-card overflow-hidden">
           {(group.group || group.stage) && (
             <div className="px-4 py-3 border-b border-border text-sm font-bold text-slate-700 dark:text-slate-200">
               {[group.stage, group.group].filter(Boolean).join(' · ')}
             </div>
           )}
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="text-xs uppercase text-slate-400 border-b border-border">
-              <tr>
-                <th className="w-12 py-3 text-center">#</th>
-                <th className="py-3 text-left">{language === 'vi' ? 'Đội' : 'Team'}</th>
-                <th className="py-3 text-center">P</th>
-                <th className="py-3 text-center">W</th>
-                <th className="py-3 text-center">D</th>
-                <th className="py-3 text-center">L</th>
-                <th className="py-3 text-center">GF</th>
-                <th className="py-3 text-center">GA</th>
-                <th className="py-3 text-center">GD</th>
-                <th className="py-3 text-center">Pts</th>
-                <th className="py-3 text-left">{language === 'vi' ? 'Phong độ' : 'Form'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.table.map((row) => (
-                <tr key={`${group.group || 'table'}-${row.team.id}`} className="border-b border-border/60 last:border-b-0">
-                  <td className="py-3 text-center font-bold text-slate-500">{row.position}</td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2 min-w-0 font-semibold text-slate-800 dark:text-slate-100">
+          <div className="sm:hidden divide-y divide-border/70">
+            {group.table.map((row) => (
+              <div key={`${group.group || 'mobile-table'}-${row.team.id}`} className="p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-7 shrink-0 text-center text-sm font-black text-slate-500">{row.position}</span>
+                    <div className="w-8 h-8 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
                       {row.team.crest && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={row.team.crest} alt="" className="w-6 h-6 object-contain" />
                       )}
-                      <span className="truncate">{row.team.name}</span>
                     </div>
-                  </td>
-                  <td className="py-3 text-center">{row.playedGames}</td>
-                  <td className="py-3 text-center">{row.won}</td>
-                  <td className="py-3 text-center">{row.draw}</td>
-                  <td className="py-3 text-center">{row.lost}</td>
-                  <td className="py-3 text-center">{row.goalsFor}</td>
-                  <td className="py-3 text-center">{row.goalsAgainst}</td>
-                  <td className="py-3 text-center">{row.goalDifference}</td>
-                  <td className="py-3 text-center font-black text-slate-900 dark:text-slate-100">{row.points}</td>
-                  <td className="py-3 text-xs text-slate-500">{row.form || '-'}</td>
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">{row.team.name}</div>
+                      <div className="text-[11px] text-slate-400 font-semibold">
+                        {row.playedGames}P · {row.won}W {row.draw}D {row.lost}L · GD {row.goalDifference}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-lg font-black text-slate-900 dark:text-slate-100">{row.points}</div>
+                    <div className="text-[10px] uppercase text-slate-400 font-bold">Pts</div>
+                  </div>
+                </div>
+                {row.form && (
+                  <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                    {language === 'vi' ? 'Phong độ' : 'Form'}: {row.form}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="text-xs uppercase text-slate-400 border-b border-border">
+                <tr>
+                  <th className="w-12 py-3 text-center">#</th>
+                  <th className="py-3 text-left">{language === 'vi' ? 'Đội' : 'Team'}</th>
+                  <th className="py-3 text-center">P</th>
+                  <th className="py-3 text-center">W</th>
+                  <th className="py-3 text-center">D</th>
+                  <th className="py-3 text-center">L</th>
+                  <th className="py-3 text-center">GF</th>
+                  <th className="py-3 text-center">GA</th>
+                  <th className="py-3 text-center">GD</th>
+                  <th className="py-3 text-center">Pts</th>
+                  <th className="py-3 text-left">{language === 'vi' ? 'Phong độ' : 'Form'}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {group.table.map((row) => (
+                  <tr key={`${group.group || 'table'}-${row.team.id}`} className="border-b border-border/60 last:border-b-0">
+                    <td className="py-3 text-center font-bold text-slate-500">{row.position}</td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-2 min-w-0 font-semibold text-slate-800 dark:text-slate-100">
+                        {row.team.crest && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={row.team.crest} alt="" className="w-6 h-6 object-contain" />
+                        )}
+                        <span className="truncate">{row.team.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-center">{row.playedGames}</td>
+                    <td className="py-3 text-center">{row.won}</td>
+                    <td className="py-3 text-center">{row.draw}</td>
+                    <td className="py-3 text-center">{row.lost}</td>
+                    <td className="py-3 text-center">{row.goalsFor}</td>
+                    <td className="py-3 text-center">{row.goalsAgainst}</td>
+                    <td className="py-3 text-center">{row.goalDifference}</td>
+                    <td className="py-3 text-center font-black text-slate-900 dark:text-slate-100">{row.points}</td>
+                    <td className="py-3 text-xs text-slate-500">{row.form || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
     </div>
@@ -228,11 +275,11 @@ function StandingsTable({
 }
 
 export default function FootballSchedule() {
+  const router = useRouter();
   const { language } = useTranslation();
   const [activeView, setActiveView] = useState<FootballView>('today');
   const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedLeague, setSelectedLeague] = useState('PL');
-  const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
+  const [selectedLeague, setSelectedLeague] = useState(ALL_LEAGUES);
   const [selectedTeam, setSelectedTeam] = useState<FootballTeam | null>(null);
   const [teamMatches, setTeamMatches] = useState<FootballMatch[]>([]);
   const [teamMatchesLoading, setTeamMatchesLoading] = useState(false);
@@ -246,23 +293,38 @@ export default function FootballSchedule() {
     () => footballAPI.getTodayMatches().then((res) => res.data),
     [],
   );
+  const concreteLeague = selectedLeague === ALL_LEAGUES ? 'PL' : selectedLeague;
   const scheduleState = useAsync(
-    () => footballAPI.getMatches(weekOffset, selectedLeague).then((res) => res.data),
+    () => footballAPI.getMatches(
+      weekOffset,
+      selectedLeague === ALL_LEAGUES ? undefined : selectedLeague,
+    ).then((res) => res.data),
     [weekOffset, selectedLeague],
   );
   const standingsState = useAsync(
-    () => footballAPI.getStandings(selectedLeague).then((res) => res.data),
-    [selectedLeague],
+    () => footballAPI.getStandings(concreteLeague).then((res) => res.data),
+    [concreteLeague],
   );
   const teamsState = useAsync(
-    () => footballAPI.getTeams(selectedLeague).then((res) => res.data),
-    [selectedLeague],
+    () => footballAPI.getTeams(concreteLeague).then((res) => res.data),
+    [concreteLeague],
   );
 
   const leagues = leaguesState.data?.leagues?.length ? leaguesState.data.leagues : FALLBACK_LEAGUES;
+  const supportsAllLeagues = activeView === 'schedule';
+  const leagueOptions = useMemo(
+    () => supportsAllLeagues
+      ? [{
+          code: ALL_LEAGUES,
+          name: language === 'vi' ? 'Tất cả trận đấu' : 'All matches',
+          area: language === 'vi' ? 'Tất cả giải free' : 'All free competitions',
+        }, ...leagues]
+      : leagues,
+    [language, leagues, supportsAllLeagues],
+  );
   const selectedLeagueInfo = useMemo(
-    () => leagues.find((league) => league.code === selectedLeague) || leagues[0],
-    [leagues, selectedLeague],
+    () => leagueOptions.find((league) => league.code === selectedLeague) || leagueOptions[0],
+    [leagueOptions, selectedLeague],
   );
 
   useEffect(() => {
@@ -275,6 +337,12 @@ export default function FootballSchedule() {
     setSelectedTeam(null);
     setTeamMatches([]);
   }, [selectedLeague]);
+
+  useEffect(() => {
+    if (!supportsAllLeagues && selectedLeague === ALL_LEAGUES) {
+      setSelectedLeague(leagues[0]?.code || 'PL');
+    }
+  }, [leagues, selectedLeague, supportsAllLeagues]);
 
   useEffect(() => {
     if (!selectedTeam) return;
@@ -307,7 +375,7 @@ export default function FootballSchedule() {
             key={match.id}
             match={match}
             language={language}
-            onClick={() => setSelectedMatchId(match.id)}
+            onClick={() => router.push(`/football/matches/${match.id}`)}
           />
         ))}
       </div>
@@ -329,7 +397,13 @@ export default function FootballSchedule() {
       if (scheduleState.error) return <ErrorState language={language} onRetry={scheduleState.refetch} />;
       return renderMatches(
         scheduleState.data?.matches || [],
-        language === 'vi' ? 'Không có trận nào trong tuần này cho giải đã chọn.' : 'No matches scheduled this week for the selected competition.',
+        selectedLeague === ALL_LEAGUES
+          ? language === 'vi'
+            ? 'Không có trận nào trong tuần này trong các giải free.'
+            : 'No matches scheduled this week across free competitions.'
+          : language === 'vi'
+            ? 'Không có trận nào trong tuần này cho giải đã chọn.'
+            : 'No matches scheduled this week for the selected competition.',
       );
     }
 
@@ -412,7 +486,7 @@ export default function FootballSchedule() {
                   key={match.id}
                   match={match}
                   language={language}
-                  onClick={() => setSelectedMatchId(match.id)}
+                  onClick={() => router.push(`/football/matches/${match.id}`)}
                 />
               ))}
             </div>
@@ -424,16 +498,16 @@ export default function FootballSchedule() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-7 animate-in fade-in slide-in-from-bottom-4 duration-300 pb-8">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shadow-sm shadow-emerald-100">
-            <FiShield className="text-emerald-600" size={24} />
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shadow-sm shadow-emerald-100">
+            <FiShield className="text-emerald-600" size={22} />
           </div>
-          <div>
-            <h2 className="text-2xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+          <div className="min-w-0">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
               {language === 'vi' ? 'Bóng đá' : 'Football'}
             </h2>
-            <p className="text-xs text-slate-500 font-semibold mt-1">
+            <p className="text-xs text-slate-500 font-semibold mt-1 leading-relaxed">
               {language === 'vi'
                 ? 'Lịch, kết quả, bảng xếp hạng và đội bóng từ các giải free'
                 : 'Schedules, scores, standings and teams from free-tier competitions'}
@@ -441,7 +515,7 @@ export default function FootballSchedule() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs text-slate-500 max-w-xl">
+        <div className="flex items-start gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs text-slate-500 w-full sm:max-w-xl">
           <FiAlertCircle className="shrink-0 text-amber-500" />
           <span>
             {language === 'vi'
@@ -451,7 +525,7 @@ export default function FootballSchedule() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         {(Object.keys(VIEW_META) as FootballView[]).map((view) => {
           const meta = VIEW_META[view];
           const Icon = meta.icon;
@@ -459,7 +533,7 @@ export default function FootballSchedule() {
             <button
               key={view}
               onClick={() => setActiveView(view)}
-              className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${
+              className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${
                 activeView === view
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -473,23 +547,29 @@ export default function FootballSchedule() {
       </div>
 
       {activeView !== 'today' && (
-        <div className="flex flex-wrap items-center gap-3 bg-card border border-border rounded-2xl px-4 py-3">
+        <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3 bg-card border border-border rounded-2xl px-3 sm:px-4 py-3">
           <label className="text-xs font-black uppercase text-slate-400">
             {language === 'vi' ? 'Giải đấu' : 'Competition'}
           </label>
-          <select
+          <Select
             value={selectedLeague}
-            onChange={(event) => setSelectedLeague(event.target.value)}
-            className="h-10 min-w-[220px] rounded-xl border border-border bg-background px-3 text-sm font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-primary/30"
+            onValueChange={(nextLeague) => {
+              if (nextLeague) setSelectedLeague(nextLeague);
+            }}
           >
-            {leagues.map((league) => (
-              <option key={league.code} value={league.code}>
-                {league.name} ({league.code})
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-10 w-full sm:w-auto sm:min-w-[220px] py-2 px-3 text-sm font-bold text-slate-800 dark:text-slate-100">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start" alignItemWithTrigger={false} className="min-w-[260px]">
+              {leagueOptions.map((league) => (
+                <SelectItem key={league.code} value={league.code}>
+                  {league.code === ALL_LEAGUES ? league.name : `${league.name} (${league.code})`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {selectedLeagueInfo && (
-            <span className="text-xs font-semibold text-slate-500">
+            <span className="text-xs font-semibold text-slate-500 sm:ml-1">
               {selectedLeagueInfo.area}
             </span>
           )}
@@ -497,15 +577,17 @@ export default function FootballSchedule() {
       )}
 
       {activeView === 'schedule' && (
-        <div className="flex items-center justify-between bg-card border border-border rounded-2xl px-4 py-3">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 bg-card border border-border rounded-2xl px-3 sm:px-4 py-3">
           <button
             onClick={() => setWeekOffset((w) => w - 1)}
-            className="flex items-center gap-1 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-sm transition-colors"
+            className="justify-self-start flex items-center gap-1 px-2 sm:px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs sm:text-sm transition-colors shrink-0"
           >
-            <FiChevronLeft /> {language === 'vi' ? 'Tuần trước' : 'Prev week'}
+            <FiChevronLeft className="shrink-0" />
+            <span className="sm:hidden">{language === 'vi' ? 'Trước' : 'Prev'}</span>
+            <span className="hidden sm:inline">{language === 'vi' ? 'Tuần trước' : 'Prev week'}</span>
           </button>
-          <div className="text-center">
-            <div className="font-bold text-slate-800 dark:text-slate-100">{scheduleState.data?.weekLabel || '-'}</div>
+          <div className="text-center min-w-0">
+            <div className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">{scheduleState.data?.weekLabel || '-'}</div>
             {weekOffset !== 0 && (
               <button
                 onClick={() => setWeekOffset(0)}
@@ -517,18 +599,17 @@ export default function FootballSchedule() {
           </div>
           <button
             onClick={() => setWeekOffset((w) => w + 1)}
-            className="flex items-center gap-1 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-sm transition-colors"
+            className="justify-self-end flex items-center gap-1 px-2 sm:px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs sm:text-sm transition-colors shrink-0"
           >
-            {language === 'vi' ? 'Tuần sau' : 'Next week'} <FiChevronRight />
+            <span className="sm:hidden">{language === 'vi' ? 'Sau' : 'Next'}</span>
+            <span className="hidden sm:inline">{language === 'vi' ? 'Tuần sau' : 'Next week'}</span>
+            <FiChevronRight className="shrink-0" />
           </button>
         </div>
       )}
 
       {renderActiveView()}
 
-      {selectedMatchId !== null && (
-        <MatchDetailModal matchId={selectedMatchId} onClose={() => setSelectedMatchId(null)} />
-      )}
     </div>
   );
 }

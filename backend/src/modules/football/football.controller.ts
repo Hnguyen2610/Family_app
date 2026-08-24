@@ -36,12 +36,13 @@ export class FootballController {
   ) {
     const weekOffset = weekOffsetRaw ? Number.parseInt(weekOffsetRaw, 10) : 0;
     const { dateFrom, dateTo, weekLabel } = this.resolveWeekRange(Number.isFinite(weekOffset) ? weekOffset : 0);
-    const matches = league
-      ? await this.footballService.getMatchesForLeague(league, dateFrom, dateTo)
-      : await this.footballService.getMatches(this.footballService.defaultLeagues, dateFrom, dateTo);
+    const normalizedLeague = league && league.toUpperCase() !== 'ALL' ? league : undefined;
+    const matches = normalizedLeague
+      ? await this.footballService.getMatchesForLeague(normalizedLeague, dateFrom, dateTo)
+      : await this.footballService.getAllFreeMatches(dateFrom, dateTo);
 
     let europaLeagueSummary: string | null = null;
-    if (!league) {
+    if (!normalizedLeague) {
       try {
         europaLeagueSummary = await this.footballService.getEuropaLeagueSummary(weekLabel);
       } catch (error: any) {
@@ -53,7 +54,7 @@ export class FootballController {
       weekLabel,
       dateFrom,
       dateTo,
-      league: league || null,
+      league: normalizedLeague || null,
       matches,
       europaLeagueSummary,
       notice: 'Lịch/kết quả free API có thể bị trễ; chi tiết live chuyên sâu không được đảm bảo.',

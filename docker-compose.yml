@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: family_calendar_postgres
     environment:
       POSTGRES_USER: postgres
@@ -40,7 +38,12 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
-    command: sh -c "npx prisma generate && npm run db:push && npm run db:seed && npm run start:dev"
+    command: >
+      sh -c "npx prisma generate &&
+      printf 'CREATE EXTENSION IF NOT EXISTS vector;' | npx prisma db execute --stdin &&
+      npx prisma db push --accept-data-loss &&
+      npm run db:seed &&
+      npm run start:dev"
 
   # Next.js Frontend
   frontend:
