@@ -24,6 +24,7 @@ import { WeatherSkill } from './skills/weather.skill';
 import { SearchSkill } from './skills/search.skill';
 import { AiSkillRegistry } from './skills/ai-skill-registry';
 import { WeatherModule } from '../weather/weather.module';
+import { FootballModule } from '../football/football.module';
 import { AiFamilyResolver } from './ai-family-resolver';
 import { AiEntityResolver } from './ai-entity-resolver';
 
@@ -33,6 +34,7 @@ import { AiEntityResolver } from './ai-entity-resolver';
     forwardRef(() => MealsModule),
     forwardRef(() => EventsModule),
     WeatherModule,
+    FootballModule,
   ],
   controllers: [AiAgentController],
   providers: [

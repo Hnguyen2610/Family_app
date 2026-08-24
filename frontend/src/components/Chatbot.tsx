@@ -116,7 +116,7 @@ export default function Chatbot() {
 
     sessionStorage.removeItem(PENDING_CHAT_PROMPT_KEY);
     startNewSession();
-    void sendMessage('', pendingMsg);
+    void sendMessage('', pendingMsg, { sessionIdOverride: null });
   }, [familyId, isBusy, sendMessage, startNewSession]);
 
   const handleApproveMemory = async () => {

@@ -21,6 +21,10 @@ type UseChatStreamOptions = {
   onSessionCreated: () => void;
 };
 
+type SendMessageOptions = {
+  sessionIdOverride?: string | null;
+};
+
 export function useChatStream({
   currentSessionId,
   familyId,
@@ -42,7 +46,7 @@ export function useChatStream({
   const [streamStatus, setStreamStatus] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const sendMessage = useCallback(async (input: string, messageOverride?: string) => {
+  const sendMessage = useCallback(async (input: string, messageOverride?: string, options: SendMessageOptions = {}) => {
     const messageText = messageOverride ?? input;
     if ((!messageText.trim() && !selectedImage) || isLoading) return;
 
@@ -71,7 +75,8 @@ export function useChatStream({
       let assistantRequestLogId: string | undefined;
       let assistantProposal: AiActionProposal | undefined;
       let pendingFrame: number | null = null;
-      let activeSessionId = currentSessionId;
+      let activeSessionId = options.sessionIdOverride !== undefined ? options.sessionIdOverride : currentSessionId;
+      const shouldAttachNewSession = !activeSessionId;
 
       const flushAssistantResponse = () => {
         pendingFrame = null;
@@ -90,7 +95,7 @@ export function useChatStream({
       const updateSessionId = (sessionId?: string) => {
         if (!sessionId) return;
         activeSessionId = sessionId;
-        if (!currentSessionId) {
+        if (shouldAttachNewSession) {
           setCurrentSessionId(sessionId);
           onSessionCreated();
         }

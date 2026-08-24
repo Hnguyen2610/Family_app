@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Delete,
+  BadRequestException,
   Param,
   Body,
   Query,
@@ -30,7 +31,7 @@ export class EventsController {
     @Body() dto: CreateEventDto,
     @Query('familyId') familyId: string,
   ) {
-    await assertFamilyMembership(this.prisma, req.user.id, familyId);
+    await this.assertWritableFamilyMembership(req.user.id, familyId, dto.scope, true);
     return this.eventsService.create(familyId, req.user.id, dto);
   }
 
@@ -41,7 +42,7 @@ export class EventsController {
     @Query('month') month?: string,
     @Query('year') year?: string,
   ) {
-    await assertFamilyMembership(this.prisma, req.user.id, familyId);
+    await this.assertReadableFamilyMembership(req.user.id, familyId);
     return this.eventsService.findAll(
       familyId,
       month ? Number.parseInt(month) : undefined,
@@ -56,7 +57,7 @@ export class EventsController {
     @Param('id') id: string,
     @Query('familyId') familyId: string,
   ) {
-    await assertFamilyMembership(this.prisma, req.user.id, familyId);
+    await this.assertReadableFamilyMembership(req.user.id, familyId);
     return this.eventsService.findById(id, familyId, req.user.id);
   }
 
@@ -67,7 +68,7 @@ export class EventsController {
     @Body() dto: UpdateEventDto,
     @Query('familyId') familyId: string,
   ) {
-    await assertFamilyMembership(this.prisma, req.user.id, familyId);
+    await this.assertWritableFamilyMembership(req.user.id, familyId, dto.scope);
     return this.eventsService.update(id, familyId, req.user.id, dto);
   }
 
@@ -77,7 +78,7 @@ export class EventsController {
     @Param('id') id: string,
     @Query('familyId') familyId: string,
   ) {
-    await assertFamilyMembership(this.prisma, req.user.id, familyId);
+    await this.assertWritableFamilyMembership(req.user.id, familyId);
     return this.eventsService.delete(id, familyId, req.user.id);
   }
 
@@ -88,12 +89,35 @@ export class EventsController {
     @Query('year') year: string,
     @Query('familyId') familyId: string,
   ) {
-    await assertFamilyMembership(this.prisma, req.user.id, familyId);
+    await this.assertReadableFamilyMembership(req.user.id, familyId);
     return this.eventsService.getEventsByMonth(
       familyId,
       Number.parseInt(month),
       Number.parseInt(year),
       req.user.id,
     );
+  }
+
+  private async assertReadableFamilyMembership(userId: string, familyId: string) {
+    if (this.isGlobalReadScope(familyId)) return;
+    await assertFamilyMembership(this.prisma, userId, familyId);
+  }
+
+  private async assertWritableFamilyMembership(userId: string, familyId: string, scope?: string, requireGlobalScope = false) {
+    if (familyId === 'system') {
+      if ((requireGlobalScope && scope !== 'GLOBAL') || (scope && scope !== 'GLOBAL')) {
+        throw new BadRequestException('system familyId is only allowed for global events');
+      }
+      return;
+    }
+    await assertFamilyMembership(this.prisma, userId, familyId);
+  }
+
+  private isGlobalReadScope(familyId?: string) {
+    return !familyId
+      || familyId === 'all'
+      || familyId === 'system'
+      || familyId === 'null'
+      || familyId === 'undefined';
   }
 }

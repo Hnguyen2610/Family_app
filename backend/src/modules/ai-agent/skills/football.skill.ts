@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { normalizeSearchText } from '../ai-intent-router';
 import { AiSkill, AiSkillContext, AiSkillResponse, AiSkillTool } from '../interfaces/ai-skill.interface';
 import { toolSuccess, toolError } from '../ai-tool-runtime';
+import { FootballService } from '../../football/football.service';
 
 type FootballDateRange = {
   dateFrom: string;
@@ -16,13 +17,8 @@ type FootballDateRange = {
 export class FootballSkill implements AiSkill {
   name = 'FootballSkill';
   private readonly logger = new Logger(FootballSkill.name);
-  private readonly apiKey = process.env.FOOTBALL_DATA_API_KEY;
-  private readonly baseUrl = 'https://api.football-data.org/v4';
-  private readonly directAnswerCache = new Map<string, { expiresAt: number; content: string }>();
-  private readonly directAnswerCacheTtlMs = 5 * 60 * 1000;
 
-  // Major leagues list to look up by default (including World Cup)
-  private readonly defaultLeagues = ['PL', 'PD', 'BL1', 'SA', 'CL', 'FL1', 'WC'];
+  constructor(private readonly footballService: FootballService) {}
 
   private readonly leagueMap: Record<string, string> = {
     'ngoai hang anh': 'PL', 'premier league': 'PL',
@@ -31,7 +27,12 @@ export class FootballSkill implements AiSkill {
     'serie a': 'SA', 'y': 'SA',
     'champions league': 'CL', 'c1': 'CL',
     'ligue 1': 'FL1', 'phap': 'FL1',
+    'eredivisie': 'DED', 'ha lan': 'DED',
+    'primeira liga': 'PPL', 'bo dao nha': 'PPL',
+    'championship': 'ELC', 'hang nhat anh': 'ELC',
+    'brazil serie a': 'BSA', 'brasileirao': 'BSA', 'brazil': 'BSA',
     'world cup': 'WC', 'the gioi': 'WC',
+    'euro': 'EC', 'european championship': 'EC',
   };
 
   getSystemPrompt(_context: AiSkillContext): string {
@@ -50,7 +51,7 @@ export class FootballSkill implements AiSkill {
           parameters: {
             type: 'object',
             properties: {
-              league: { type: 'string', description: 'PL, PD, BL1, SA, CL, WC' },
+              league: { type: 'string', description: 'PL, PD, BL1, SA, FL1, DED, PPL, ELC, BSA, CL, WC, EC' },
               status: { type: 'string', description: 'SCHEDULED, LIVE, or FINISHED' },
               dateFrom: { type: 'string', description: 'YYYY-MM-DD' },
               dateTo: { type: 'string', description: 'YYYY-MM-DD' },
@@ -76,7 +77,8 @@ export class FootballSkill implements AiSkill {
         const dateRange = args.dateFrom && args.dateTo
           ? { dateFrom: args.dateFrom, dateTo: args.dateTo }
           : this.resolveDefaultDateRange(normalizeSearchText(context.userMessage || ''));
-        return await this.fetchApi(`${this.baseUrl}/competitions/${leagueCode}/matches?dateFrom=${dateRange.dateFrom}&dateTo=${dateRange.dateTo}`, toolName);
+        const matches = await this.footballService.getMatchesForLeague(leagueCode, dateRange.dateFrom, dateRange.dateTo);
+        return toolSuccess(toolName, matches);
       }
     } catch (error: any) {
       return toolError(toolName, error.message);
@@ -85,7 +87,7 @@ export class FootballSkill implements AiSkill {
 
   private resolveLeagueCode(input: string): string | undefined {
     const normalized = (input || '').toLowerCase().trim();
-    if (['PL', 'PD', 'BL1', 'SA', 'CL', 'WC'].includes(normalized.toUpperCase())) return normalized.toUpperCase();
+    if (['PL', 'PD', 'BL1', 'SA', 'FL1', 'DED', 'PPL', 'ELC', 'BSA', 'CL', 'WC', 'EC'].includes(normalized.toUpperCase())) return normalized.toUpperCase();
     return this.leagueMap[normalized];
   }
 
@@ -95,7 +97,7 @@ export class FootballSkill implements AiSkill {
       const regex = new RegExp(`\\b${name}\\b`, 'i');
       if (regex.test(normalizedText)) return code;
     }
-    const codeMatch = normalizedText.match(/\b(pl|pd|bl1|sa|cl|wc)\b/i);
+    const codeMatch = normalizedText.match(/\b(pl|pd|bl1|sa|fl1|ded|ppl|elc|bsa|cl|wc|ec)\b/i);
     return codeMatch?.[1]?.toUpperCase();
   }
 
@@ -184,32 +186,6 @@ export class FootballSkill implements AiSkill {
     const month = parts.find((part) => part.type === 'month')?.value;
     const day = parts.find((part) => part.type === 'day')?.value;
     return `${year}-${month}-${day}`;
-  }
-
-  private async fetchApi(url: string, toolName: string) {
-    if (!this.apiKey) throw new Error('API Key missing');
-    const response = await fetch(url, { headers: { 'X-Auth-Token': this.apiKey } });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({})) as any;
-      throw new Error(err.message || 'API Error');
-    }
-    const data = await response.json() as any;
-    if (toolName === 'get_matches') {
-      return toolSuccess(toolName, (data.matches || []).map((m: any) => {
-        return {
-          utcDate: m.utcDate,
-          competitionName: m.competition?.name || 'Bóng đá',
-          homeTeam: m.homeTeam.name,
-          awayTeam: m.awayTeam.name,
-          status: m.status,
-          homeScore: m.score?.fullTime?.home,
-          awayScore: m.score?.fullTime?.away,
-          homePenalties: m.score?.penalties?.home,
-          awayPenalties: m.score?.penalties?.away,
-        };
-      }));
-    }
-    return toolSuccess(toolName, data);
   }
 
   private formatMatchesForUser(matches: any[], dateRange: FootballDateRange) {

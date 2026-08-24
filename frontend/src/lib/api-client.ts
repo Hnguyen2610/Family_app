@@ -286,6 +286,8 @@ export const chatAPI = {
               onStatus?.('replace_content', parsed);
             } else if (parsed.type === 'memory_consent_request') {
               onStatus?.('memory_consent_request', parsed);
+            } else if (parsed.type === 'rag_consent_request') {
+              onStatus?.('rag_consent_request', parsed);
             } else if (parsed.type === 'action_proposal') {
               onStatus?.('action_proposal', parsed);
             } else if (parsed.content) {
@@ -415,6 +417,134 @@ export type WeatherSummary = {
 
 export const weatherAPI = {
   getSummary: () => apiClient.get<WeatherSummary>('/api/weather/summary'),
+};
+
+export type FootballMatch = {
+  id: number;
+  utcDate: string;
+  competitionCode: string | null;
+  competitionName: string;
+  competitionEmblem: string | null;
+  homeTeam: string;
+  homeTeamCrest: string | null;
+  awayTeam: string;
+  awayTeamCrest: string | null;
+  status: string;
+  matchday?: number | null;
+  stage?: string | null;
+  group?: string | null;
+  homeScore?: number | null;
+  awayScore?: number | null;
+  homePenalties?: number | null;
+  awayPenalties?: number | null;
+};
+
+export type FootballLeague = {
+  code: string;
+  name: string;
+  area: string;
+};
+
+export type FootballWeekSchedule = {
+  weekLabel: string;
+  dateFrom: string;
+  dateTo: string;
+  league: string | null;
+  matches: FootballMatch[];
+  europaLeagueSummary: string | null;
+  notice?: string;
+};
+
+export type FootballTodaySchedule = {
+  date: string;
+  matches: FootballMatch[];
+  notice?: string;
+};
+
+export type FootballStandingGroup = {
+  stage: string | null;
+  type: string | null;
+  group: string | null;
+  table: Array<{
+    position: number;
+    team: { id: number; name: string; crest: string | null };
+    playedGames: number;
+    won: number;
+    draw: number;
+    lost: number;
+    points: number;
+    goalsFor: number;
+    goalsAgainst: number;
+    goalDifference: number;
+    form: string | null;
+  }>;
+};
+
+export type FootballTeam = {
+  id: number;
+  name: string;
+  shortName: string | null;
+  tla: string | null;
+  crest: string | null;
+  venue: string | null;
+  founded: number | null;
+  clubColors: string | null;
+  website: string | null;
+  squad?: Array<{
+    id: number;
+    name: string;
+    position: string | null;
+    dateOfBirth: string | null;
+    nationality: string | null;
+  }>;
+};
+
+export type FootballMatchDetail = {
+  id: number;
+  utcDate: string;
+  status: string;
+  matchday: number | null;
+  stage: string | null;
+  group: string | null;
+  venue: string | null;
+  competitionName: string;
+  competitionEmblem: string | null;
+  homeTeam: { name: string; crest: string | null };
+  awayTeam: { name: string; crest: string | null };
+  referees: string[];
+  score: {
+    winner: string | null;
+    fullTime: { home: number | null; away: number | null };
+    halfTime: { home: number | null; away: number | null };
+  };
+  deepDataNotice: string;
+  deepData: {
+    goals: unknown[];
+    cards: unknown[];
+    substitutions: unknown[];
+    lineups: unknown[];
+    statistics: unknown[];
+    odds: unknown[];
+    rawEvents: unknown[];
+    rawAvailableKeys: string[];
+  };
+};
+
+export const footballAPI = {
+  getLeagues: () =>
+    apiClient.get<{ leagues: FootballLeague[]; notice: string }>('/api/football/leagues'),
+  getTodayMatches: () =>
+    apiClient.get<FootballTodaySchedule>('/api/football/matches/today'),
+  getMatches: (weekOffset: number, league?: string) =>
+    apiClient.get<FootballWeekSchedule>('/api/football/matches', { params: { weekOffset, league } }),
+  getStandings: (league: string) =>
+    apiClient.get<{ league: string; standings: FootballStandingGroup[] }>('/api/football/standings', { params: { league } }),
+  getTeams: (league: string) =>
+    apiClient.get<{ league: string; teams: FootballTeam[]; notice: string }>('/api/football/teams', { params: { league } }),
+  getTeamMatches: (teamId: number, status = 'SCHEDULED', limit = 10) =>
+    apiClient.get<{ teamId: number; status: string; matches: FootballMatch[] }>(`/api/football/teams/${teamId}/matches`, { params: { status, limit } }),
+  getMatchDetail: (matchId: number) =>
+    apiClient.get<FootballMatchDetail>(`/api/football/matches/${matchId}`),
 };
 
 export const notificationsAPI = {

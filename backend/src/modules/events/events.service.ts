@@ -117,7 +117,7 @@ export class EventsService {
       const descPart = event.description ? `\n📝 Mô tả: ${event.description}` : '';
       const notificationMessage = `${creatorName} đã thêm một sự kiện mới:\n📌 Tiêu đề: ${event.title}\n📅 Ngày: ${eventDateStr}${descPart}`;
 
-      await Promise.allSettled(
+      const notificationResults = await Promise.allSettled(
         filteredMembers.map((member) =>
           this.notificationsService.createNotification(member.id, {
             type: eventType,
@@ -127,6 +127,14 @@ export class EventsService {
           }),
         ),
       );
+      notificationResults.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(
+            `Failed to notify user ${filteredMembers[index]?.id || 'unknown'} about event ${event.id}`,
+            result.reason,
+          );
+        }
+      });
     } catch (e) {
       console.error('Failed to notify users about event', e);
     }

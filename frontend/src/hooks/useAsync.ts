@@ -7,10 +7,8 @@ type AsyncState<T> = {
 };
 
 /**
- * Shared "fetch on mount/deps-change" pattern: loading/error/data state + cancellation guard
- * against setting state after unmount. Replaces the hand-rolled
- * useState(data)+useState(loading)+useState(error)+useEffect(cancelled-flag) boilerplate
- * repeated across several components (WeatherBadge, etc).
+ * Shared fetch-on-mount/deps-change pattern: loading/error/data state plus a
+ * cancellation guard against setting state after unmount.
  */
 export function useAsync<T>(fetchFn: () => Promise<T>, deps: DependencyList = []): AsyncState<T> & { refetch: () => void } {
   const [state, setState] = useState<AsyncState<T>>({ data: null, isLoading: true, error: null });
@@ -18,11 +16,7 @@ export function useAsync<T>(fetchFn: () => Promise<T>, deps: DependencyList = []
 
   useEffect(() => {
     let cancelled = false;
-    // Only show isLoading on the first fetch (no data yet) — a refetch() after data has
-    // already loaded stays silent, matching how the hand-rolled versions this replaces
-    // behaved (they only ever set isLoading on mount, not on their imperative refetch calls
-    // after a create/update/delete).
-    setState((prev) => ({ ...prev, isLoading: prev.data === null }));
+    setState((prev) => ({ ...prev, isLoading: true }));
 
     fetchFn()
       .then((data) => {

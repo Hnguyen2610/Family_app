@@ -20,15 +20,16 @@ import FamilyNotes from '@/components/FamilyNotes';
 import VisionDrafts from '@/components/VisionDrafts';
 import WeatherBadge from '@/components/WeatherBadge';
 import DailyTasks from '@/components/DailyTasks';
+import FootballSchedule from '@/components/FootballSchedule';
 import MascotAvatar from '@/components/MascotAvatar';
 import WelcomeOverlay from '@/components/WelcomeOverlay';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
 import { PENDING_CHAT_PROMPT_KEY } from '@/lib/storage-keys';
-import { FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage, FiCheckCircle } from 'react-icons/fi';
+import { FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage } from 'react-icons/fi';
 
-type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory' | 'daily-tasks';
+type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory' | 'daily-tasks' | 'football';
 
 
 export default function Home({ params }: { readonly params: { readonly slug?: readonly string[] } }) {
@@ -301,6 +302,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
           {activeTab === 'notes' && <FamilyNotes />}
           {activeTab === 'vision-drafts' && <VisionDrafts />}
           {activeTab === 'daily-tasks' && <DailyTasks />}
+          {activeTab === 'football' && <FootballSchedule />}
           {activeTab === 'admin' && <AdminDashboard />}
           {(activeTab === 'settings' || activeTab === 'profile') && <Settings onNavigate={setActiveTab} />}
           {activeTab === 'notifications' && <NotificationSettings onBack={() => setActiveTab('settings')} />}
@@ -419,10 +421,10 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               label={language === 'vi' ? 'Draft ảnh AI' : 'Vision Drafts'}
             />
             <SidebarItem
-              active={activeTab === 'daily-tasks'}
-              onClick={() => { setActiveTab('daily-tasks'); setIsSidebarOpen(false); }}
-              icon={<FiCheckCircle />}
-              label={language === 'vi' ? 'Việc trong ngày' : 'Daily Tasks'}
+              active={activeTab === 'football'}
+              onClick={() => { setActiveTab('football'); setIsSidebarOpen(false); }}
+              icon={<span>⚽</span>}
+              label={language === 'vi' ? 'Lịch đá bóng' : 'Football Schedule'}
             />
             {user?.globalRole === 'SUPER_ADMIN' && (
               <SidebarItem

@@ -18,6 +18,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { WeatherModule } from './modules/weather/weather.module';
 import { DailyTasksModule } from './modules/daily-tasks/daily-tasks.module';
+import { FootballModule } from './modules/football/football.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { DailyTasksModule } from './modules/daily-tasks/daily-tasks.module';
     TelegramModule,
     WeatherModule,
     DailyTasksModule,
+    FootballModule,
   ],
   controllers: [AppController],
   providers: [

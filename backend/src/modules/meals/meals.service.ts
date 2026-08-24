@@ -102,7 +102,7 @@ export class MealsService {
         select: { id: true },
       });
 
-      await Promise.allSettled(
+      const notificationResults = await Promise.allSettled(
         familyMembers.map((member) =>
           this.notificationsService.createNotification(member.id, {
             type: 'MEAL_ADDED',
@@ -112,6 +112,14 @@ export class MealsService {
           }),
         ),
       );
+      notificationResults.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          this.logger.error(
+            `Failed to notify user ${familyMembers[index]?.id || 'unknown'} about meal ${mealHistory.mealId}`,
+            result.reason,
+          );
+        }
+      });
     } catch (e) {
       console.error('Failed to send meal notification', e);
     }
@@ -280,7 +288,7 @@ export class MealsService {
             select: { id: true },
           });
 
-          await Promise.allSettled(
+          const notificationResults = await Promise.allSettled(
             familyMembers.map((member) =>
               this.notificationsService.createNotification(member.id, {
                 type: 'MEAL_ADDED',
@@ -290,6 +298,14 @@ export class MealsService {
               }),
             ),
           );
+          notificationResults.forEach((result, index) => {
+            if (result.status === 'rejected') {
+              this.logger.error(
+                `Failed to notify user ${familyMembers[index]?.id || 'unknown'} about generated menu`,
+                result.reason,
+              );
+            }
+          });
         } catch (e) {
           this.logger.error('Failed to send aggregated meal notification', e);
         }
