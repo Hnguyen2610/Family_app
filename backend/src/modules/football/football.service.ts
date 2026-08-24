@@ -145,12 +145,19 @@ export class FootballService {
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
 
-    if (!this.apiKey) throw new Error('API Key missing');
+    if (!this.apiKey) {
+      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or empty football matches.');
+      return cached?.matches || [];
+    }
 
     const url = `${this.baseUrl}/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
     const response = await fetch(url, { headers: { 'X-Auth-Token': this.apiKey } });
     if (!response.ok) {
       const err = (await response.json().catch(() => ({}))) as any;
+      if (cached) {
+        this.logger.warn(`Football API failed for ${code}; returning stale cache: ${err.message || response.status}`);
+        return cached.matches;
+      }
       throw new Error(err.message || 'API Error');
     }
 
@@ -184,13 +191,20 @@ export class FootballService {
     const cached = this.allMatchesCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
 
-    if (!this.apiKey) throw new Error('API Key missing');
+    if (!this.apiKey) {
+      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or empty all-football matches.');
+      return cached?.matches || [];
+    }
 
     const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
       headers: { 'X-Auth-Token': this.apiKey },
     });
     if (!response.ok) {
       const err = (await response.json().catch(() => ({}))) as any;
+      if (cached) {
+        this.logger.warn(`Football API failed for all matches; returning stale cache: ${err.message || response.status}`);
+        return cached.matches;
+      }
       throw new Error(err.message || 'API Error');
     }
 
@@ -209,13 +223,20 @@ export class FootballService {
     const cached = this.todayMatchesCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
 
-    if (!this.apiKey) throw new Error('API Key missing');
+    if (!this.apiKey) {
+      this.logger.warn('FOOTBALL_DATA_API_KEY missing; returning cached or empty today football matches.');
+      return cached?.matches || [];
+    }
 
     const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateKey}&dateTo=${dateKey}`, {
       headers: { 'X-Auth-Token': this.apiKey },
     });
     if (!response.ok) {
       const err = (await response.json().catch(() => ({}))) as any;
+      if (cached) {
+        this.logger.warn(`Football API failed for today matches; returning stale cache: ${err.message || response.status}`);
+        return cached.matches;
+      }
       throw new Error(err.message || 'API Error');
     }
 

@@ -14,6 +14,7 @@ import {
 import { footballAPI } from '@/lib/api-client';
 import { useTranslation } from '@/lib/i18n';
 import { useAsync } from '@/hooks/useAsync';
+import { cachedFootballRequest } from '@/lib/football-cache';
 
 type FootballMatchDetailScreenProps = {
   matchId: number;
@@ -53,7 +54,11 @@ function previewLiveStatus(data: { status: string; utcDate: string }) {
 export default function FootballMatchDetailScreen({ matchId, onBack }: FootballMatchDetailScreenProps) {
   const { language } = useTranslation();
   const { data, isLoading, error, refetch } = useAsync(
-    () => footballAPI.getMatchDetail(matchId).then((res) => res.data),
+    () => cachedFootballRequest(
+      ['match-detail', matchId],
+      () => footballAPI.getMatchDetail(matchId).then((res) => res.data),
+      20 * 60 * 1000,
+    ),
     [matchId],
   );
 

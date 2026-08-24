@@ -24,6 +24,7 @@ import {
 import { useTranslation } from '@/lib/i18n';
 import { useAsync } from '@/hooks/useAsync';
 import { getDateLocale } from '@/utils/date';
+import { cachedFootballRequest } from '@/lib/football-cache';
 import {
   Select,
   SelectContent,
@@ -286,27 +287,49 @@ export default function FootballSchedule() {
   const [teamMatchesError, setTeamMatchesError] = useState(false);
 
   const leaguesState = useAsync(
-    () => footballAPI.getLeagues().then((res) => res.data),
+    () => cachedFootballRequest(
+      ['leagues'],
+      () => footballAPI.getLeagues().then((res) => res.data),
+      24 * 60 * 60 * 1000,
+      7 * 24 * 60 * 60 * 1000,
+    ),
     [],
   );
   const todayState = useAsync(
-    () => footballAPI.getTodayMatches().then((res) => res.data),
+    () => cachedFootballRequest(
+      ['today'],
+      () => footballAPI.getTodayMatches().then((res) => res.data),
+      5 * 60 * 1000,
+    ),
     [],
   );
   const concreteLeague = selectedLeague === ALL_LEAGUES ? 'PL' : selectedLeague;
   const scheduleState = useAsync(
-    () => footballAPI.getMatches(
-      weekOffset,
-      selectedLeague === ALL_LEAGUES ? undefined : selectedLeague,
-    ).then((res) => res.data),
+    () => cachedFootballRequest(
+      ['matches', weekOffset, selectedLeague],
+      () => footballAPI.getMatches(
+        weekOffset,
+        selectedLeague === ALL_LEAGUES ? undefined : selectedLeague,
+      ).then((res) => res.data),
+    ),
     [weekOffset, selectedLeague],
   );
   const standingsState = useAsync(
-    () => footballAPI.getStandings(concreteLeague).then((res) => res.data),
+    () => cachedFootballRequest(
+      ['standings', concreteLeague],
+      () => footballAPI.getStandings(concreteLeague).then((res) => res.data),
+      30 * 60 * 1000,
+      12 * 60 * 60 * 1000,
+    ),
     [concreteLeague],
   );
   const teamsState = useAsync(
-    () => footballAPI.getTeams(concreteLeague).then((res) => res.data),
+    () => cachedFootballRequest(
+      ['teams', concreteLeague],
+      () => footballAPI.getTeams(concreteLeague).then((res) => res.data),
+      30 * 60 * 1000,
+      12 * 60 * 60 * 1000,
+    ),
     [concreteLeague],
   );
 
@@ -350,9 +373,13 @@ export default function FootballSchedule() {
     let cancelled = false;
     setTeamMatchesLoading(true);
     setTeamMatchesError(false);
-    footballAPI.getTeamMatches(selectedTeam.id, 'SCHEDULED', 8)
+    cachedFootballRequest(
+      ['team-matches', selectedTeam.id, 'SCHEDULED', 8],
+      () => footballAPI.getTeamMatches(selectedTeam.id, 'SCHEDULED', 8).then((res) => res.data),
+      10 * 60 * 1000,
+    )
       .then((res) => {
-        if (!cancelled) setTeamMatches(res.data.matches || []);
+        if (!cancelled) setTeamMatches(res.matches || []);
       })
       .catch(() => {
         if (!cancelled) setTeamMatchesError(true);
