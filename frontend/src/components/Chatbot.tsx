@@ -17,6 +17,7 @@ import { MemoryConsentCard } from './chatbot/MemoryConsentCard';
 import { RagConsentCard } from './chatbot/RagConsentCard';
 import { useChatSessions } from './chatbot/useChatSessions';
 import { useChatStream } from './chatbot/useChatStream';
+import { PENDING_CHAT_PROMPT_KEY } from '@/lib/storage-keys';
 
 const MAX_IMAGE_SOURCE_BYTES = 8 * 1024 * 1024;
 
@@ -110,12 +111,13 @@ export default function Chatbot() {
   useEffect(() => {
     if (!familyId || isBusy) return;
 
-    const pendingMsg = sessionStorage.getItem('pending_chat_prompt');
+    const pendingMsg = sessionStorage.getItem(PENDING_CHAT_PROMPT_KEY);
     if (!pendingMsg?.trim()) return;
 
-    sessionStorage.removeItem('pending_chat_prompt');
+    sessionStorage.removeItem(PENDING_CHAT_PROMPT_KEY);
+    startNewSession();
     void sendMessage('', pendingMsg);
-  }, [familyId, isBusy, sendMessage]);
+  }, [familyId, isBusy, sendMessage, startNewSession]);
 
   const handleApproveMemory = async () => {
     if (!memoryConsent || !user?.id) return;

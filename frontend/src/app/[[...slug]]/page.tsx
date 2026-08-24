@@ -25,6 +25,7 @@ import WelcomeOverlay from '@/components/WelcomeOverlay';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
 import Login from '@/components/Login';
+import { PENDING_CHAT_PROMPT_KEY } from '@/lib/storage-keys';
 import { FiHome, FiMenu, FiUser, FiCalendar, FiActivity, FiCoffee, FiTrendingUp, FiShield, FiChevronDown, FiCheck, FiBookOpen, FiImage, FiCheckCircle } from 'react-icons/fi';
 
 type TabType = 'dashboard' | 'calendar' | 'chat' | 'family' | 'meals' | 'finance' | 'notes' | 'vision-drafts' | 'admin' | 'settings' | 'notifications' | 'profile' | 'ai-memory' | 'daily-tasks';
@@ -278,7 +279,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
                 </div>
               )}
                <NotificationDropdown onOpenAiChat={(prompt) => {
-                 if (prompt) sessionStorage.setItem('pending_chat_prompt', prompt);
+                 if (prompt) sessionStorage.setItem(PENDING_CHAT_PROMPT_KEY, prompt);
                  setActiveTab('chat');
                }} />
 

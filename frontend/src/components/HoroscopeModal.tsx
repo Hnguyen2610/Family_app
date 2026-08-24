@@ -1,7 +1,10 @@
 'use client';
 
 import { createPortal } from 'react-dom';
+import { useEffect, useRef } from 'react';
 import { FiX } from 'react-icons/fi';
+import { getDateLocale } from '@/utils/date';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 interface HoroscopeModalProps {
   isOpen: boolean;
@@ -16,6 +19,12 @@ export default function HoroscopeModal({
   notification,
   language = 'vi',
 }: HoroscopeModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEscapeToClose(isOpen, onClose);
+  useEffect(() => {
+    if (isOpen) dialogRef.current?.focus();
+  }, [isOpen]);
+
   if (!isOpen || !notification) return null;
 
   const isVi = language === 'vi';
@@ -23,7 +32,7 @@ export default function HoroscopeModal({
   const content = notification.metadata?.fullContent || notification.message || '';
 
   const dateFormatted = new Date(notification.createdAt || Date.now()).toLocaleDateString(
-    isVi ? 'vi-VN' : 'en-US',
+    getDateLocale(language),
     { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }
   );
 
@@ -36,7 +45,14 @@ export default function HoroscopeModal({
       />
 
       {/* Card */}
-      <div className="relative w-full max-w-xl bg-card rounded-3xl shadow-2xl border border-border/80 overflow-hidden animate-in zoom-in-95 fade-in duration-300 my-auto z-10">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="horoscope-modal-title"
+        tabIndex={-1}
+        className="relative w-full max-w-xl bg-card rounded-3xl shadow-2xl border border-border/80 overflow-hidden animate-in zoom-in-95 fade-in duration-300 my-auto z-10 outline-none"
+      >
 
         <div className="relative p-6 sm:p-8 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white overflow-hidden">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
@@ -51,7 +67,7 @@ export default function HoroscopeModal({
           </button>
 
           <div className="relative z-10 pr-10">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            <h2 id="horoscope-modal-title" className="text-xl sm:text-2xl font-bold tracking-tight text-white">
               {title}
             </h2>
             <p className="text-xs text-white/80 font-medium mt-0.5 capitalize">

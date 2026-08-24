@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type Dispatch, type MouseEvent, type 
 import { chatAPI, type ChatUsage } from '@/lib/api-client';
 import type { AiModelProvider } from './chatbot-usage';
 import type { ChatSession, Message } from './chatbot-types';
+import { PENDING_CHAT_PROMPT_KEY } from '@/lib/storage-keys';
 
 type UseChatSessionsOptions = {
   familyId: string;
@@ -76,6 +77,7 @@ export function useChatSessions({
   // same conversation instead of the blank "no chat yet" screen.
   useEffect(() => {
     if (!familyId) return;
+    if (sessionStorage.getItem(PENDING_CHAT_PROMPT_KEY)) return;
     const savedSessionId = localStorage.getItem(`chat_session_${familyId}`);
     if (savedSessionId) loadSession(savedSessionId);
     // Only run when familyId changes (mount / family switch) — not on every loadSession identity change.

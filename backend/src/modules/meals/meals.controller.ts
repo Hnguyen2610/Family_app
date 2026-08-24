@@ -7,6 +7,8 @@ import {
   Param,
   Body,
   Query,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { MealsService } from './meals.service';
 import {
@@ -16,12 +18,19 @@ import {
   RecordMealDto,
   AddCustomMealPreferenceDto,
 } from './dto/meal.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { assertFamilyMembership, assertSameFamily } from '../auth/family-access.util';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('api/meals')
+@UseGuards(JwtAuthGuard)
 export class MealsController {
-  constructor(private readonly mealsService: MealsService) {}
+  constructor(
+    private readonly mealsService: MealsService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  // ========== Meal Endpoints ==========
+  // ========== Meal Endpoints (shared catalog, no family scoping) ==========
 
   @Post()
   createMeal(@Body() dto: CreateMealDto) {
@@ -51,54 +60,65 @@ export class MealsController {
   // ========== Preferences ==========
 
   @Post('preferences/add')
-  addPreference(@Body() dto: AddMealPreferenceDto) {
+  async addPreference(@Request() req: any, @Body() dto: AddMealPreferenceDto) {
+    await assertSameFamily(this.prisma, req.user.id, dto.userId);
     return this.mealsService.addPreference(dto);
   }
 
   @Post('preferences/custom')
-  addCustomPreference(@Body() dto: AddCustomMealPreferenceDto) {
+  async addCustomPreference(@Request() req: any, @Body() dto: AddCustomMealPreferenceDto) {
+    await assertSameFamily(this.prisma, req.user.id, dto.userId);
     return this.mealsService.addCustomPreference(dto);
   }
 
   @Get('preferences/:userId')
-  getUserPreferences(@Param('userId') userId: string) {
+  async getUserPreferences(@Request() req: any, @Param('userId') userId: string) {
+    await assertSameFamily(this.prisma, req.user.id, userId);
     return this.mealsService.getUserPreferences(userId);
   }
 
   @Delete('preferences/:userId/:mealId')
-  removePreference(
+  async removePreference(
+    @Request() req: any,
     @Param('userId') userId: string,
     @Param('mealId') mealId: string,
   ) {
+    await assertSameFamily(this.prisma, req.user.id, userId);
     return this.mealsService.removePreference(userId, mealId);
   }
 
   // ========== History ==========
 
   @Post('history/record')
-  recordMeal(
+  async recordMeal(
+    @Request() req: any,
     @Query('familyId') familyId: string,
     @Body() dto: RecordMealDto,
   ) {
+    await assertFamilyMembership(this.prisma, req.user.id, familyId);
     return this.mealsService.recordMeal(familyId, dto);
   }
 
   @Get('history/recent')
-  getMealHistory(
+  async getMealHistory(
+    @Request() req: any,
     @Query('familyId') familyId: string,
     @Query('userId') userId?: string,
     @Query('days') days?: string,
   ) {
+    await assertFamilyMembership(this.prisma, req.user.id, familyId);
     return this.mealsService.getMealHistory(familyId, days ? Number.parseInt(days) : 30, userId);
   }
 
   // ========== Suggestions (AI / Family Menu) ==========
 
   @Get('family/:familyId/generate-menu')
-  generateFamilyMenu(
+  async generateFamilyMenu(
+    @Request() req: any,
     @Param('familyId') familyId: string,
     @Query('userId') userId?: string,
   ) {
+    await assertFamilyMembership(this.prisma, req.user.id, familyId);
     return this.mealsService.generateFamilyMenu(familyId, userId);
   }
 }

@@ -7,6 +7,7 @@ import { normalizeSearchText } from '../ai-intent-router';
 import { parseCalendarDate, parseCalendarDateRange, parseCalendarTime } from '../ai-date-parser';
 import { AiConversationStateService } from '../services/ai-conversation-state.service';
 import { getCalendarReadFamilyId, getMutationFamilyId, shouldIncludePrivateEvents } from '../ai-family-scope-policy';
+import { getIctShiftedNow } from '../../../utils/timezone.util';
 
 @Injectable()
 export class CalendarSkill implements AiSkill {
@@ -165,15 +166,18 @@ export class CalendarSkill implements AiSkill {
       const requiresLlmReasoning =
         /(\bke\s*hoach\b|\bgoi\s*y\b|\bthuc\s*don\b|\bmenu\b|\ban\s*gi\b|\bnau\s*gi\b|\bmon\s*an\b|\blien\s*hoan\b|\bto\s*chuc\b|\bsap\s*xep\b|\bplan\b|\bsuggest\b|\bparty\b|\borganize\b|\bcook\b|\beat\b)/i.test(normalized);
 
-      // parseCalendarDate() matches bare words like "hom nay"/"ngay mai" so it can resolve a
-      // date out of ANY message that happens to mention "today"/"tomorrow" — including ones
-      // that have nothing to do with checking events (e.g. "hom nay la ngay bao nhieu" = "what
-      // is today's date"). Without requiring an actual calendar-object word alongside it, this
-      // branch would deterministically short-circuit straight to a hardcoded "no events on
-      // <date>" reply — bypassing the LLM (and its own, correct "today's date is ..." knowledge)
-      // entirely. Require hasCalendarObjectWord so a bare date/day reference alone is not enough.
+      // Shared gate for every branch below that short-circuits on a signal that ISN'T
+      // unambiguously calendar-specific by construction (a bare date/day word like "hom nay",
+      // or a personal pronoun like "cua toi" — both appear constantly in non-calendar messages
+      // too, e.g. "hom nay la ngay bao nhieu" or "tu vi tuan nay cua toi"). Every such branch
+      // MUST AND this in, or it will hijack unrelated features and answer with a random events
+      // list — this has happened twice (the date branch below, then isPersonalEventQuery).
+      // A branch driven by an explicit month reference (getCalendarMonthFromMessage) is exempt:
+      // "thang nay"/"thang 3" is unambiguous on its own, no extra gate needed.
+      const hasCalendarObjectWord = this.hasCalendarObjectWord(normalized);
+
       const targetDate = parseCalendarDate(context.userMessage);
-      if (targetDate && this.hasCalendarObjectWord(normalized)) {
+      if (targetDate && hasCalendarObjectWord) {
         const events = await this.eventsService.getEventsByMonth(
           getCalendarReadFamilyId(context),
           targetDate.month,
@@ -217,7 +221,7 @@ export class CalendarSkill implements AiSkill {
       }
 
       const targetMonth = this.getCalendarMonthFromMessage(context.userMessage);
-      const wantsPersonalEvents = this.isPersonalEventQuery(normalized);
+      const wantsPersonalEvents = this.isPersonalEventQuery(normalized) && hasCalendarObjectWord;
       if (targetMonth || wantsPersonalEvents) {
         const month = targetMonth?.month || this.getCurrentIctMonth().month;
         const year = targetMonth?.year || this.getCurrentIctMonth().year;
@@ -451,8 +455,7 @@ export class CalendarSkill implements AiSkill {
   }
 
   private getCurrentIctMonth() {
-    const now = new Date();
-    const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const ictDate = getIctShiftedNow();
     return {
       month: ictDate.getUTCMonth() + 1,
       year: ictDate.getUTCFullYear(),

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { FiTrash2, FiUser, FiMail, FiArrowRight, FiHome, FiUsers } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from '@/lib/i18n';
+import { getDateLocale } from '@/utils/date';
 import {
   Select,
   SelectContent,
@@ -130,7 +131,7 @@ export default function FamilyMembers() {
   };
 
   const formatDisplayDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US', {
+    return new Date(dateString).toLocaleDateString(getDateLocale(language), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

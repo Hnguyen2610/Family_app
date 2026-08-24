@@ -1,16 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getLunarDateObject, getZodiacYearInfo } from '../../../utils/lunar-calendar.util';
 import { withGeminiRetry } from '../ai-model-handlers';
+import { getIctShiftedNow } from '../../../utils/timezone.util';
+import { AiModelClientsService } from './ai-model-clients.service';
 
 @Injectable()
 export class HoroscopeService {
   private readonly logger = new Logger(HoroscopeService.name);
-  private readonly gemini: GoogleGenerativeAI;
 
-  constructor() {
-    this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-  }
+  constructor(private readonly modelClients: AiModelClientsService) {}
 
   /**
    * System prompt (Agent Persona & Rules)
@@ -68,9 +66,7 @@ Nguyên tắc (P0):
   }
 
   private getIctToday(): string {
-    const now = new Date();
-    const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    return ictDate.toISOString().split('T')[0];
+    return getIctShiftedNow().toISOString().split('T')[0];
   }
 
   /**
@@ -78,8 +74,8 @@ Nguyên tắc (P0):
    */
   async generateWeeklyHoroscope(userName: string, birthday?: Date): Promise<string> {
     try {
-      const model = this.gemini.getGenerativeModel({
-        model: 'gemini-flash-latest',
+      const model = this.modelClients.gemini.getGenerativeModel({
+        model: this.modelClients.geminiModel,
         systemInstruction: this.getSystemInstruction(),
       });
 
@@ -110,8 +106,8 @@ Yêu cầu:
    */
   async generateOnDemandHoroscope(userName: string, birthday: Date | undefined, question: string): Promise<string> {
     try {
-      const model = this.gemini.getGenerativeModel({
-        model: 'gemini-flash-latest',
+      const model = this.modelClients.gemini.getGenerativeModel({
+        model: this.modelClients.geminiModel,
         systemInstruction: this.getOnDemandSystemInstruction(),
       });
 

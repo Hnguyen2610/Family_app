@@ -8,6 +8,7 @@ import {
   AddCustomMealPreferenceDto,
 } from './dto/meal.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { resolveUserFamilyIds } from '../auth/family-access.util';
 
 @Injectable()
 export class MealsService {
@@ -101,14 +102,16 @@ export class MealsService {
         select: { id: true },
       });
 
-      for (const member of familyMembers) {
-        await this.notificationsService.createNotification(member.id, {
-          type: 'MEAL_ADDED',
-          title: 'Thực đơn hôm nay',
-          message: `Món mới đã được cập nhật: ${mealHistory.meal.name}`,
-          metadata: { mealId: mealHistory.mealId, path: '/meals' },
-        });
-      }
+      await Promise.allSettled(
+        familyMembers.map((member) =>
+          this.notificationsService.createNotification(member.id, {
+            type: 'MEAL_ADDED',
+            title: 'Thực đơn hôm nay',
+            message: `Món mới đã được cập nhật: ${mealHistory.meal.name}`,
+            metadata: { mealId: mealHistory.mealId, path: '/meals' },
+          }),
+        ),
+      );
     } catch (e) {
       console.error('Failed to send meal notification', e);
     }
@@ -125,11 +128,7 @@ export class MealsService {
     };
 
     if (familyId === 'all' && userId) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { families: { select: { id: true } } },
-      });
-      const familyIds = user?.families.map((f) => f.id) || [];
+      const familyIds = await resolveUserFamilyIds(this.prisma, userId);
       where.familyId = { in: familyIds };
     } else {
       where.familyId = familyId;
@@ -264,7 +263,7 @@ export class MealsService {
     // 5. Record to history. If 'all', record to the first family of the user
     const targetFamilyId = familyId === 'all' ? (familyIds[0] || 'all') : familyId;
     if (targetFamilyId && targetFamilyId !== 'all') {
-      const mealNames = [];
+      const mealNames: string[] = [];
       for (const meal of combo) {
         await this.recordMeal(targetFamilyId, {
           mealId: meal.id,
@@ -281,14 +280,16 @@ export class MealsService {
             select: { id: true },
           });
 
-          for (const member of familyMembers) {
-            await this.notificationsService.createNotification(member.id, {
-              type: 'MEAL_ADDED',
-              title: 'Thực đơn hôm nay',
-              message: `Món mới đã được cập nhật: ${mealNames.join(', ')}`,
-              metadata: { path: '/meals' },
-            });
-          }
+          await Promise.allSettled(
+            familyMembers.map((member) =>
+              this.notificationsService.createNotification(member.id, {
+                type: 'MEAL_ADDED',
+                title: 'Thực đơn hôm nay',
+                message: `Món mới đã được cập nhật: ${mealNames.join(', ')}`,
+                metadata: { path: '/meals' },
+              }),
+            ),
+          );
         } catch (e) {
           this.logger.error('Failed to send aggregated meal notification', e);
         }

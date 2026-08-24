@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { usersAPI, notificationsAPI } from '@/lib/api-client';
 import toast from 'react-hot-toast';
 import { TimePicker } from '@/components/ui/time-picker';
+import { getDateLocale } from '@/utils/date';
 
 interface NotificationSettingsProps {
   readonly onBack: () => void;
@@ -300,7 +301,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{log.title}</p>
                     <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                      {log.channel?.toUpperCase()} · {new Date(log.createdAt).toLocaleTimeString(language === 'vi' ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(log.createdAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                      {log.channel?.toUpperCase()} · {new Date(log.createdAt).toLocaleTimeString(getDateLocale(language), { hour: '2-digit', minute: '2-digit' })} {new Date(log.createdAt).toLocaleDateString(getDateLocale(language))}
                     </p>
                     {log.errorMessage && (
                       <p className="text-[10px] text-rose-400 font-bold mt-0.5 truncate">{log.errorMessage}</p>

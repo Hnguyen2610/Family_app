@@ -49,7 +49,7 @@ describe('DailyTasksService', () => {
     const { service, prisma } = buildService();
     prisma.dailyTask.updateMany.mockResolvedValue({ count: 1 });
 
-    const result = await service.completeToday('task-1', 'user-1');
+    const result = await service.completeToday('task-1', 'user-1', 'user-1');
 
     expect(result).toEqual({ completed: true });
     expect(prisma.dailyTask.updateMany).toHaveBeenCalledWith({

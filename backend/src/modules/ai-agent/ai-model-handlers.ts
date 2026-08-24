@@ -159,6 +159,13 @@ async function executePseudoFunctionCalls(content: string, deps: ModelHandlerDep
   return calls.length;
 }
 
+// Gemini passes tool-call args as a parsed object; Groq passes them as an already-serialized
+// JSON string. Both need the same key shape to dedupe against the same `calledCalls` Set, so
+// stringify only when needed rather than duplicating this ternary at all 4 call sites below.
+function buildToolCallKey(name: string, args: unknown): string {
+  return `${name}:${typeof args === 'string' ? args : JSON.stringify(args)}`;
+}
+
 function isRetryableGeminiError(error: any): boolean {
   const status = error?.status;
   const message = String(error?.message || error || '').toLowerCase();
@@ -301,7 +308,7 @@ export async function handleGeminiChat(deps: ModelHandlerDeps, input: ChatHandle
 
     if (part?.functionCall) {
       loopCount++;
-      const callCheck = `${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}`;
+      const callCheck = buildToolCallKey(part.functionCall.name, part.functionCall.args);
       if (calledCalls.has(callCheck)) {
         currentInput = [{ functionResponse: { name: part.functionCall.name, response: { error: 'Already searched. Use previous info.' } } }];
       } else {
@@ -382,7 +389,7 @@ export async function handleGroqChat(deps: ModelHandlerDeps, input: ChatHandlerI
           toolName = toolName.substring(0, toolName.indexOf('{')).trim();
         }
 
-        const callCheck = `${toolName}:${tc.function.arguments}`;
+        const callCheck = buildToolCallKey(toolName, tc.function.arguments);
         if (calledCalls.has(callCheck)) {
           logger.warn(`[LoopGuard] Groq Chat AI is repeating tool call: ${callCheck}. Forcing response.`);
           messages.push({
@@ -501,7 +508,7 @@ export async function handleGeminiStream(deps: ModelHandlerDeps, input: StreamHa
       const part = chunk.candidates?.[0]?.content?.parts?.[0];
       if (part?.functionCall) {
         isTool = true;
-        const callCheck = `${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}`;
+        const callCheck = buildToolCallKey(part.functionCall.name, part.functionCall.args);
         if (calledCalls.has(callCheck)) {
           deps.logger.warn(`[LoopGuard] AI is repeating tool call: ${callCheck}. Forcing response.`);
           loopGuardBreak = true;
@@ -658,7 +665,7 @@ export async function handleGroqStream(deps: ModelHandlerDeps, input: StreamHand
         }
         if (!toolName) continue;
 
-        const callCheck = `${toolName}:${toolCall.arguments}`;
+        const callCheck = buildToolCallKey(toolName, toolCall.arguments);
         if (calledCalls.has(callCheck)) {
           logger.warn(`[LoopGuard] Groq Stream AI is repeating tool call: ${callCheck}. Forcing response.`);
           messages.push({

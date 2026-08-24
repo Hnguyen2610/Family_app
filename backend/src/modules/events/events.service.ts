@@ -4,6 +4,7 @@ import { CreateEventDto, UpdateEventDto } from './dto/event.dto';
 import { calculateLunarDate, getLunarDateObject, getSolarDateFromLunar } from '../../utils/lunar-calendar.util';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { resolveUserFamilyIds } from '../auth/family-access.util';
 
 @Injectable()
 export class EventsService {
@@ -116,14 +117,16 @@ export class EventsService {
       const descPart = event.description ? `\n📝 Mô tả: ${event.description}` : '';
       const notificationMessage = `${creatorName} đã thêm một sự kiện mới:\n📌 Tiêu đề: ${event.title}\n📅 Ngày: ${eventDateStr}${descPart}`;
 
-      for (const member of filteredMembers) {
-        await this.notificationsService.createNotification(member.id, {
-          type: eventType,
-          title: 'Sự kiện mới 📢',
-          message: notificationMessage,
-          metadata: { eventId: event.id, path: '/calendar' }
-        });
-      }
+      await Promise.allSettled(
+        filteredMembers.map((member) =>
+          this.notificationsService.createNotification(member.id, {
+            type: eventType,
+            title: 'Sự kiện mới 📢',
+            message: notificationMessage,
+            metadata: { eventId: event.id, path: '/calendar' }
+          }),
+        ),
+      );
     } catch (e) {
       console.error('Failed to notify users about event', e);
     }
@@ -511,11 +514,7 @@ export class EventsService {
     let familyIds: string[] = [];
 
     if (isAll && userId) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { families: { select: { id: true } } },
-      });
-      familyIds = user?.families.map(f => f.id) || [];
+      familyIds = await resolveUserFamilyIds(this.prisma, userId);
     } else if (familyId !== 'all' && familyId !== 'system' && familyId !== '') {
       familyIds = [familyId];
     } else {

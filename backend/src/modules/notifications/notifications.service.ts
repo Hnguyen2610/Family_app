@@ -7,6 +7,7 @@ import { WebPushService } from './web-push.service';
 import { HoroscopeService } from '../ai-agent/services/horoscope.service';
 import { FinanceService } from '../finance/services/finance.service';
 import { getLunarDateObject } from '../../utils/lunar-calendar.util';
+import { getIctNow } from '../../utils/timezone.util';
 import { TelegramService } from '../telegram/telegram.service';
 import { buildDailyEmailHtml, buildMonthlyEmailHtml, getDailyReminderEventContext } from './notification-email-formatters';
 import {
@@ -58,9 +59,9 @@ export class NotificationsService {
     });
   }
 
-  async markAsRead(id: string, userId?: string) {
+  async markAsRead(id: string, userId: string) {
     return this.prisma.notification.updateMany({
-      where: { id },
+      where: { id, userId },
       data: { isRead: true },
     });
   }
@@ -144,7 +145,7 @@ export class NotificationsService {
   async sendMonthlySummary() {
     this.logger.log('Starting monthly summary cron job...');
     // Use proper ICT local date 
-    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const now = getIctNow();
     const currentMonth = now.getMonth() + 1; // 1-12
     const currentYear = now.getFullYear();
 
@@ -155,34 +156,38 @@ export class NotificationsService {
     this.logger.log(`Found ${families.length} families to process for monthly summary.`);
 
     for (const family of families) {
-      const emails = family.users
-        .map((u) => u.email)
-        .filter((e) => e && isValidEmail(e));
+      try {
+        const emails = family.users
+          .map((u) => u.email)
+          .filter((e) => e && isValidEmail(e));
 
-      if (emails.length === 0) continue;
+        if (emails.length === 0) continue;
 
-      // Use eventsService to get actual DB events + Holidays + Birthdays
-      const events = await this.eventsService.findAll(family.id, currentMonth, currentYear);
+        // Use eventsService to get actual DB events + Holidays + Birthdays
+        const events = await this.eventsService.findAll(family.id, currentMonth, currentYear);
 
-      if (events.length > 0) {
-        const html = buildMonthlyEmailHtml(family.name, currentMonth, events);
-        await this.mailService.sendMail(
-          emails,
-          `[Family Calendar] Tổng hợp sự kiện tháng ${currentMonth}`,
-          html,
-        );
-        this.logger.log(`Sent monthly summary to ${emails.length} users in family "${family.name}"`);
+        if (events.length > 0) {
+          const html = buildMonthlyEmailHtml(family.name, currentMonth, events);
+          await this.mailService.sendMail(
+            emails,
+            `[Family Calendar] Tổng hợp sự kiện tháng ${currentMonth}`,
+            html,
+          );
+          this.logger.log(`Sent monthly summary to ${emails.length} users in family "${family.name}"`);
 
-        // Send Push to everyone
-        for (const user of family.users) {
-          if (user.id) {
-            await this.webPushService.sendToUser(user.id, {
-              title: `📅 Tổng hợp sự kiện tháng ${currentMonth}`,
-              body: `Gia đình ${family.name} có ${events.length} sự kiện sắp diễn ra trong tháng này.`,
-              url: '/calendar'
-            });
+          // Send Push to everyone
+          for (const user of family.users) {
+            if (user.id) {
+              await this.webPushService.sendToUser(user.id, {
+                title: `📅 Tổng hợp sự kiện tháng ${currentMonth}`,
+                body: `Gia đình ${family.name} có ${events.length} sự kiện sắp diễn ra trong tháng này.`,
+                url: '/calendar'
+              });
+            }
           }
         }
+      } catch (error) {
+        this.logger.error(`Failed to send monthly summary for family ${family.id} (${family.name})`, error);
       }
     }
     this.logger.log(`Monthly summary cron job finished. Processed ${families.length} families.`);
@@ -195,7 +200,7 @@ export class NotificationsService {
   })
   async sendMonthlyFinanceReport() {
     // Use proper ICT local date
-    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const now = getIctNow();
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
 
@@ -257,7 +262,7 @@ export class NotificationsService {
   async sendDailyReminder() {
     this.logger.log('Starting daily reminder cron job...');
     // Use proper ICT local date
-    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const now = getIctNow();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
     const currentDay = now.getDate();

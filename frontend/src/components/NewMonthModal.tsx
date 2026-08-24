@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { eventsAPI } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 export default function NewMonthModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,10 +15,17 @@ export default function NewMonthModal() {
 
   const { user } = useAuth();
   const familyId = user?.familyId || process.env.NEXT_PUBLIC_FAMILY_ID || '';
-  
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEscapeToClose(isOpen, () => setIsOpen(false));
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (isOpen) dialogRef.current?.focus();
+  }, [isOpen]);
 
   useEffect(() => {
     const checkNewMonth = () => {
@@ -65,7 +73,14 @@ export default function NewMonthModal() {
         className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
         onClick={() => setIsOpen(false)}
       />
-      <div className="relative bg-white rounded-2xl md:rounded-2xl shadow-md max-w-lg w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 shadow-indigo-200/50 border border-white">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-month-modal-title"
+        tabIndex={-1}
+        className="relative bg-white rounded-2xl md:rounded-2xl shadow-md max-w-lg w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 shadow-indigo-200/50 border border-white outline-none"
+      >
 
         {/* Decorative Header */}
         <div className="bg-indigo-600 p-8 md:p-10 text-center relative overflow-hidden">
@@ -93,7 +108,7 @@ export default function NewMonthModal() {
             <div className="w-14 h-14 md:w-16 md:h-16 bg-white/20 backdrop-blur-sm rounded-2xl md:rounded-2xl flex items-center justify-center text-3xl md:text-4xl mb-4 md:mb-6 shadow-md animate-float">
               ✨
             </div>
-            <h2 className="text-2xl md:text-3xl font-bold text-white mb-1.5 tracking-tight px-4">Chào {monthName}!</h2>
+            <h2 id="new-month-modal-title" className="text-2xl md:text-3xl font-bold text-white mb-1.5 tracking-tight px-4">Chào {monthName}!</h2>
             <p className="text-indigo-100 font-bold text-xs md:text-sm px-6 opacity-80  leading-relaxed max-w-sm mx-auto">
               Tháng mới ngập tràn yêu thương nhé gia đình mình! 🏠
             </p>

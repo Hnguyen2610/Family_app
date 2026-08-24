@@ -3,6 +3,7 @@ import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationLogService } from './notification-log.service';
+import { getIctNow } from '../../utils/timezone.util';
 
 @Controller('api/notifications')
 export class NotificationsController {
@@ -23,7 +24,7 @@ export class NotificationsController {
     this.verifyAuth(customAuth, authHeader);
     
     // Use ICT local date to check day of week/month
-    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const now = getIctNow();
     const dayOfWeek = now.getDay(); // 0 (Sun) to 6 (Sat)
     const dateOfMonth = now.getDate();
 
@@ -112,7 +113,8 @@ export class NotificationsController {
 
   @Patch(':id/read')
   @Post(':id/read')
-  async markAsRead(@Param('id') id: string, @Query('userId') userId?: string) {
+  async markAsRead(@Param('id') id: string, @Query('userId') userId: string) {
+    if (!userId) throw new UnauthorizedException('userId is required');
     return this.notificationsService.markAsRead(id, userId);
   }
 
@@ -176,8 +178,12 @@ export class NotificationsController {
   }
 
   private verifyAuth(customAuth: string, authHeader: string) {
-    const cronSecret = process.env.CRON_SECRET || 'family-cron-secret-2026';
-    
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      this.logger.warn('CRON_SECRET is not set — rejecting cron endpoint request');
+      throw new UnauthorizedException('Cron auth not configured');
+    }
+
     // Check custom header
     if (customAuth === cronSecret) return;
     

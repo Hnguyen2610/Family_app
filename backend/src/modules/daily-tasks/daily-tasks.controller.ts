@@ -8,11 +8,16 @@ import {
   Param,
   Query,
   Headers,
+  Request,
+  UseGuards,
   UnauthorizedException,
   Logger,
+  ParseArrayPipe,
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { DailyTasksService, CreateDailyTaskDto, ReorderDto, UpdateDailyTaskDto } from './daily-tasks.service';
+import { DailyTasksService } from './daily-tasks.service';
+import { CreateDailyTaskDto, UpdateDailyTaskDto, ReorderItemDto } from './dto/daily-task.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('api/daily-tasks')
 export class DailyTasksController {
@@ -22,35 +27,44 @@ export class DailyTasksController {
 
   // ── CRUD ──────────────────────────────────────────────────────────────
 
+  @UseGuards(JwtAuthGuard)
   @Get()
-  findAll(@Query('userId') userId: string) {
-    return this.dailyTasksService.findAll(userId);
+  findAll(@Request() req: any, @Query('userId') userId: string) {
+    return this.dailyTasksService.findAll(userId, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() dto: CreateDailyTaskDto) {
-    return this.dailyTasksService.create(dto);
+  create(@Request() req: any, @Body() dto: CreateDailyTaskDto) {
+    return this.dailyTasksService.create(dto, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('reorder')
-  reorder(@Body() items: ReorderDto[]) {
-    return this.dailyTasksService.reorder(items);
+  reorder(
+    @Request() req: any,
+    @Body(new ParseArrayPipe({ items: ReorderItemDto })) items: ReorderItemDto[],
+  ) {
+    return this.dailyTasksService.reorder(items, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/done')
-  completeToday(@Param('id') id: string, @Body('userId') userId: string) {
+  completeToday(@Request() req: any, @Param('id') id: string, @Body('userId') userId: string) {
     if (!userId) throw new UnauthorizedException('userId is required');
-    return this.dailyTasksService.completeToday(id, userId);
+    return this.dailyTasksService.completeToday(id, userId, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateDailyTaskDto) {
-    return this.dailyTasksService.update(id, dto);
+  update(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateDailyTaskDto) {
+    return this.dailyTasksService.update(id, dto, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.dailyTasksService.remove(id);
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.dailyTasksService.remove(id, req.user.id);
   }
 
   // ── Cron endpoints (protected by CRON_SECRET) ─────────────────────────
@@ -80,7 +94,11 @@ export class DailyTasksController {
   // ── Helper ────────────────────────────────────────────────────────────
 
   private verifyCronAuth(authHeader: string) {
-    const secret = process.env.CRON_SECRET || 'family-cron-secret-2026';
+    const secret = process.env.CRON_SECRET;
+    if (!secret) {
+      this.logger.warn('CRON_SECRET is not set — rejecting cron endpoint request on daily-tasks');
+      throw new UnauthorizedException('Cron auth not configured');
+    }
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
     if (token !== secret) {
       this.logger.warn('Unauthorized cron attempt on daily-tasks');

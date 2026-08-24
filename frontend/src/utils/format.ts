@@ -17,10 +17,6 @@ export function formatLatency(ms: number) {
   return `${ms}ms`;
 }
 
-export function formatDateVi(date: Date | string) {
-  return new Date(date).toLocaleDateString('vi-VN');
-}
-
 export function formatCurrency(amount: number, currency = 'VND') {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency }).format(amount);
 }

@@ -42,11 +42,24 @@ export class MailService {
     }
   }
 
+  /**
+   * Shared wrapper for the "simple card" email style used by welcome/family-added/event
+   * notification emails — same outer card, hr, and footer, only bodyHtml/footerNote differ.
+   */
+  private wrapSimpleCardEmail(bodyHtml: string, footerNote: string) {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+        ${bodyHtml}
+        <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
+        <p style="font-size: 12px; color: #64748b; text-align: center;">${footerNote}</p>
+      </div>
+    `;
+  }
+
   async sendWelcomeEmail(email: string, name: string) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const subject = 'Chào mừng bạn đến với Family Calendar! 🏠';
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+    const html = this.wrapSimpleCardEmail(`
         <h2 style="color: #e11d48; text-align: center;">Chào mừng ${name}!</h2>
         <p>Tài khoản của bạn đã được khởi tạo thành công trên hệ thống <b>Family Calendar</b>.</p>
         <p>Nguyên đã tạo cho bạn một không gian riêng để cả nhà mình cùng kết nối và chia sẻ những khoảnh khắc tuyệt vời.</p>
@@ -58,36 +71,28 @@ export class MailService {
         <div style="text-align: center; margin-top: 30px;">
           <a href="${frontendUrl}" style="background-color: #e11d48; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Đăng nhập ngay</a>
         </div>
-        <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
-        <p style="font-size: 12px; color: #64748b; text-align: center;">© 2026 Family Calendar Team. Kết nối tình thân.</p>
-      </div>
-    `;
+    `, '© 2026 Family Calendar Team. Kết nối tình thân.');
     return this.sendMail(email, subject, html);
   }
 
   async sendFamilyAddedEmail(email: string, name: string, familyName: string) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const subject = `Bạn đã được thêm vào gia đình ${familyName}! 👥`;
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+    const html = this.wrapSimpleCardEmail(`
         <h2 style="color: #2563eb; text-align: center;">Chào ${name}!</h2>
         <p>Bạn vừa được mời tham gia vào gia đình <b>${familyName}</b> trên <b>Family Calendar</b>.</p>
         <p>Từ bây giờ, bạn có thể xem danh sách thành viên, cùng lên thực đơn món ngon mỗi ngày và theo dõi các sự kiện chung của gia đình mình.</p>
         <div style="text-align: center; margin-top: 30px;">
           <a href="${frontendUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Truy cập Gia đình</a>
         </div>
-        <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
-        <p style="font-size: 12px; color: #64748b; text-align: center;">© 2026 Family Calendar Team. Mỗi bữa cơm đều là một niềm hạnh phúc.</p>
-      </div>
-    `;
+    `, '© 2026 Family Calendar Team. Mỗi bữa cơm đều là một niềm hạnh phúc.');
     return this.sendMail(email, subject, html);
   }
 
   async sendEventNotificationEmail(emails: string[], eventDetails: { title: string, date: string, description?: string, creatorName: string }) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const subject = `📢 Sự kiện gia đình mới: ${eventDetails.title}`;
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+    const html = this.wrapSimpleCardEmail(`
         <h2 style="color: #6366f1; text-align: center;">Thông báo sự kiện mới!</h2>
         <p><b>${eventDetails.creatorName}</b> vừa thêm một sự kiện mới cho gia đình:</p>
         <div style="background-color: #f1f5f9; padding: 20px; border-radius: 12px; margin: 20px 0;">
@@ -97,13 +102,9 @@ export class MailService {
         </div>
         <p>Hãy truy cập lịch để xem chi tiết và chuẩn bị nhé!</p>
         <div style="text-align: center; margin-top: 30px;">
-        <div style="text-align: center; margin-top: 30px;">
           <a href="${frontendUrl}" style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 12px; font-weight: bold;">Xem trên Lịch</a>
         </div>
-        <hr style="margin: 30px 0; border: 0; border-top: 1px solid #e2e8f0;" />
-        <p style="font-size: 12px; color: #64748b; text-align: center;">© 2026 Family Calendar Team. Kết nối tình thân.</p>
-      </div>
-    `;
+    `, '© 2026 Family Calendar Team. Kết nối tình thân.');
     return this.sendMail(emails, subject, html);
   }
 

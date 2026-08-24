@@ -1,6 +1,7 @@
+import { getIctShiftedNow } from '../../utils/timezone.util';
+
 function getDateContext() {
-  const now = new Date();
-  const ictDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const ictDate = getIctShiftedNow();
   const today = ictDate.toISOString().split('T')[0];
   // Full diacritics on purpose: an unaccented "Thu sau" reads as ambiguous shorthand rather
   // than an explicit day-of-week value, and models were observed re-deriving (and getting

@@ -1,5 +1,10 @@
 const CALENDAR_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
+/** Shared vi/en locale pick for toLocaleDateString/toLocaleTimeString call sites across the app. */
+export function getDateLocale(language?: string): string {
+  return language === 'vi' ? 'vi-VN' : 'en-US';
+}
+
 export function formatDate(date: Date | string): string {
   return getCalendarDateKey(date);
 }

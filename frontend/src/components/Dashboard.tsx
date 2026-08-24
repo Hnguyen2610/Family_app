@@ -10,6 +10,7 @@ import { vi } from 'date-fns/locale';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatCalendarDayMonth, getCalendarDateKey } from '@/utils/date';
+import { PENDING_CHAT_PROMPT_KEY } from '@/lib/storage-keys';
 
 interface DashboardProps {
   readonly onNavigate: (tab: 'calendar' | 'chat' | 'family' | 'meals' | 'admin' | 'settings' | 'notifications') => void;
@@ -76,7 +77,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
-    sessionStorage.setItem('pending_chat_prompt', chatMessage.trim());
+    sessionStorage.setItem(PENDING_CHAT_PROMPT_KEY, chatMessage.trim());
     setChatMessage('');
     onNavigate('chat');
   };

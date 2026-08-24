@@ -65,7 +65,11 @@ export class FinanceController {
     @Headers('x-api-key') apiKey: string // Simplified webhook auth for now
   ) {
     // 1. Verify the signature/API key (simplified)
-    const expectedKey = process.env.PAYOS_WEBHOOK_SECRET || 'family-payos-secret-2026';
+    const expectedKey = process.env.PAYOS_WEBHOOK_SECRET;
+    if (!expectedKey) {
+      this.logger.warn('PAYOS_WEBHOOK_SECRET is not set — rejecting webhook request');
+      throw new UnauthorizedException('Webhook auth not configured');
+    }
     if (apiKey !== expectedKey) {
       this.logger.warn('Unauthorized PayOS Webhook attempt');
       throw new UnauthorizedException('Invalid PayOS secret');

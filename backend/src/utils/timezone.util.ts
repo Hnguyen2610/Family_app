@@ -4,6 +4,10 @@ export function getIctNow() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: ICT_TIME_ZONE }));
 }
 
+export function getIctShiftedNow() {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000);
+}
+
 export function getIctDateKey(date: Date) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: ICT_TIME_ZONE,

@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TelegramSender } from '../telegram/services/telegram-sender';
 import { WebPushService } from '../notifications/web-push.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ICT_TIME_ZONE, getIctDateKey } from '../../utils/timezone.util';
+import { CreateDailyTaskDto, UpdateDailyTaskDto, ReorderItemDto } from './dto/daily-task.dto';
 
 const DEFAULT_ACTIVE_START_TIME = '08:00';
 const DEFAULT_ACTIVE_END_TIME = '17:00';
@@ -130,32 +131,6 @@ function isTaskDue(task: DailyTaskLike, now = new Date()) {
   return calculateNextReminderAt(task, now).getTime() <= now.getTime();
 }
 
-export interface CreateDailyTaskDto {
-  userId: string;
-  title: string;
-  priority?: number;
-  intervalMinutes?: number;
-  repeatWeekdays?: number[];
-  activeStartTime?: string;
-  activeEndTime?: string;
-}
-
-export interface UpdateDailyTaskDto {
-  title?: string;
-  priority?: number;
-  intervalMinutes?: number;
-  repeatWeekdays?: number[];
-  activeStartTime?: string;
-  activeEndTime?: string;
-  isActive?: boolean;
-  completedAt?: Date | null;
-}
-
-export interface ReorderDto {
-  id: string;
-  priority: number;
-}
-
 export interface TriggerNextResult {
   sent: boolean;
   task?: string;
@@ -176,7 +151,8 @@ export class DailyTasksService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  async findAll(userId: string) {
+  async findAll(userId: string, authUserId: string) {
+    this.assertOwner(userId, authUserId);
     const tasks = await this.prisma.dailyTask.findMany({
       where: { userId },
       orderBy: { priority: 'asc' },
@@ -190,7 +166,8 @@ export class DailyTasksService {
     }));
   }
 
-  async create(dto: CreateDailyTaskDto) {
+  async create(dto: CreateDailyTaskDto, authUserId: string) {
+    this.assertOwner(dto.userId, authUserId);
     if (dto.priority === undefined) {
       const last = await this.prisma.dailyTask.findFirst({
         where: { userId: dto.userId },
@@ -213,8 +190,8 @@ export class DailyTasksService {
     });
   }
 
-  async update(id: string, dto: UpdateDailyTaskDto) {
-    const task = await this.findOneOrThrow(id);
+  async update(id: string, dto: UpdateDailyTaskDto, authUserId: string) {
+    const task = await this.findOneOrThrow(id, authUserId);
     const data: any = {
       ...dto,
     };
@@ -236,7 +213,16 @@ export class DailyTasksService {
     return this.prisma.dailyTask.update({ where: { id }, data });
   }
 
-  async reorder(items: ReorderDto[]) {
+  async reorder(items: ReorderItemDto[], authUserId: string) {
+    const ids = items.map((item) => item.id);
+    const owned = await this.prisma.dailyTask.findMany({
+      where: { id: { in: ids }, userId: authUserId },
+      select: { id: true },
+    });
+    if (owned.length !== ids.length) {
+      throw new ForbiddenException('Not authorized to reorder one or more of these tasks');
+    }
+
     await this.prisma.$transaction(
       items.map(({ id, priority }) =>
         this.prisma.dailyTask.update({ where: { id }, data: { priority } }),
@@ -245,13 +231,14 @@ export class DailyTasksService {
     return { success: true };
   }
 
-  async remove(id: string) {
-    await this.findOneOrThrow(id);
+  async remove(id: string, authUserId: string) {
+    await this.findOneOrThrow(id, authUserId);
     await this.prisma.dailyTask.delete({ where: { id } });
     return { success: true };
   }
 
-  async completeToday(id: string, userId: string) {
+  async completeToday(id: string, userId: string, authUserId: string) {
+    this.assertOwner(userId, authUserId);
     const result = await this.prisma.dailyTask.updateMany({
       where: { id, userId },
       data: { completedAt: new Date(), nextReminderAt: null },
@@ -372,10 +359,17 @@ export class DailyTasksService {
     return { reset: result.count };
   }
 
-  private async findOneOrThrow(id: string) {
+  private async findOneOrThrow(id: string, authUserId?: string) {
     const task = await this.prisma.dailyTask.findUnique({ where: { id } });
     if (!task) throw new NotFoundException(`DailyTask ${id} not found`);
+    if (authUserId) this.assertOwner(task.userId, authUserId);
     return task;
+  }
+
+  private assertOwner(userId: string, authUserId: string) {
+    if (userId !== authUserId) {
+      throw new ForbiddenException('Not authorized for this daily task');
+    }
   }
 
   private isCompletedToday(completedAt: Date | null, now: Date) {

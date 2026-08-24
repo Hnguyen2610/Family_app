@@ -9,12 +9,15 @@ export class AuthService {
   private readonly googleClient: OAuth2Client;
   private readonly accessTokenTtl = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
   private readonly refreshTokenTtl = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
-  private readonly refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'secret';
+  private readonly refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || '';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
   ) {
+    if (!this.refreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET/JWT_SECRET is not set — refusing to start with an insecure default');
+    }
     this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   }
 

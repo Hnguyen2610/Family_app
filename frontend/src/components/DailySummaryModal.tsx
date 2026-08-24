@@ -1,9 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FiX, FiCalendar, FiCloudRain, FiCoffee, FiMessageSquare, FiExternalLink, FiCheckCircle, FiSmile } from 'react-icons/fi';
 import MascotAvatar from '@/components/MascotAvatar';
+import { PENDING_CHAT_PROMPT_KEY } from '@/lib/storage-keys';
+import { getDateLocale } from '@/utils/date';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 interface DailySummaryModalProps {
   isOpen: boolean;
@@ -20,6 +23,12 @@ export default function DailySummaryModal({
   onOpenAiChat,
   language = 'vi',
 }: DailySummaryModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEscapeToClose(isOpen, onClose);
+  useEffect(() => {
+    if (isOpen) dialogRef.current?.focus();
+  }, [isOpen]);
+
   if (!isOpen || !notification) return null;
 
   const isVi = language === 'vi';
@@ -34,13 +43,13 @@ export default function DailySummaryModal({
 
   // Extract formatted date string
   const dateFormatted = new Date(notification.createdAt || Date.now()).toLocaleDateString(
-    isVi ? 'vi-VN' : 'en-US',
+    getDateLocale(language),
     { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
   );
 
   const handleAskAi = () => {
     const promptText = `Hôm nay có lịch gì không và gợi ý cho tôi kế hoạch sinh hoạt và thực đơn gia đình chi tiết cho ngày hôm nay ✨`;
-    sessionStorage.setItem('pending_chat_prompt', promptText);
+    sessionStorage.setItem(PENDING_CHAT_PROMPT_KEY, promptText);
     onClose();
     if (onOpenAiChat) {
       onOpenAiChat(promptText);
@@ -56,7 +65,14 @@ export default function DailySummaryModal({
       />
 
       {/* Executive Card Modal */}
-      <div className="relative w-full max-w-xl bg-card rounded-3xl shadow-2xl border border-border/80 overflow-hidden animate-in zoom-in-95 fade-in duration-300 my-auto z-10">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="daily-summary-modal-title"
+        tabIndex={-1}
+        className="relative w-full max-w-xl bg-card rounded-3xl shadow-2xl border border-border/80 overflow-hidden animate-in zoom-in-95 fade-in duration-300 my-auto z-10 outline-none"
+      >
         
         {/* Top Gradient Banner */}
         <div className="relative p-6 sm:p-8 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white overflow-hidden">
@@ -81,7 +97,7 @@ export default function DailySummaryModal({
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-bold text-white mb-2 border border-white/25">
                 <span>✨ {isVi ? 'Bản tin gia đình hàng ngày' : 'Daily Family Brief'}</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white truncate">
+              <h2 id="daily-summary-modal-title" className="text-xl sm:text-2xl font-bold tracking-tight text-white truncate">
                 {title}
               </h2>
               <p className="text-xs text-white/80 font-medium mt-0.5 capitalize">

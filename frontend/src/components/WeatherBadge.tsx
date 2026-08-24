@@ -1,42 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { FiCloud, FiCloudRain, FiSun, FiWind } from 'react-icons/fi';
 import { weatherAPI, WeatherSummary } from '@/lib/api-client';
+import { useAsync } from '@/hooks/useAsync';
 
 type WeatherBadgeProps = {
   variant?: 'full' | 'compact';
 };
 
 export default function WeatherBadge({ variant = 'compact' }: WeatherBadgeProps) {
-  const [weather, setWeather] = useState<WeatherSummary | null>(null);
-  const [hasError, setHasError] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    weatherAPI.getSummary()
-      .then((response) => {
-        if (!cancelled) {
-          setWeather(response.data);
-          setHasError(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setWeather(null);
-          setHasError(true);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: weather, error, isLoading } = useAsync<WeatherSummary>(
+    () => weatherAPI.getSummary().then((response) => response.data),
+    [],
+  );
+  const hasError = !!error;
 
   const icon = useMemo(() => {
     const condition = weather?.current?.condition?.toLowerCase() || '';

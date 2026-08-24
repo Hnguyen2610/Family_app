@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { AUTH_EXPIRED_EVENT, authAPI } from '@/lib/api-client';
+import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FAMILY_USER_KEY, FAMILY_ID_KEY } from '@/lib/storage-keys';
 
 export interface User {
   id: string;
@@ -53,9 +54,9 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   const setCurrentFamilyId = useCallback((id: string | null) => {
     setCurrentFamilyIdState(id);
     if (id) {
-      localStorage.setItem('family_id', id);
+      localStorage.setItem(FAMILY_ID_KEY, id);
     } else {
-      localStorage.removeItem('family_id');
+      localStorage.removeItem(FAMILY_ID_KEY);
     }
   }, []);
 
@@ -65,19 +66,19 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       const { user: userData, accessToken, refreshToken } = response.data;
 
       setUser(userData);
-      localStorage.setItem('family_user', JSON.stringify(userData));
+      localStorage.setItem(FAMILY_USER_KEY, JSON.stringify(userData));
 
       // Handle multi-family selection logic
-      const savedFamilyId = localStorage.getItem('family_id');
+      const savedFamilyId = localStorage.getItem(FAMILY_ID_KEY);
       const families = userData.families || [];
       const hasSavedFamily = families.some((f: any) => f.id === savedFamilyId);
 
       const targetFamilyId = hasSavedFamily ? savedFamilyId : (families[0]?.id || userData.familyId || null);
       setCurrentFamilyId(targetFamilyId);
 
-      localStorage.setItem('family_token', accessToken);
+      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
       if (refreshToken) {
-        localStorage.setItem('family_refresh_token', refreshToken);
+        localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
       }
 
       return userData;
@@ -88,15 +89,15 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   }, [setCurrentFamilyId]);
 
   const logout = useCallback(() => {
-    const refreshToken = localStorage.getItem('family_refresh_token') || undefined;
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY) || undefined;
     authAPI.logout(refreshToken).catch(() => {});
 
     setUser(null);
     setCurrentFamilyId(null);
-    localStorage.removeItem('family_user');
-    localStorage.removeItem('family_id');
-    localStorage.removeItem('family_token');
-    localStorage.removeItem('family_refresh_token');
+    localStorage.removeItem(FAMILY_USER_KEY);
+    localStorage.removeItem(FAMILY_ID_KEY);
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
   }, [setCurrentFamilyId]);
 
   const refreshUser = useCallback(async () => {
@@ -104,9 +105,9 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       const response = await authAPI.getProfile();
       const userData = response.data;
       setUser(userData);
-      localStorage.setItem('family_user', JSON.stringify(userData));
+      localStorage.setItem(FAMILY_USER_KEY, JSON.stringify(userData));
 
-      const savedFamilyId = localStorage.getItem('family_id');
+      const savedFamilyId = localStorage.getItem(FAMILY_ID_KEY);
       const families = userData.families || [];
       if (savedFamilyId === 'all') {
          setCurrentFamilyId('all');
@@ -122,9 +123,9 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   }, [setCurrentFamilyId]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('family_user');
-    const savedFamilyId = localStorage.getItem('family_id');
-    const token = localStorage.getItem('family_token');
+    const savedUser = localStorage.getItem(FAMILY_USER_KEY);
+    const savedFamilyId = localStorage.getItem(FAMILY_ID_KEY);
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
 
     if (savedUser) {
       try {
@@ -139,7 +140,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
         }
       } catch (e) {
         console.error('Failed to parse saved user:', e);
-        localStorage.removeItem('family_user');
+        localStorage.removeItem(FAMILY_USER_KEY);
       }
     }
 
@@ -154,10 +155,10 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     const handleAuthExpired = () => {
       setUser(null);
       setCurrentFamilyIdState(null);
-      localStorage.removeItem('family_user');
-      localStorage.removeItem('family_id');
-      localStorage.removeItem('family_token');
-      localStorage.removeItem('family_refresh_token');
+      localStorage.removeItem(FAMILY_USER_KEY);
+      localStorage.removeItem(FAMILY_ID_KEY);
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
       toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     };
 

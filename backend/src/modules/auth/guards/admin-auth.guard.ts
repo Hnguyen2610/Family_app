@@ -6,10 +6,10 @@ export class AdminAuthGuard extends AuthGuard('jwt') {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const adminSecret = request.headers['x-admin-secret'];
-    const secret = process.env.CRON_SECRET || 'family-cron-secret-2026';
+    const secret = process.env.CRON_SECRET;
 
     // 1. If static secret matches, allow access immediately (for legacy/cron compatibility)
-    if (adminSecret && adminSecret === secret) {
+    if (adminSecret && secret && adminSecret === secret) {
       return true;
     }
 

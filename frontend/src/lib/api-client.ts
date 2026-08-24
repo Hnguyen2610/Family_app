@@ -1,8 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
+import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FAMILY_USER_KEY, FAMILY_ID_KEY } from './storage-keys';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const ACCESS_TOKEN_KEY = 'family_token';
-const REFRESH_TOKEN_KEY = 'family_refresh_token';
 export const AUTH_EXPIRED_EVENT = 'family_auth_expired';
 
 type ChatSendOptions = {
@@ -69,8 +68,8 @@ let authExpiredDispatched = false;
 function clearAuthCache() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem('family_user');
-  localStorage.removeItem('family_id');
+  localStorage.removeItem(FAMILY_USER_KEY);
+  localStorage.removeItem(FAMILY_ID_KEY);
 }
 
 function dispatchAuthExpired() {
@@ -93,7 +92,7 @@ async function refreshAccessToken() {
 
       localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
       localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
-      if (user) localStorage.setItem('family_user', JSON.stringify(user));
+      if (user) localStorage.setItem(FAMILY_USER_KEY, JSON.stringify(user));
       authExpiredDispatched = false;
       return accessToken as string;
     })
@@ -273,9 +272,7 @@ export const chatAPI = {
           if (data === '[DONE]') return;
           try {
             const parsed = JSON.parse(data);
-            if (parsed.content) {
-              onChunk(parsed.content);
-            } else if (parsed.type === 'session_id') {
+            if (parsed.type === 'session_id') {
               onSessionId(parsed.sessionId);
             } else if (parsed.type === 'usage' && parsed.usage) {
               onUsage?.(parsed.usage);
@@ -291,6 +288,8 @@ export const chatAPI = {
               onStatus?.('memory_consent_request', parsed);
             } else if (parsed.type === 'action_proposal') {
               onStatus?.('action_proposal', parsed);
+            } else if (parsed.content) {
+              onChunk(parsed.content);
             }
           } catch (e) {
             // ignore split JSON chunks

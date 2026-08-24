@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { MailService } from '../mail/mail.service';
+import { resolveUserFamilyIds } from '../auth/family-access.util';
 
 @Injectable()
 export class UsersService {
@@ -55,12 +56,7 @@ export class UsersService {
     };
 
     if (familyId === 'all' && currentUserId) {
-      // Find all families the current user belongs to
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: currentUserId },
-        include: { families: { select: { id: true } } }
-      });
-      const familyIds = currentUser?.families.map(f => f.id) || [];
+      const familyIds = await resolveUserFamilyIds(this.prisma, currentUserId);
 
       where = {
         families: {

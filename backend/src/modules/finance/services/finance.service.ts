@@ -288,7 +288,7 @@ export class FinanceService {
 Nội dung: "${description}"
 JSON duy nhất: {"category": "...", "type": "INCOME"|"EXPENSE"}`;
     try {
-      const model = this.modelClients.gemini.getGenerativeModel({ model: 'gemini-flash-latest' });
+      const model = this.modelClients.gemini.getGenerativeModel({ model: this.modelClients.geminiModel });
       const text = (await model.generateContent(prompt)).response.text();
       const parts = JSON.parse(text.match(/\{.*\}/s)?.[0] || '{}');
       return { category: (parts.category || 'OTHER').toUpperCase(), type: (parts.type || 'EXPENSE').toUpperCase() as any };

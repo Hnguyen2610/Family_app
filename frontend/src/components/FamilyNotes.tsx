@@ -9,6 +9,7 @@ import { chatAPI } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getDateLocale } from '@/utils/date';
 
 type KnowledgeDocument = {
   id: string;
@@ -307,7 +308,7 @@ export default function FamilyNotes({ onBack }: { readonly onBack?: () => void }
                         {document._count?.chunks || 0} chunks
                       </span>
                       <span className="text-xs text-slate-400 font-semibold">
-                        {new Date(document.updatedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                        {new Date(document.updatedAt).toLocaleDateString(getDateLocale(language))}
                       </span>
                     </div>
                   </button>

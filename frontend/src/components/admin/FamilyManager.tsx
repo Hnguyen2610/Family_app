@@ -4,14 +4,18 @@ import toast from 'react-hot-toast';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FiEdit2, FiTrash2, FiPlus, FiChevronDown, FiUser } from 'react-icons/fi';
+import { useAsync } from '@/hooks/useAsync';
 
 interface FamilyManagerProps {
   onTabChange?: (tab: 'families' | 'users') => void;
 }
 
 export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
-  const [families, setFamilies] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: familiesData, isLoading, error, refetch: fetchFamilies } = useAsync<any[]>(
+    () => familiesAPI.getAll().then((response) => response.data),
+    [],
+  );
+  const families = familiesData ?? [];
   const [newFamilyName, setNewFamilyName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -23,20 +27,11 @@ export default function FamilyManager({ onTabChange }: FamilyManagerProps) {
   const [loadingMembers, setLoadingMembers] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchFamilies();
-  }, []);
-
-  const fetchFamilies = async () => {
-    try {
-      const response = await familiesAPI.getAll();
-      setFamilies(response.data);
-    } catch (error) {
+    if (error) {
       console.error('Failed to fetch families', error);
       toast.error('Không thể tải danh sách gia đình');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [error]);
 
   const fetchMembers = async (familyId: string) => {
     if (familyMembers[familyId]) return;
