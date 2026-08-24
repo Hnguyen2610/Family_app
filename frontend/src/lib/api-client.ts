@@ -499,6 +499,21 @@ export type FootballTeam = {
   }>;
 };
 
+export type FootballDeepFieldKey = 'events' | 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
+
+export type FootballMatchEnrichment = {
+  provider: 'tavily';
+  attemptedFields: FootballDeepFieldKey[];
+  filledFields: FootballDeepFieldKey[];
+  fields: Partial<Record<FootballDeepFieldKey, {
+    provider: 'tavily';
+    status: 'filled' | 'missing';
+    summary: string | null;
+    sources: Array<{ title: string; url: string }>;
+  }>>;
+  notice: string;
+};
+
 export type FootballMatchDetail = {
   id: number;
   utcDate: string;
@@ -528,6 +543,7 @@ export type FootballMatchDetail = {
     rawEvents: unknown[];
     rawAvailableKeys: string[];
   };
+  enrichment: FootballMatchEnrichment | null;
 };
 
 export const footballAPI = {

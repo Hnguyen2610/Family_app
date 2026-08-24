@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  FiAlertCircle,
   FiArrowLeft,
   FiCheckCircle,
   FiDatabase,
@@ -11,7 +10,7 @@ import {
   FiRefreshCw,
   FiUsers,
 } from 'react-icons/fi';
-import { footballAPI } from '@/lib/api-client';
+import { footballAPI, type FootballDeepFieldKey, type FootballMatchEnrichment } from '@/lib/api-client';
 import { useTranslation } from '@/lib/i18n';
 import { useAsync } from '@/hooks/useAsync';
 import { cachedFootballRequest } from '@/lib/football-cache';
@@ -19,6 +18,17 @@ import { cachedFootballRequest } from '@/lib/football-cache';
 type FootballMatchDetailScreenProps = {
   matchId: number;
   onBack: () => void;
+};
+
+type DeepItem = {
+  key: string;
+  enrichmentKey?: FootballDeepFieldKey;
+  vi: string;
+  en: string;
+  count: number;
+  preview: string | null;
+  noteVi?: string;
+  noteEn?: string;
 };
 
 const STAGE_LABEL: Record<string, { vi: string; en: string }> = {
@@ -37,7 +47,9 @@ function getDeepCount(value?: unknown[]) {
 function previewDeepItem(value?: unknown[]) {
   if (!Array.isArray(value) || value.length === 0) return null;
   try {
-    return JSON.stringify(value[0]).slice(0, 220);
+    const visibleItems = value.slice(0, 5);
+    const suffix = value.length > visibleItems.length ? `\n...and ${value.length - visibleItems.length} more` : '';
+    return `${JSON.stringify(visibleItems.length === 1 ? visibleItems[0] : visibleItems, null, 2)}${suffix}`;
   } catch {
     return null;
   }
@@ -51,11 +63,15 @@ function previewLiveStatus(data: { status: string; utcDate: string }) {
   });
 }
 
+function getEnrichmentField(enrichment: FootballMatchEnrichment | null | undefined, field?: FootballDeepFieldKey) {
+  return field ? enrichment?.fields?.[field] : undefined;
+}
+
 export default function FootballMatchDetailScreen({ matchId, onBack }: FootballMatchDetailScreenProps) {
   const { language } = useTranslation();
   const { data, isLoading, error, refetch } = useAsync(
     () => cachedFootballRequest(
-      ['match-detail', matchId],
+      ['match-detail-enriched-v1', matchId],
       () => footballAPI.getMatchDetail(matchId).then((res) => res.data),
       20 * 60 * 1000,
     ),
@@ -64,7 +80,7 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
 
   const stageLabel = data?.stage ? STAGE_LABEL[data.stage] : undefined;
   const hasHalfTime = data?.score.halfTime.home !== null && data?.score.halfTime.home !== undefined;
-  const deepItems = data
+  const deepItems: DeepItem[] = data
     ? [
         {
           key: 'live',
@@ -77,6 +93,7 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
         },
         {
           key: 'events',
+          enrichmentKey: 'events',
           vi: 'Sự kiện trận đấu',
           en: 'Match events',
           count: getDeepCount(data.deepData.rawEvents),
@@ -86,19 +103,22 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
         },
         {
           key: 'goals',
+          enrichmentKey: 'goals',
           vi: 'Bàn thắng/scorer',
           en: 'Goals/scorers',
           count: getDeepCount(data.deepData.goals),
           preview: previewDeepItem(data.deepData.goals),
         },
-        { key: 'cards', vi: 'Thẻ', en: 'Cards', count: getDeepCount(data.deepData.cards), preview: previewDeepItem(data.deepData.cards) },
-        { key: 'substitutions', vi: 'Thay người', en: 'Substitutions', count: getDeepCount(data.deepData.substitutions), preview: previewDeepItem(data.deepData.substitutions) },
-        { key: 'lineups', vi: 'Đội hình/lineup', en: 'Lineups', count: getDeepCount(data.deepData.lineups), preview: previewDeepItem(data.deepData.lineups) },
-        { key: 'statistics', vi: 'Thống kê trận', en: 'Match statistics', count: getDeepCount(data.deepData.statistics), preview: previewDeepItem(data.deepData.statistics) },
+        { key: 'cards', enrichmentKey: 'cards', vi: 'Thẻ', en: 'Cards', count: getDeepCount(data.deepData.cards), preview: previewDeepItem(data.deepData.cards) },
+        { key: 'substitutions', enrichmentKey: 'substitutions', vi: 'Thay người', en: 'Substitutions', count: getDeepCount(data.deepData.substitutions), preview: previewDeepItem(data.deepData.substitutions) },
+        { key: 'lineups', enrichmentKey: 'lineups', vi: 'Đội hình/lineup', en: 'Lineups', count: getDeepCount(data.deepData.lineups), preview: previewDeepItem(data.deepData.lineups) },
+        { key: 'statistics', enrichmentKey: 'statistics', vi: 'Thống kê trận', en: 'Match statistics', count: getDeepCount(data.deepData.statistics), preview: previewDeepItem(data.deepData.statistics) },
         { key: 'odds', vi: 'Odds/tỷ lệ', en: 'Odds', count: getDeepCount(data.deepData.odds), preview: previewDeepItem(data.deepData.odds) },
       ]
     : [];
-  const hasDeepData = deepItems.some((item) => item.key !== 'live' && item.count > 0);
+  const hasProviderDeepData = deepItems.some((item) => item.key !== 'live' && item.count > 0);
+  const hasWebEnrichment = Boolean(data?.enrichment?.filledFields?.length);
+  const hasDeepData = hasProviderDeepData || hasWebEnrichment;
 
   if (!Number.isFinite(matchId)) {
     return (
@@ -192,15 +212,10 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
               </div>
 
               <div className="border-t border-border pt-5 space-y-4">
-                <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
-                  <FiAlertCircle className="mt-0.5 shrink-0" />
-                  <span>{data.deepDataNotice}</span>
-                </div>
-
                 <section>
                   <div className="mb-3 flex items-center gap-2 text-sm font-black text-slate-800 dark:text-slate-100">
                     <FiDatabase className="text-slate-400" />
-                    {language === 'vi' ? 'Dữ liệu live/lineup/sự kiện/thống kê/odds' : 'Live, lineup, events, stats and odds'}
+                    {language === 'vi' ? 'Thông tin trận đấu' : 'Match information'}
                   </div>
                   {!hasDeepData && (
                     <p className="mb-3 text-xs font-semibold text-slate-400">
@@ -211,7 +226,11 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
                   )}
                   <div className="grid gap-3 lg:grid-cols-2">
                     {deepItems.map((item) => {
-                      const available = item.count > 0;
+                      const providerAvailable = item.count > 0;
+                      const enrichmentField = getEnrichmentField(data.enrichment, item.enrichmentKey);
+                      const webAvailable = !providerAvailable && enrichmentField?.status === 'filled' && Boolean(enrichmentField.summary);
+                      const available = providerAvailable || webAvailable;
+                      const preview = item.preview || (webAvailable ? enrichmentField?.summary || null : null);
                       return (
                         <div
                           key={item.key}
@@ -238,10 +257,8 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
                                 : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                             }`}>
                               {available
-                                ? `${language === 'vi' ? 'Có' : 'Yes'} · ${item.count}`
-                                : language === 'vi'
-                                  ? 'Chưa có'
-                                  : 'Missing'}
+                                ? language === 'vi' ? 'Có' : 'Available'
+                                : language === 'vi' ? 'Chưa có' : 'Missing'}
                             </span>
                           </div>
                           {'noteVi' in item && (
@@ -249,21 +266,15 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
                               {language === 'vi' ? item.noteVi : item.noteEn}
                             </p>
                           )}
-                          {item.preview && (
+                          {preview && (
                             <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white/70 p-2 text-[11px] text-slate-500 font-mono dark:bg-slate-950/40">
-                              {item.preview}
+                              {preview}
                             </pre>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                  {data.deepData.rawAvailableKeys.length > 0 && (
-                    <p className="mt-3 break-words text-[11px] font-semibold text-slate-400">
-                      {language === 'vi' ? 'Keys có trong response: ' : 'Response keys: '}
-                      {data.deepData.rawAvailableKeys.join(', ')}
-                    </p>
-                  )}
                 </section>
               </div>
             </div>
