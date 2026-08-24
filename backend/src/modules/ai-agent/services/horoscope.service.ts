@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getLunarDateObject, getZodiacYearInfo } from '../../../utils/lunar-calendar.util';
+import { withGeminiRetry } from '../ai-model-handlers';
 
 @Injectable()
 export class HoroscopeService {
@@ -94,7 +95,7 @@ Yêu cầu:
 - Chỉ trả về HTML, không thêm đoạn giải thích ngoài.
 `;
 
-      const result = await model.generateContent(prompt);
+      const result = await withGeminiRetry(() => model.generateContent(prompt), this.logger, 'Weekly horoscope');
       const text = result.response.text();
       return text || 'Không thể tạo bản tin tử vi lúc này.';
     } catch (e) {
@@ -124,7 +125,7 @@ Câu hỏi của người dùng: "${question}"
 Hãy trả lời trực tiếp câu hỏi trên.
 `;
 
-      const result = await model.generateContent(prompt);
+      const result = await withGeminiRetry(() => model.generateContent(prompt), this.logger, 'On-demand horoscope');
       const text = result.response.text();
       return text || 'Không thể xem tử vi lúc này.';
     } catch (e) {

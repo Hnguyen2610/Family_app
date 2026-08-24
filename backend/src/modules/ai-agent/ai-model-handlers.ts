@@ -169,7 +169,7 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function withGeminiRetry<T>(
+export async function withGeminiRetry<T>(
   operation: () => Promise<T>,
   logger: Logger,
   label: string
