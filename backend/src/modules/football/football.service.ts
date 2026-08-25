@@ -69,8 +69,6 @@ export type FootballTeam = {
   }>;
 };
 
-type FootballDeepFieldKey = 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
-
 export type FootballMatchSide = 'HOME' | 'AWAY' | null;
 
 export type FootballGoalEvent = {
@@ -109,26 +107,6 @@ export type FootballMatchOdds = {
   awayWin: number;
 };
 
-export type FootballMatchEnrichmentSource = {
-  title: string;
-  url: string;
-};
-
-export type FootballMatchEnrichmentField = {
-  provider: 'tavily';
-  status: 'filled' | 'missing';
-  summary: string | null;
-  sources: FootballMatchEnrichmentSource[];
-};
-
-export type FootballMatchEnrichment = {
-  provider: 'tavily';
-  attemptedFields: FootballDeepFieldKey[];
-  filledFields: FootballDeepFieldKey[];
-  fields: Partial<Record<FootballDeepFieldKey, FootballMatchEnrichmentField>>;
-  notice: string;
-};
-
 export type FootballMatchDetail = {
   id: number;
   utcDate: string;
@@ -162,7 +140,6 @@ export type FootballMatchDetail = {
     awayStatistics: Record<string, number> | null;
     odds: FootballMatchOdds | null;
   };
-  enrichment: FootballMatchEnrichment | null;
 };
 
 @Injectable()
@@ -172,7 +149,6 @@ export class FootballService {
   private readonly baseUrl = 'https://api.football-data.org/v4';
   private readonly cache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly matchDetailCache = new Map<string, { expiresAt: number; detail: FootballMatchDetail }>();
-  private readonly matchEnrichmentCache = new Map<string, { expiresAt: number; enrichment: FootballMatchEnrichment | null }>();
   private readonly standingsCache = new Map<string, { expiresAt: number; standings: FootballStandingGroup[] }>();
   private readonly teamsCache = new Map<string, { expiresAt: number; teams: FootballTeam[] }>();
   private readonly teamMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
@@ -516,14 +492,7 @@ export class FootballService {
         awayStatistics: this.mapStatistics(data.awayTeam?.statistics),
         odds: this.mapOdds(data.odds),
       },
-      enrichment: null,
     };
-
-    const missingFields = this.getMissingDeepFields(detail.deepData);
-    detail.enrichment = await this.enrichMissingMatchFields(detail, missingFields).catch((error) => {
-      this.logger.warn(`Tavily football enrichment failed for match ${matchId}: ${error?.message || error}`);
-      return null;
-    });
 
     this.matchDetailCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, detail });
     return detail;
@@ -592,151 +561,6 @@ export class FootballService {
       return null;
     }
     return { homeWin: value.homeWin, draw: value.draw, awayWin: value.awayWin };
-  }
-
-  private getMissingDeepFields(deepData: FootballMatchDetail['deepData']): FootballDeepFieldKey[] {
-    const checks: Array<[FootballDeepFieldKey, boolean]> = [
-      ['goals', deepData.goals.length === 0],
-      ['cards', deepData.bookings.length === 0],
-      ['substitutions', deepData.substitutions.length === 0],
-      ['lineups', deepData.homeLineup.length === 0 && deepData.awayLineup.length === 0],
-      ['statistics', !deepData.homeStatistics && !deepData.awayStatistics],
-    ];
-    return checks.filter(([, isMissing]) => isMissing).map(([field]) => field);
-  }
-
-  private async enrichMissingMatchFields(
-    detail: FootballMatchDetail,
-    missingFields: FootballDeepFieldKey[],
-  ): Promise<FootballMatchEnrichment | null> {
-    if (missingFields.length === 0) return null;
-    if (!this.tavilyApiKey) {
-      this.logger.warn('TAVILY_API_KEY missing; skipping football match enrichment.');
-      return null;
-    }
-
-    const cacheKey = `enrich:${detail.id}:${missingFields.join(',')}`;
-    const cached = this.matchEnrichmentCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached.enrichment;
-
-    const query = this.buildMatchEnrichmentQuery(detail, missingFields);
-    const response = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.tavilyApiKey}` },
-      body: JSON.stringify({
-        query,
-        include_answer: false,
-        include_raw_content: true,
-        max_results: 5,
-        search_depth: 'advanced',
-      }),
-    });
-    if (!response.ok) throw new Error(`Tavily API returned ${response.status}`);
-
-    const data = (await response.json().catch(() => ({}))) as any;
-    const rawResults = Array.isArray(data.results) ? data.results : [];
-    const sources = rawResults
-      .slice(0, 5)
-      .map((result: any) => ({
-        title: String(result.title || result.url || 'Source').slice(0, 140),
-        url: String(result.url || ''),
-      }))
-      .filter((source: FootballMatchEnrichmentSource) => source.url);
-    const searchableText = rawResults
-      .map((result: any) => `${result.title || ''}\n${result.content || ''}\n${result.raw_content || ''}`)
-      .join('\n');
-
-    const fields: FootballMatchEnrichment['fields'] = {};
-    const filledFields: FootballDeepFieldKey[] = [];
-    for (const field of missingFields) {
-      const summary = this.extractEnrichmentSummary(field, searchableText);
-      const filled = Boolean(summary);
-      fields[field] = {
-        provider: 'tavily',
-        status: filled ? 'filled' : 'missing',
-        summary,
-        sources,
-      };
-      if (filled) filledFields.push(field);
-    }
-
-    const enrichment: FootballMatchEnrichment = {
-      provider: 'tavily',
-      attemptedFields: missingFields,
-      filledFields,
-      fields,
-      notice: 'Tavily chỉ bổ sung các trường provider không trả về; dữ liệu web là best-effort và không ghi đè dữ liệu API.',
-    };
-    const ttl = detail.status === 'FINISHED' ? 6 * 60 * 60 * 1000 : this.cacheTtlMs;
-    this.matchEnrichmentCache.set(cacheKey, { expiresAt: Date.now() + ttl, enrichment });
-    return enrichment;
-  }
-
-  private buildMatchEnrichmentQuery(detail: FootballMatchDetail, missingFields: FootballDeepFieldKey[]) {
-    const date = detail.utcDate ? detail.utcDate.slice(0, 10) : '';
-    const fieldTerms = missingFields.map((field) => this.getEnrichmentSearchTerms(field)).join(', ');
-    return `${detail.homeTeam.name} vs ${detail.awayTeam.name} ${detail.competitionName} ${date} match report ${fieldTerms}`;
-  }
-
-  private getEnrichmentSearchTerms(field: FootballDeepFieldKey) {
-    const terms: Record<FootballDeepFieldKey, string> = {
-      goals: 'goal scorers assists',
-      cards: 'yellow cards red cards bookings',
-      substitutions: 'substitutions players replaced',
-      lineups: 'starting lineups formations substitutes',
-      statistics: 'possession shots corners fouls match statistics',
-    };
-    return terms[field];
-  }
-
-  private extractEnrichmentSummary(field: FootballDeepFieldKey, text: string) {
-    const lines = this.toEnrichmentCandidateLines(text);
-    const patterns = this.getEnrichmentPatterns(field);
-    const matches = lines.filter((line) => (
-      patterns.some((pattern) => pattern.test(line)) &&
-      this.isSpecificEnrichmentLine(field, line) &&
-      !this.isNegatedEnrichmentLine(field, line)
-    ));
-    const unique = Array.from(new Set(matches.map((line) => line.replace(/\s+/g, ' ').trim())));
-    return unique.length ? unique.slice(0, 12).join('\n') : null;
-  }
-
-  private toEnrichmentCandidateLines(text: string) {
-    return text
-      .replace(/\r/g, '\n')
-      .split(/\n+|[.!?]\s+/)
-      .map((line) => line.trim())
-      .filter((line) => line.length >= 8 && line.length <= 320);
-  }
-
-  private getEnrichmentPatterns(field: FootballDeepFieldKey) {
-    const patterns: Record<FootballDeepFieldKey, RegExp[]> = {
-      goals: [/\bgoal!?\b/i, /\b(scored|scores|equaliser|equalizer|winner|headed home|assist(?:ed)? by)\b/i],
-      cards: [/\b(yellow card|red card|booking|booked|sent off|dismissed)\b/i],
-      substitutions: [/\b(substitution|substituted|replaces|replaced|came on|off the bench)\b/i],
-      lineups: [/\b(starting lineups?|starting xi|starting 11|lineup:|formation|substitutes:)\b/i],
-      statistics: [/\b(possession|shots? on target|shots?|corners?|passes?|pass accuracy|fouls|offsides|saves|xg)\b/i],
-    };
-    return patterns[field];
-  }
-
-  private isSpecificEnrichmentLine(field: FootballDeepFieldKey, line: string) {
-    const lower = line.toLowerCase();
-    if (/live stats h2h|video summary|rounds standings|analysis preview|lineups events news/.test(lower)) return false;
-    if (field === 'statistics') return /(\d|%)/.test(line);
-    if (field === 'lineups') return /\b(starting lineups?|starting xi|starting 11|lineup:|formation|substitutes:)\b/i.test(line);
-    return true;
-  }
-
-  private isNegatedEnrichmentLine(field: FootballDeepFieldKey, line: string) {
-    const lower = line.toLowerCase();
-    if (field === 'cards') {
-      return /\b(no|without)\b.{0,40}\b(yellow|red|cards?|bookings?)\b/.test(lower);
-    }
-    if (field === 'goals') {
-      return /\b(no goals?|goalless|scoreless)\b/.test(lower);
-    }
-    return false;
   }
 
   private isVietnamLeagueCode(code: string) {

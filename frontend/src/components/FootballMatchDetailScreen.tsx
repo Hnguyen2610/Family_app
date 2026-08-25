@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   FiArrowLeft,
-  FiDatabase,
+  FiChevronRight,
   FiHash,
   FiMapPin,
   FiRefreshCw,
@@ -11,11 +12,12 @@ import {
 } from 'react-icons/fi';
 import {
   footballAPI,
+  type FootballBookingEvent,
   type FootballLineupPlayer,
   type FootballMatchDetail,
-  type FootballMatchEnrichment,
   type FootballMatchOdds,
   type FootballMatchSide,
+  type FootballSubstitutionEvent,
 } from '@/lib/api-client';
 import { useTranslation } from '@/lib/i18n';
 import { useAsync } from '@/hooks/useAsync';
@@ -25,6 +27,8 @@ type FootballMatchDetailScreenProps = {
   matchId: number;
   onBack: () => void;
 };
+
+type FootballTab = 'overview' | 'lineups' | 'stats';
 
 const STAGE_LABEL: Record<string, { vi: string; en: string }> = {
   REGULAR_SEASON: { vi: 'Mùa giải chính', en: 'Regular Season' },
@@ -47,78 +51,144 @@ const STAT_LABELS: Record<string, { vi: string; en: string; isPercent?: boolean 
   red_cards: { vi: 'Thẻ đỏ', en: 'Red cards' },
 };
 
-const ENRICHMENT_FIELD_LABEL: Record<string, { vi: string; en: string }> = {
-  goals: { vi: 'Bàn thắng', en: 'Goals' },
-  cards: { vi: 'Thẻ phạt', en: 'Cards' },
-  substitutions: { vi: 'Thay người', en: 'Substitutions' },
-  lineups: { vi: 'Đội hình', en: 'Lineups' },
-  statistics: { vi: 'Thống kê', en: 'Statistics' },
-};
+// The compact "Tổng quan" preview only has room for a few headline numbers.
+const OVERVIEW_STAT_KEYS = ['shots_on_goal', 'corner_kicks', 'yellow_cards'];
 
 type TimelineEvent = {
   key: string;
+  kind: 'goal' | 'booking' | 'substitution' | 'marker';
   minute: number | null;
   injuryTime?: number | null;
   side: FootballMatchSide;
   icon: string;
   text: string;
+  runningScore?: string;
+  markerLabel?: string;
 };
 
-function buildTimeline(deepData: FootballMatchDetail['deepData']): TimelineEvent[] {
-  const events: TimelineEvent[] = [];
+function buildTimeline(
+  deepData: FootballMatchDetail['deepData'],
+  status: string,
+  halfTime: { home: number | null; away: number | null },
+  language: string,
+): TimelineEvent[] {
+  type RawEvent = {
+    minute: number | null;
+    injuryTime?: number | null;
+    side: FootballMatchSide;
+    kind: 'goal' | 'booking' | 'substitution';
+    icon: string;
+    text: string;
+  };
+  const raw: RawEvent[] = [];
 
-  deepData.goals.forEach((goal, index) => {
+  deepData.goals.forEach((goal) => {
     const tag = goal.type === 'PENALTY' ? ' (phạt đền)' : goal.type === 'OWN' ? ' (phản lưới nhà)' : '';
-    events.push({
-      key: `goal-${index}`,
+    raw.push({
       minute: goal.minute,
       injuryTime: goal.injuryTime,
       side: goal.side,
+      kind: 'goal',
       icon: '⚽',
       text: `${goal.scorer || 'Bàn thắng'}${tag}${goal.assist ? ` · kiến tạo: ${goal.assist}` : ''}`,
     });
   });
-
-  deepData.bookings.forEach((booking, index) => {
-    events.push({
-      key: `booking-${index}`,
+  deepData.bookings.forEach((booking) => {
+    raw.push({
       minute: booking.minute,
       side: booking.side,
+      kind: 'booking',
       icon: booking.card === 'RED' || booking.card === 'YELLOW_RED' ? '🟥' : '🟨',
       text: booking.player || 'Thẻ phạt',
     });
   });
-
-  deepData.substitutions.forEach((sub, index) => {
-    events.push({
-      key: `sub-${index}`,
+  deepData.substitutions.forEach((sub) => {
+    raw.push({
       minute: sub.minute,
       side: sub.side,
+      kind: 'substitution',
       icon: '🔁',
       text: `${sub.playerIn || '?'} thay ${sub.playerOut || '?'}`,
     });
   });
 
-  return events.sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
-}
+  if (raw.length === 0) return [];
 
-function cleanEnrichmentSummary(summary: string): string {
-  return summary
-    .split('\n')
-    .map((line) => line
-      // markdown links anywhere in the line -> keep just the visible text, drop the (url)
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-      .replace(/\*\*(.+?)\*\*/g, '$1')
-      .trim())
-    .filter((line) => line && !/^#{1,6}\s/.test(line) && !line.startsWith('|'))
-    .join('\n');
+  raw.sort((a, b) => {
+    const minuteDiff = (a.minute ?? 9999) - (b.minute ?? 9999);
+    if (minuteDiff !== 0) return minuteDiff;
+    return (a.injuryTime ?? 0) - (b.injuryTime ?? 0);
+  });
+
+  let homeScore = 0;
+  let awayScore = 0;
+  let halfTimeInserted = false;
+  const events: TimelineEvent[] = [
+    { key: 'kickoff', kind: 'marker', minute: 0, side: null, icon: '', text: '', markerLabel: language === 'vi' ? 'Bắt đầu trận đấu' : 'Kick-off' },
+  ];
+
+  raw.forEach((item, index) => {
+    if (!halfTimeInserted && (item.minute ?? 0) > 45) {
+      events.push({
+        key: 'halftime',
+        kind: 'marker',
+        minute: 45,
+        side: null,
+        icon: '',
+        text: '',
+        markerLabel: `${language === 'vi' ? 'Hết hiệp 1' : 'Half-time'} ${halfTime.home ?? homeScore} - ${halfTime.away ?? awayScore}`,
+      });
+      halfTimeInserted = true;
+    }
+    if (item.kind === 'goal') {
+      if (item.side === 'HOME') homeScore += 1;
+      else if (item.side === 'AWAY') awayScore += 1;
+    }
+    events.push({
+      key: `${item.kind}-${index}`,
+      kind: item.kind,
+      minute: item.minute,
+      injuryTime: item.injuryTime,
+      side: item.side,
+      icon: item.icon,
+      text: item.text,
+      runningScore: item.kind === 'goal' ? `${homeScore} - ${awayScore}` : undefined,
+    });
+  });
+
+  if (!halfTimeInserted) {
+    events.push({
+      key: 'halftime',
+      kind: 'marker',
+      minute: 45,
+      side: null,
+      icon: '',
+      text: '',
+      markerLabel: `${language === 'vi' ? 'Hết hiệp 1' : 'Half-time'} ${halfTime.home ?? homeScore} - ${halfTime.away ?? awayScore}`,
+    });
+  }
+
+  if (status === 'FINISHED') {
+    events.push({
+      key: 'fulltime',
+      kind: 'marker',
+      minute: 9999,
+      side: null,
+      icon: '',
+      text: '',
+      markerLabel: `${language === 'vi' ? 'Kết thúc trận đấu' : 'Full-time'} ${homeScore} - ${awayScore}`,
+    });
+  }
+
+  return events;
 }
 
 export default function FootballMatchDetailScreen({ matchId, onBack }: FootballMatchDetailScreenProps) {
   const { language } = useTranslation();
+  const [activeTab, setActiveTab] = useState<FootballTab>('overview');
   const { data, isLoading, error, refetch } = useAsync(
     () => cachedFootballRequest(
-      ['match-detail-v3', matchId],
+      ['match-detail-v4', matchId],
       () => footballAPI.getMatchDetail(matchId).then((res) => res.data),
       20 * 60 * 1000,
     ),
@@ -128,12 +198,19 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
   const stageLabel = data?.stage ? STAGE_LABEL[data.stage] : undefined;
   const hasHalfTime = data?.score.halfTime.home !== null && data?.score.halfTime.home !== undefined;
 
-  const timeline = data ? buildTimeline(data.deepData) : [];
+  const timeline = data ? buildTimeline(data.deepData, data.status, data.score.halfTime, language) : [];
+  const goalEvents = timeline.filter((event) => event.kind === 'goal');
   const hasLineups = Boolean(data && (data.deepData.homeLineup.length > 0 || data.deepData.awayLineup.length > 0));
   const statRows = data ? buildStatRows(data.deepData.homeStatistics, data.deepData.awayStatistics) : [];
+  const overviewStatRows = statRows.filter((row) => OVERVIEW_STAT_KEYS.includes(row.key));
   const odds = data?.deepData.odds || null;
   const hasDeepData = timeline.length > 0 || hasLineups || statRows.length > 0 || Boolean(odds);
-  const enrichmentNotes = data ? buildEnrichmentNotes(data.enrichment) : [];
+
+  const TABS: Array<{ key: FootballTab; vi: string; en: string }> = [
+    { key: 'overview', vi: 'Tổng quan', en: 'Overview' },
+    { key: 'lineups', vi: 'Đội hình', en: 'Lineups' },
+    { key: 'stats', vi: 'Thống kê', en: 'Stats' },
+  ];
 
   if (!Number.isFinite(matchId)) {
     return (
@@ -182,7 +259,7 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
               </button>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-6">
                 <div className="flex min-w-0 flex-col items-center gap-2">
                   {data.homeTeam.crest && (
@@ -226,81 +303,98 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
                 )}
               </div>
 
-              <div className="border-t border-border pt-5 space-y-4">
-                <div className="flex items-center gap-2 text-sm font-black text-slate-800 dark:text-slate-100">
-                  <FiDatabase className="text-slate-400" />
-                  {language === 'vi' ? 'Thông tin trận đấu' : 'Match information'}
-                </div>
+              {!hasDeepData ? (
+                <p className="border-t border-border pt-5 text-xs font-semibold text-slate-400">
+                  {language === 'vi'
+                    ? 'Chưa có dữ liệu chuyên sâu (sự kiện/đội hình/thống kê/odds) cho trận này — gói free của football-data.org thường không trả cho đa số trận.'
+                    : 'No deep data (events/lineups/stats/odds) for this match yet — the football-data.org free plan usually doesn\'t return it.'}
+                </p>
+              ) : (
+                <div className="border-t border-border pt-3">
+                  <div className="mb-4 flex items-center gap-5 border-b border-border text-sm font-bold text-slate-400">
+                    {TABS.map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        className={`-mb-px border-b-2 pb-2.5 transition-colors ${
+                          activeTab === tab.key
+                            ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                            : 'border-transparent hover:text-slate-600 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {language === 'vi' ? tab.vi : tab.en}
+                      </button>
+                    ))}
+                  </div>
 
-                {!hasDeepData && (
-                  <p className="text-xs font-semibold text-slate-400">
-                    {language === 'vi'
-                      ? 'Chưa có dữ liệu chuyên sâu (sự kiện/đội hình/thống kê/odds) cho trận này — gói free của football-data.org thường không trả cho đa số trận.'
-                      : 'No deep data (events/lineups/stats/odds) for this match yet — the football-data.org free plan usually doesn\'t return it.'}
-                  </p>
-                )}
+                  {activeTab === 'overview' && (
+                    <div className="space-y-4">
+                      {overviewStatRows.length > 0 && (
+                        <MatchInfoCard
+                          title={language === 'vi' ? 'Thống kê' : 'Stats'}
+                          onTitleClick={() => setActiveTab('stats')}
+                        >
+                          <div className="space-y-3">
+                            {overviewStatRows.map((row) => (
+                              <StatRow key={row.key} label={language === 'vi' ? row.vi : row.en} home={row.home} away={row.away} isPercent={row.isPercent} />
+                            ))}
+                          </div>
+                        </MatchInfoCard>
+                      )}
 
-                {timeline.length > 0 && (
-                  <MatchInfoCard title={language === 'vi' ? 'Diễn biến trận đấu' : 'Match events'}>
-                    <MatchTimeline events={timeline} />
-                  </MatchInfoCard>
-                )}
+                      {goalEvents.length > 0 && (
+                        <MatchInfoCard title={language === 'vi' ? 'Bàn thắng' : 'Goals'}>
+                          <MatchTimeline events={goalEvents} />
+                        </MatchInfoCard>
+                      )}
 
-                {hasLineups && (
-                  <MatchInfoCard title={language === 'vi' ? 'Đội hình ra sân' : 'Lineups'}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <LineupColumn
-                        teamName={data.homeTeam.name}
-                        formation={data.deepData.homeFormation}
-                        starters={data.deepData.homeLineup}
-                        bench={data.deepData.homeBench}
-                        language={language}
-                      />
-                      <LineupColumn
-                        teamName={data.awayTeam.name}
-                        formation={data.deepData.awayFormation}
-                        starters={data.deepData.awayLineup}
-                        bench={data.deepData.awayBench}
-                        language={language}
-                      />
+                      {timeline.length > 0 && (
+                        <MatchInfoCard title={language === 'vi' ? 'Diễn biến' : 'Match events'}>
+                          <MatchTimeline events={timeline} />
+                        </MatchInfoCard>
+                      )}
+
+                      {odds && (
+                        <MatchInfoCard title={language === 'vi' ? 'Tỷ lệ cược' : 'Odds'}>
+                          <OddsTiles odds={odds} language={language} />
+                        </MatchInfoCard>
+                      )}
                     </div>
-                  </MatchInfoCard>
-                )}
+                  )}
 
-                {statRows.length > 0 && (
-                  <MatchInfoCard title={language === 'vi' ? 'Thống kê trận đấu' : 'Match statistics'}>
-                    <div className="space-y-3">
-                      {statRows.map((row) => (
-                        <StatRow key={row.key} label={language === 'vi' ? row.vi : row.en} home={row.home} away={row.away} isPercent={row.isPercent} />
-                      ))}
-                    </div>
-                  </MatchInfoCard>
-                )}
+                  {activeTab === 'lineups' && (
+                    <LineupsTab
+                      homeTeamName={data.homeTeam.name}
+                      awayTeamName={data.awayTeam.name}
+                      homeStarters={data.deepData.homeLineup}
+                      awayStarters={data.deepData.awayLineup}
+                      homeBench={data.deepData.homeBench}
+                      awayBench={data.deepData.awayBench}
+                      homeFormation={data.deepData.homeFormation}
+                      awayFormation={data.deepData.awayFormation}
+                      bookings={data.deepData.bookings}
+                      substitutions={data.deepData.substitutions}
+                      language={language}
+                    />
+                  )}
 
-                {odds && (
-                  <MatchInfoCard title={language === 'vi' ? 'Tỷ lệ cược' : 'Odds'}>
-                    <OddsTiles odds={odds} language={language} />
-                  </MatchInfoCard>
-                )}
-
-                {enrichmentNotes.length > 0 && (
-                  <details className="rounded-xl border border-border bg-slate-50/60 dark:bg-slate-900/30 px-3 py-2.5">
-                    <summary className="cursor-pointer text-xs font-bold text-slate-500">
-                      {language === 'vi'
-                        ? `Thông tin bổ sung tìm trên web (${enrichmentNotes.length}, không đảm bảo chính xác)`
-                        : `Extra info found on the web (${enrichmentNotes.length}, not guaranteed accurate)`}
-                    </summary>
-                    <div className="mt-2 space-y-3">
-                      {enrichmentNotes.map((note) => (
-                        <div key={note.key}>
-                          <p className="text-[11px] font-black uppercase text-slate-400">{language === 'vi' ? note.vi : note.en}</p>
-                          <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-500 dark:text-slate-400">{note.text}</p>
+                  {activeTab === 'stats' && (
+                    statRows.length > 0 ? (
+                      <MatchInfoCard title={language === 'vi' ? 'Thống kê trận đấu' : 'Match statistics'}>
+                        <div className="space-y-3">
+                          {statRows.map((row) => (
+                            <StatRow key={row.key} label={language === 'vi' ? row.vi : row.en} home={row.home} away={row.away} isPercent={row.isPercent} />
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
+                      </MatchInfoCard>
+                    ) : (
+                      <p className="text-xs font-semibold text-slate-400">
+                        {language === 'vi' ? 'Chưa có thống kê cho trận này.' : 'No statistics for this match yet.'}
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -309,10 +403,17 @@ export default function FootballMatchDetailScreen({ matchId, onBack }: FootballM
   );
 }
 
-function MatchInfoCard({ title, children }: { title: string; children: ReactNode }) {
+function MatchInfoCard({ title, onTitleClick, children }: { title: string; onTitleClick?: () => void; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3">
-      <p className="mb-2.5 text-xs font-black uppercase text-slate-400">{title}</p>
+      {onTitleClick ? (
+        <button onClick={onTitleClick} className="mb-2.5 flex w-full items-center justify-between text-xs font-black uppercase text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+          {title}
+          <FiChevronRight />
+        </button>
+      ) : (
+        <p className="mb-2.5 text-xs font-black uppercase text-slate-400">{title}</p>
+      )}
       {children}
     </div>
   );
@@ -322,20 +423,215 @@ function MatchTimeline({ events }: { events: TimelineEvent[] }) {
   return (
     <div className="space-y-1.5">
       {events.map((event) => {
+        if (event.kind === 'marker') {
+          return (
+            <div key={event.key} className="my-1 flex items-center gap-2 text-[10.5px] font-black uppercase tracking-wide text-slate-400">
+              <div className="h-px flex-1 bg-border" />
+              <span className="shrink-0">{event.markerLabel}</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          );
+        }
         const minuteLabel = event.minute != null ? `${event.minute}${event.injuryTime ? `+${event.injuryTime}` : ''}'` : '';
         return (
-          <div key={event.key} className="grid grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)] items-center gap-2 text-xs sm:text-sm">
+          <div key={event.key} className="grid grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-2 text-xs sm:text-sm">
             <div className="min-w-0 truncate text-right font-semibold text-slate-700 dark:text-slate-200">
-              {event.side === 'HOME' && `${event.icon} ${event.text}`}
-              {event.side === null && `${event.icon} ${event.text}`}
+              {(event.side === 'HOME' || event.side === null) && `${event.icon} ${event.text}`}
             </div>
-            <div className="text-center text-[11px] font-black tabular-nums text-slate-400">{minuteLabel}</div>
+            <div className="flex flex-col items-center text-center text-[11px] font-black tabular-nums text-slate-400">
+              <span>{minuteLabel}</span>
+              {event.runningScore && <span className="text-slate-600 dark:text-slate-300">{event.runningScore}</span>}
+            </div>
             <div className="min-w-0 truncate text-left font-semibold text-slate-700 dark:text-slate-200">
               {event.side === 'AWAY' && `${event.icon} ${event.text}`}
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function LineupsTab({
+  homeTeamName,
+  awayTeamName,
+  homeStarters,
+  awayStarters,
+  homeBench,
+  awayBench,
+  homeFormation,
+  awayFormation,
+  bookings,
+  substitutions,
+  language,
+}: {
+  homeTeamName: string;
+  awayTeamName: string;
+  homeStarters: FootballLineupPlayer[];
+  awayStarters: FootballLineupPlayer[];
+  homeBench: FootballLineupPlayer[];
+  awayBench: FootballLineupPlayer[];
+  homeFormation: string | null;
+  awayFormation: string | null;
+  bookings: FootballBookingEvent[];
+  substitutions: FootballSubstitutionEvent[];
+  language: string;
+}) {
+  if (!homeStarters.length && !awayStarters.length) {
+    return (
+      <p className="text-xs font-semibold text-slate-400">
+        {language === 'vi' ? 'Chưa có đội hình cho trận này.' : 'No lineups for this match yet.'}
+      </p>
+    );
+  }
+
+  const homeRows = buildPitchRows(homeStarters, homeFormation);
+  const awayRows = buildPitchRows(awayStarters, awayFormation);
+  const cardByPlayer = buildCardMap(bookings);
+  const subOutSet = new Set(substitutions.map((s) => s.playerOut).filter((name): name is string => Boolean(name)));
+
+  return (
+    <div className="space-y-4">
+      {homeRows && awayRows ? (
+        <FormationPitch
+          homeTeamName={homeTeamName}
+          awayTeamName={awayTeamName}
+          homeFormation={homeFormation}
+          awayFormation={awayFormation}
+          homeRows={homeRows}
+          awayRows={awayRows}
+          cardByPlayer={cardByPlayer}
+          subOutSet={subOutSet}
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <LineupColumn teamName={homeTeamName} formation={homeFormation} starters={homeStarters} bench={homeBench} language={language} />
+          <LineupColumn teamName={awayTeamName} formation={awayFormation} starters={awayStarters} bench={awayBench} language={language} />
+        </div>
+      )}
+
+      {(homeBench.length > 0 || awayBench.length > 0) && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <BenchList teamName={homeTeamName} players={homeBench} language={language} />
+          <BenchList teamName={awayTeamName} players={awayBench} language={language} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseFormationRows(formation: string | null): number[] {
+  if (!formation) return [];
+  return formation
+    .split('-')
+    .map((part) => Number.parseInt(part, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function buildPitchRows(starters: FootballLineupPlayer[], formation: string | null): FootballLineupPlayer[][] | null {
+  if (!starters.length) return null;
+  const rowSizes = parseFormationRows(formation);
+  const outfieldTotal = rowSizes.reduce((sum, n) => sum + n, 0);
+  if (!rowSizes.length || outfieldTotal + 1 !== starters.length) return null;
+
+  const [goalkeeper, ...outfield] = starters;
+  const rows: FootballLineupPlayer[][] = [[goalkeeper]];
+  let cursor = 0;
+  for (const size of rowSizes) {
+    rows.push(outfield.slice(cursor, cursor + size));
+    cursor += size;
+  }
+  return rows;
+}
+
+function buildCardMap(bookings: FootballBookingEvent[]): Map<string, 'YELLOW' | 'RED'> {
+  const map = new Map<string, 'YELLOW' | 'RED'>();
+  for (const booking of bookings) {
+    if (!booking.player) continue;
+    const isRed = booking.card === 'RED' || booking.card === 'YELLOW_RED';
+    if (isRed || !map.has(booking.player)) map.set(booking.player, isRed ? 'RED' : 'YELLOW');
+  }
+  return map;
+}
+
+function FormationPitch({
+  homeTeamName,
+  awayTeamName,
+  homeFormation,
+  awayFormation,
+  homeRows,
+  awayRows,
+  cardByPlayer,
+  subOutSet,
+}: {
+  homeTeamName: string;
+  awayTeamName: string;
+  homeFormation: string | null;
+  awayFormation: string | null;
+  homeRows: FootballLineupPlayer[][];
+  awayRows: FootballLineupPlayer[][];
+  cardByPlayer: Map<string, 'YELLOW' | 'RED'>;
+  subOutSet: Set<string>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <div className="flex items-center justify-between bg-slate-100 px-3 py-2 text-[11px] font-black text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+        <span className="truncate">{homeTeamName} {homeFormation && `(${homeFormation})`}</span>
+        <span className="truncate text-right">{awayFormation && `(${awayFormation})`} {awayTeamName}</span>
+      </div>
+      <div className="relative bg-gradient-to-b from-emerald-600 via-emerald-600/95 to-emerald-700 px-2 py-4">
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/25" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/25 sm:h-20 sm:w-20" />
+        <PitchHalf rows={homeRows} mirrored={false} cardByPlayer={cardByPlayer} subOutSet={subOutSet} />
+        <PitchHalf rows={awayRows} mirrored cardByPlayer={cardByPlayer} subOutSet={subOutSet} />
+      </div>
+    </div>
+  );
+}
+
+function PitchHalf({
+  rows,
+  mirrored,
+  cardByPlayer,
+  subOutSet,
+}: {
+  rows: FootballLineupPlayer[][];
+  mirrored: boolean;
+  cardByPlayer: Map<string, 'YELLOW' | 'RED'>;
+  subOutSet: Set<string>;
+}) {
+  const ordered = mirrored ? [...rows].reverse() : rows;
+  return (
+    <div className="relative flex flex-col gap-3 py-1.5 sm:gap-4">
+      {ordered.map((row, index) => (
+        <div key={index} className="flex justify-center gap-2.5 sm:gap-5">
+          {row.map((player) => (
+            <PitchPlayer
+              key={player.id ?? player.name}
+              player={player}
+              card={cardByPlayer.get(player.name)}
+              subbedOut={subOutSet.has(player.name)}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PitchPlayer({ player, card, subbedOut }: { player: FootballLineupPlayer; card?: 'YELLOW' | 'RED'; subbedOut?: boolean }) {
+  return (
+    <div className="flex w-12 shrink-0 flex-col items-center gap-1 sm:w-16">
+      <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-[11px] font-black text-slate-800 shadow-sm sm:h-11 sm:w-11 sm:text-sm">
+        {player.shirtNumber ?? '-'}
+        {card && (
+          <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2 rounded-[1px] sm:h-3 sm:w-2.5 ${card === 'RED' ? 'bg-red-500' : 'bg-yellow-400'}`} />
+        )}
+        {subbedOut && <span className="absolute -bottom-1 -right-1 text-[9px] sm:text-[11px]">🔁</span>}
+      </div>
+      <span className="max-w-full truncate text-center text-[8.5px] font-bold leading-tight text-white drop-shadow sm:text-[10px]">
+        {player.name}
+      </span>
     </div>
   );
 }
@@ -381,20 +677,25 @@ function LineupColumn({
           </li>
         ))}
       </ul>
-      {bench.length > 0 && (
-        <details className="mt-2 text-[11px] text-slate-400">
-          <summary className="cursor-pointer font-semibold">
-            {language === 'vi' ? `Dự bị (${bench.length})` : `Bench (${bench.length})`}
-          </summary>
-          <ul className="mt-1 space-y-1 pl-1">
-            {bench.map((player) => (
-              <li key={player.id ?? player.name} className="truncate">
-                {player.shirtNumber ?? '-'} · {player.name}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {bench.length === 0 && null}
+    </div>
+  );
+}
+
+function BenchList({ teamName, players, language }: { teamName: string; players: FootballLineupPlayer[]; language: string }) {
+  if (!players.length) return <div className="min-w-0" />;
+  return (
+    <div className="min-w-0">
+      <p className="mb-1.5 truncate text-[11px] font-black text-slate-500 dark:text-slate-400">
+        {teamName} · {language === 'vi' ? 'Dự bị' : 'Bench'}
+      </p>
+      <ul className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+        {players.map((player) => (
+          <li key={player.id ?? player.name} className="truncate">
+            {player.shirtNumber ?? '-'} · {player.name}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -459,22 +760,6 @@ function OddsTiles({ odds, language }: { odds: FootballMatchOdds; language: stri
       ))}
     </div>
   );
-}
-
-type EnrichmentNote = { key: string; vi: string; en: string; text: string };
-
-function buildEnrichmentNotes(enrichment: FootballMatchEnrichment | null | undefined): EnrichmentNote[] {
-  if (!enrichment?.filledFields?.length) return [];
-  const notes: EnrichmentNote[] = [];
-  for (const field of enrichment.filledFields) {
-    const summary = enrichment.fields?.[field]?.summary;
-    if (!summary) continue;
-    const cleaned = cleanEnrichmentSummary(summary);
-    if (!cleaned) continue;
-    const label = ENRICHMENT_FIELD_LABEL[field] || { vi: field, en: field };
-    notes.push({ key: field, vi: label.vi, en: label.en, text: cleaned });
-  }
-  return notes;
 }
 
 function DetailLine({ icon, text }: { icon: React.ReactNode; text: string }) {

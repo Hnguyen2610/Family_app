@@ -500,21 +500,6 @@ export type FootballTeam = {
   }>;
 };
 
-export type FootballDeepFieldKey = 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
-
-export type FootballMatchEnrichment = {
-  provider: 'tavily';
-  attemptedFields: FootballDeepFieldKey[];
-  filledFields: FootballDeepFieldKey[];
-  fields: Partial<Record<FootballDeepFieldKey, {
-    provider: 'tavily';
-    status: 'filled' | 'missing';
-    summary: string | null;
-    sources: Array<{ title: string; url: string }>;
-  }>>;
-  notice: string;
-};
-
 export type FootballMatchSide = 'HOME' | 'AWAY' | null;
 
 export type FootballGoalEvent = {
@@ -586,7 +571,6 @@ export type FootballMatchDetail = {
     awayStatistics: Record<string, number> | null;
     odds: FootballMatchOdds | null;
   };
-  enrichment: FootballMatchEnrichment | null;
 };
 
 export const footballAPI = {
