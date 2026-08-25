@@ -105,8 +105,12 @@ function buildTimeline(deepData: FootballMatchDetail['deepData']): TimelineEvent
 function cleanEnrichmentSummary(summary: string): string {
   return summary
     .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && !/^#{1,6}\s/.test(line) && !line.startsWith('|') && !/^\[.*\]\(.*\)$/.test(line))
+    .map((line) => line
+      // markdown links anywhere in the line -> keep just the visible text, drop the (url)
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .trim())
+    .filter((line) => line && !/^#{1,6}\s/.test(line) && !line.startsWith('|'))
     .join('\n');
 }
 
