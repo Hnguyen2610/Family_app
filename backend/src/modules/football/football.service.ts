@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { FootballScheduleSearchHelper } from '../ai-agent/helpers/football-schedule-search.helper';
+import { resolveVietnamTeam } from './vietnam-football-directory';
 
 export type FootballMatch = {
   id: number;
@@ -245,9 +246,7 @@ export class FootballService {
     const apiMatches = this.mapMatches(data.matches || [])
       .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
     const vietnamMatches = await this.getAllVietnamFootballMatches(dateFrom, dateTo);
-    const matches = [...apiMatches, ...vietnamMatches];
-
-    matches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
+    const matches = this.sortMatchesByNotability([...apiMatches, ...vietnamMatches]);
     this.allMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
     return matches;
   }
@@ -279,7 +278,7 @@ export class FootballService {
     const apiMatches = this.mapMatches(data.matches || [])
       .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
     const vietnamMatches = await this.getAllVietnamFootballMatches(dateKey, dateKey);
-    const matches = [...apiMatches, ...vietnamMatches];
+    const matches = this.sortMatchesByNotability([...apiMatches, ...vietnamMatches]);
 
     this.todayMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
     return matches;
@@ -631,6 +630,26 @@ export class FootballService {
     return code === 'VLEAGUE' || code === 'VIETNAM';
   }
 
+  private readonly competitionPriorityTiers: string[][] = [
+    ['CL', 'WC', 'EC'],
+    ['VLEAGUE', 'VIETNAM'],
+    ['PL', 'PD', 'BL1', 'SA', 'FL1'],
+  ];
+
+  private getCompetitionPriority(code: string | null): number {
+    if (!code) return this.competitionPriorityTiers.length;
+    const tierIndex = this.competitionPriorityTiers.findIndex((tier) => tier.includes(code));
+    return tierIndex === -1 ? this.competitionPriorityTiers.length : tierIndex;
+  }
+
+  private sortMatchesByNotability(matches: FootballMatch[]): FootballMatch[] {
+    return [...matches].sort((a, b) => {
+      const priorityDiff = this.getCompetitionPriority(a.competitionCode) - this.getCompetitionPriority(b.competitionCode);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime();
+    });
+  }
+
   private async getAllVietnamFootballMatches(dateFrom: string, dateTo: string) {
     const results = await Promise.allSettled([
       this.getVietnamFootballMatches('VLEAGUE', dateFrom, dateTo),
@@ -720,17 +739,20 @@ export class FootballService {
     const teams = this.parseMatchTeams(line);
     if (!teams) return null;
 
+    const home = resolveVietnamTeam(teams.home, code);
+    const away = resolveVietnamTeam(teams.away, code);
+
     const utcDate = this.buildVietnamMatchUtcDate(parsedDate.dateKey, parsedDate.time);
     return {
-      id: -Math.abs(this.hashMatchId(`${code}:${utcDate}:${teams.home}:${teams.away}`)),
+      id: -Math.abs(this.hashMatchId(`${code}:${utcDate}:${home.name}:${away.name}`)),
       utcDate,
       competitionCode: code,
       competitionName: code === 'VLEAGUE' ? 'V-League 1' : 'Đội tuyển Việt Nam',
       competitionEmblem: null,
-      homeTeam: teams.home,
-      homeTeamCrest: null,
-      awayTeam: teams.away,
-      awayTeamCrest: null,
+      homeTeam: home.name,
+      homeTeamCrest: home.crestUrl,
+      awayTeam: away.name,
+      awayTeamCrest: away.crestUrl,
       status: 'TIMED',
       detailAvailable: false,
       matchday: null,
@@ -790,7 +812,21 @@ export class FootballService {
     const home = this.cleanTeamName(match[1]);
     const away = this.cleanTeamName(match[2]);
     if (!home || !away || home === away) return null;
+    if (!this.isPlausibleTeamName(home) || !this.isPlausibleTeamName(away)) return null;
     return { home, away };
+  }
+
+  private isPlausibleTeamName(name: string): boolean {
+    const trimmed = name.trim();
+    if (trimmed.length < 2 || trimmed.length > 60) return false;
+
+    const lower = trimmed.toLowerCase();
+    if (lower.includes('data:image') || lower.includes('base64') || lower.includes('http://') || lower.includes('https://')) {
+      return false;
+    }
+
+    const tokens = trimmed.split(/\s+/);
+    return tokens.every((token) => token.length <= 24 && /\p{L}/u.test(token));
   }
 
   private cleanTeamName(value: string) {

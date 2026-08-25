@@ -701,7 +701,7 @@ export default function FootballSchedule() {
             }}
           >
             <SelectTrigger className="h-10 w-full sm:w-auto sm:min-w-[220px] py-2 px-3 text-sm font-bold text-slate-800 dark:text-slate-100">
-              <SelectValue />
+              <SelectValue>{selectedLeagueInfo?.name}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="min-w-[260px]">
               {leagueOptions.map((league) => (
