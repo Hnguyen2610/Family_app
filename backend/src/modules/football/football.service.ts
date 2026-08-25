@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { FootballScheduleSearchHelper } from '../ai-agent/helpers/football-schedule-search.helper';
-import { resolveVietnamTeam } from './vietnam-football-directory';
+import { translateCountryName } from './vietnam-football-directory';
 
 export type FootballMatch = {
   id: number;
@@ -69,7 +69,45 @@ export type FootballTeam = {
   }>;
 };
 
-type FootballDeepFieldKey = 'events' | 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
+type FootballDeepFieldKey = 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
+
+export type FootballMatchSide = 'HOME' | 'AWAY' | null;
+
+export type FootballGoalEvent = {
+  minute: number | null;
+  injuryTime: number | null;
+  type: string | null;
+  side: FootballMatchSide;
+  scorer: string | null;
+  assist: string | null;
+};
+
+export type FootballBookingEvent = {
+  minute: number | null;
+  side: FootballMatchSide;
+  player: string | null;
+  card: string | null;
+};
+
+export type FootballSubstitutionEvent = {
+  minute: number | null;
+  side: FootballMatchSide;
+  playerOut: string | null;
+  playerIn: string | null;
+};
+
+export type FootballLineupPlayer = {
+  id: number | null;
+  name: string;
+  position: string | null;
+  shirtNumber: number | null;
+};
+
+export type FootballMatchOdds = {
+  homeWin: number;
+  draw: number;
+  awayWin: number;
+};
 
 export type FootballMatchEnrichmentSource = {
   title: string;
@@ -111,14 +149,18 @@ export type FootballMatchDetail = {
   };
   deepDataNotice: string;
   deepData: {
-    goals: unknown[];
-    cards: unknown[];
-    substitutions: unknown[];
-    lineups: unknown[];
-    statistics: unknown[];
-    odds: unknown[];
-    rawEvents: unknown[];
-    rawAvailableKeys: string[];
+    goals: FootballGoalEvent[];
+    bookings: FootballBookingEvent[];
+    substitutions: FootballSubstitutionEvent[];
+    homeLineup: FootballLineupPlayer[];
+    awayLineup: FootballLineupPlayer[];
+    homeBench: FootballLineupPlayer[];
+    awayBench: FootballLineupPlayer[];
+    homeFormation: string | null;
+    awayFormation: string | null;
+    homeStatistics: Record<string, number> | null;
+    awayStatistics: Record<string, number> | null;
+    odds: FootballMatchOdds | null;
   };
   enrichment: FootballMatchEnrichment | null;
 };
@@ -136,9 +178,17 @@ export class FootballService {
   private readonly teamMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly todayMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
   private readonly allMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
-  private readonly vietnamMatchesCache = new Map<string, { expiresAt: number; matches: FootballMatch[] }>();
+  private readonly sportsDbRawCache = new Map<string, { expiresAt: number; events: any[] }>();
   private readonly europaLeagueCache = new Map<string, { expiresAt: number; summary: string }>();
   private readonly cacheTtlMs = 10 * 60 * 1000;
+
+  // V-League 1 / Vietnam NT have no football-data.org coverage, so they come from
+  // TheSportsDB instead (id 3 is their public free-tier key; set THESPORTSDB_API_KEY
+  // for a personal key if this app outgrows the shared free quota of 30 req/min).
+  private readonly sportsDbApiKey = process.env.THESPORTSDB_API_KEY || '3';
+  private readonly sportsDbBaseUrl = 'https://www.thesportsdb.com/api/v1/json';
+  private readonly vLeagueSportsDbId = '4803';
+  private readonly vietnamNationalTeamSportsDbId = '140161';
 
   readonly freeLeagues: FootballLeague[] = [
     { code: 'PL', name: 'Premier League', area: 'England' },
@@ -431,10 +481,7 @@ export class FootballService {
       throw new Error(err.message || 'API Error');
     }
     const data = (await response.json()) as any;
-    const rawEvents = this.pickArray(data.events, data.timeline, data.incidents);
-    const goals = rawEvents.filter((event: any) => /goal/i.test(`${event.type || event.kind || event.detail || ''}`));
-    const cards = rawEvents.filter((event: any) => /card|yellow|red/i.test(`${event.type || event.kind || event.detail || ''}`));
-    const substitutions = rawEvents.filter((event: any) => /substitution|sub/i.test(`${event.type || event.kind || event.detail || ''}`));
+    const homeTeamId = data.homeTeam?.id;
 
     const detail: FootballMatchDetail = {
       id: data.id,
@@ -454,16 +501,20 @@ export class FootballService {
         fullTime: { home: data.score?.fullTime?.home ?? null, away: data.score?.fullTime?.away ?? null },
         halfTime: { home: data.score?.halfTime?.home ?? null, away: data.score?.halfTime?.away ?? null },
       },
-      deepDataNotice: 'Dữ liệu live/lineup/sự kiện/thống kê/odds là best-effort: gói free có thể không trả, trả thiếu hoặc trả trễ.',
+      deepDataNotice: 'Dữ liệu sự kiện/đội hình/thống kê/odds là best-effort: gói free của football-data.org thường không trả cho đa số trận.',
       deepData: {
-        goals,
-        cards,
-        substitutions,
-        lineups: this.pickArray(data.lineups, data.homeLineup, data.awayLineup),
-        statistics: this.pickArray(data.statistics, data.stats),
-        odds: this.pickArray(data.odds),
-        rawEvents,
-        rawAvailableKeys: Object.keys(data).sort(),
+        goals: this.mapGoalEvents(data.goals, homeTeamId),
+        bookings: this.mapBookingEvents(data.bookings, homeTeamId),
+        substitutions: this.mapSubstitutionEvents(data.substitutions, homeTeamId),
+        homeLineup: this.mapLineupPlayers(data.homeTeam?.lineup),
+        awayLineup: this.mapLineupPlayers(data.awayTeam?.lineup),
+        homeBench: this.mapLineupPlayers(data.homeTeam?.bench),
+        awayBench: this.mapLineupPlayers(data.awayTeam?.bench),
+        homeFormation: data.homeTeam?.formation ?? null,
+        awayFormation: data.awayTeam?.formation ?? null,
+        homeStatistics: this.mapStatistics(data.homeTeam?.statistics),
+        awayStatistics: this.mapStatistics(data.awayTeam?.statistics),
+        odds: this.mapOdds(data.odds),
       },
       enrichment: null,
     };
@@ -478,16 +529,80 @@ export class FootballService {
     return detail;
   }
 
+  private resolveMatchSide(teamId: number | undefined, homeTeamId: number | undefined): FootballMatchSide {
+    if (teamId == null || homeTeamId == null) return null;
+    return teamId === homeTeamId ? 'HOME' : 'AWAY';
+  }
+
+  private mapGoalEvents(goals: unknown, homeTeamId: number | undefined): FootballGoalEvent[] {
+    if (!Array.isArray(goals)) return [];
+    return goals.map((g: any) => ({
+      minute: g.minute ?? null,
+      injuryTime: g.injuryTime ?? null,
+      type: g.type ?? null,
+      side: this.resolveMatchSide(g.team?.id, homeTeamId),
+      scorer: g.scorer?.name ?? null,
+      assist: g.assist?.name ?? null,
+    }));
+  }
+
+  private mapBookingEvents(bookings: unknown, homeTeamId: number | undefined): FootballBookingEvent[] {
+    if (!Array.isArray(bookings)) return [];
+    return bookings.map((b: any) => ({
+      minute: b.minute ?? null,
+      side: this.resolveMatchSide(b.team?.id, homeTeamId),
+      player: b.player?.name ?? null,
+      card: b.card ?? null,
+    }));
+  }
+
+  private mapSubstitutionEvents(substitutions: unknown, homeTeamId: number | undefined): FootballSubstitutionEvent[] {
+    if (!Array.isArray(substitutions)) return [];
+    return substitutions.map((s: any) => ({
+      minute: s.minute ?? null,
+      side: this.resolveMatchSide(s.team?.id, homeTeamId),
+      playerOut: s.playerOut?.name ?? null,
+      playerIn: s.playerIn?.name ?? null,
+    }));
+  }
+
+  private mapLineupPlayers(players: unknown): FootballLineupPlayer[] {
+    if (!Array.isArray(players)) return [];
+    return players
+      .map((p: any) => ({
+        id: p.id ?? null,
+        name: p.name,
+        position: p.position ?? null,
+        shirtNumber: p.shirtNumber ?? null,
+      }))
+      .filter((p) => Boolean(p.name));
+  }
+
+  private mapStatistics(stats: unknown): Record<string, number> | null {
+    if (!stats || typeof stats !== 'object') return null;
+    const entries = Object.entries(stats as Record<string, unknown>).filter(
+      (entry): entry is [string, number] => typeof entry[1] === 'number',
+    );
+    return entries.length ? Object.fromEntries(entries) : null;
+  }
+
+  private mapOdds(odds: unknown): FootballMatchOdds | null {
+    const value = odds as any;
+    if (!value || typeof value.homeWin !== 'number' || typeof value.draw !== 'number' || typeof value.awayWin !== 'number') {
+      return null;
+    }
+    return { homeWin: value.homeWin, draw: value.draw, awayWin: value.awayWin };
+  }
+
   private getMissingDeepFields(deepData: FootballMatchDetail['deepData']): FootballDeepFieldKey[] {
-    const checks: Array<[FootballDeepFieldKey, unknown[]]> = [
-      ['events', deepData.rawEvents],
-      ['goals', deepData.goals],
-      ['cards', deepData.cards],
-      ['substitutions', deepData.substitutions],
-      ['lineups', deepData.lineups],
-      ['statistics', deepData.statistics],
+    const checks: Array<[FootballDeepFieldKey, boolean]> = [
+      ['goals', deepData.goals.length === 0],
+      ['cards', deepData.bookings.length === 0],
+      ['substitutions', deepData.substitutions.length === 0],
+      ['lineups', deepData.homeLineup.length === 0 && deepData.awayLineup.length === 0],
+      ['statistics', !deepData.homeStatistics && !deepData.awayStatistics],
     ];
-    return checks.filter(([, value]) => !Array.isArray(value) || value.length === 0).map(([field]) => field);
+    return checks.filter(([, isMissing]) => isMissing).map(([field]) => field);
   }
 
   private async enrichMissingMatchFields(
@@ -565,7 +680,6 @@ export class FootballService {
 
   private getEnrichmentSearchTerms(field: FootballDeepFieldKey) {
     const terms: Record<FootballDeepFieldKey, string> = {
-      events: 'goals cards substitutions match events',
       goals: 'goal scorers assists',
       cards: 'yellow cards red cards bookings',
       substitutions: 'substitutions players replaced',
@@ -597,7 +711,6 @@ export class FootballService {
 
   private getEnrichmentPatterns(field: FootballDeepFieldKey) {
     const patterns: Record<FootballDeepFieldKey, RegExp[]> = {
-      events: [/\b(goal!|yellow card|red card|substitution|replaces|booked|sent off)\b/i],
       goals: [/\bgoal!?\b/i, /\b(scored|scores|equaliser|equalizer|winner|headed home|assist(?:ed)? by)\b/i],
       cards: [/\b(yellow card|red card|booking|booked|sent off|dismissed)\b/i],
       substitutions: [/\b(substitution|substituted|replaces|replaced|came on|off the bench)\b/i],
@@ -617,7 +730,7 @@ export class FootballService {
 
   private isNegatedEnrichmentLine(field: FootballDeepFieldKey, line: string) {
     const lower = line.toLowerCase();
-    if (field === 'cards' || field === 'events') {
+    if (field === 'cards') {
       return /\b(no|without)\b.{0,40}\b(yellow|red|cards?|bookings?)\b/.test(lower);
     }
     if (field === 'goals') {
@@ -660,183 +773,105 @@ export class FootballService {
   }
 
   private async getVietnamFootballMatches(code: 'VLEAGUE' | 'VIETNAM', dateFrom: string, dateTo: string): Promise<FootballMatch[]> {
-    const cacheKey = `vietnam:${code}:${dateFrom}:${dateTo}`;
-    const cached = this.vietnamMatchesCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached.matches;
+    const events = await this.getSportsDbRawEvents(code);
+    const from = new Date(`${dateFrom}T00:00:00.000Z`).getTime();
+    const to = new Date(`${dateTo}T23:59:59.999Z`).getTime();
 
-    if (!this.tavilyApiKey) {
-      this.logger.warn(`TAVILY_API_KEY missing; returning cached or empty ${code} matches.`);
-      return cached?.matches || [];
-    }
-
-    const query = code === 'VLEAGUE'
-      ? `lịch thi đấu V-League từ ${dateFrom} đến ${dateTo}`
-      : `lịch thi đấu đội tuyển Việt Nam từ ${dateFrom} đến ${dateTo}`;
-    const response = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.tavilyApiKey}` },
-      body: JSON.stringify({
-        query,
-        include_answer: false,
-        include_raw_content: true,
-        max_results: 5,
-        search_depth: 'basic',
-      }),
-    });
-    if (!response.ok) {
-      if (cached) return cached.matches;
-      throw new Error(`Tavily API returned ${response.status}`);
-    }
-
-    const data = (await response.json().catch(() => ({}))) as any;
-    const rawResults = Array.isArray(data.results) ? data.results : [];
-    const matches = this.dedupeMatches(
-      rawResults.flatMap((result: any) => this.extractVietnamMatchesFromText(
-        `${result.title || ''}\n${result.content || ''}\n${result.raw_content || ''}`,
-        code,
-        dateFrom,
-        dateTo,
-      )),
-    ).sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
-
-    this.vietnamMatchesCache.set(cacheKey, { expiresAt: Date.now() + 6 * 60 * 60 * 1000, matches });
-    return matches;
-  }
-
-  private extractVietnamMatchesFromText(
-    text: string,
-    code: 'VLEAGUE' | 'VIETNAM',
-    dateFrom: string,
-    dateTo: string,
-  ): FootballMatch[] {
-    const lines = text
-      .replace(/\r/g, '\n')
-      .split(/\n+|[;|]/)
-      .map((line) => line.replace(/\s+/g, ' ').trim())
-      .filter((line) => line.length >= 12 && line.length <= 260);
     const matches: FootballMatch[] = [];
-
-    for (let index = 0; index < lines.length; index += 1) {
-      const context = [lines[index - 2], lines[index - 1], lines[index]].filter(Boolean).join(' ');
-      const parsed = this.parseVietnamScheduleLine(context, code, dateFrom, dateTo);
-      if (parsed) matches.push(parsed);
+    for (const event of events) {
+      const match = this.mapSportsDbEvent(event, code);
+      if (!match) continue;
+      const kickoff = new Date(match.utcDate).getTime();
+      if (kickoff >= from && kickoff <= to) matches.push(match);
     }
 
-    return this.dedupeMatches(matches);
+    return matches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
   }
 
-  private parseVietnamScheduleLine(
-    line: string,
-    code: 'VLEAGUE' | 'VIETNAM',
-    dateFrom: string,
-    dateTo: string,
-  ): FootballMatch | null {
-    if (!this.isLikelyVietnamScheduleLine(line, code)) return null;
+  // TheSportsDB has no date-range query for a league/team's fixtures, so we cache the
+  // rolling "next 15 + last 15" events per competition and slice by date client-side —
+  // one shared fetch serves every week the schedule view browses to.
+  private async getSportsDbRawEvents(code: 'VLEAGUE' | 'VIETNAM'): Promise<any[]> {
+    const cacheKey = `sportsdb:${code}`;
+    const cached = this.sportsDbRawCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.events;
 
-    const parsedDate = this.parseVietnamMatchDate(line, dateFrom, dateTo);
-    if (!parsedDate) return null;
+    const [nextPath, pastPath] = code === 'VLEAGUE'
+      ? [`eventsnextleague.php?id=${this.vLeagueSportsDbId}`, `eventspastleague.php?id=${this.vLeagueSportsDbId}`]
+      : [`eventsnext.php?id=${this.vietnamNationalTeamSportsDbId}`, `eventslast.php?id=${this.vietnamNationalTeamSportsDbId}`];
 
-    const teams = this.parseMatchTeams(line);
-    if (!teams) return null;
+    try {
+      const [nextEvents, pastEvents] = await Promise.all([
+        this.fetchSportsDbEvents(nextPath),
+        this.fetchSportsDbEvents(pastPath),
+      ]);
+      const byId = new Map<string, any>();
+      for (const event of [...nextEvents, ...pastEvents]) {
+        if (event?.idEvent) byId.set(event.idEvent, event);
+      }
+      const events = [...byId.values()];
+      this.sportsDbRawCache.set(cacheKey, { expiresAt: Date.now() + 30 * 60 * 1000, events });
+      return events;
+    } catch (error: any) {
+      this.logger.warn(`TheSportsDB fetch failed for ${code}; returning cached or empty matches: ${error.message}`);
+      return cached?.events || [];
+    }
+  }
 
-    const home = resolveVietnamTeam(teams.home, code);
-    const away = resolveVietnamTeam(teams.away, code);
+  private async fetchSportsDbEvents(path: string): Promise<any[]> {
+    const response = await fetch(`${this.sportsDbBaseUrl}/${this.sportsDbApiKey}/${path}`);
+    if (!response.ok) throw new Error(`TheSportsDB API returned ${response.status}`);
+    const data = (await response.json().catch(() => ({}))) as any;
+    return data.events || data.results || [];
+  }
 
-    const utcDate = this.buildVietnamMatchUtcDate(parsedDate.dateKey, parsedDate.time);
+  private mapSportsDbEvent(event: any, code: 'VLEAGUE' | 'VIETNAM'): FootballMatch | null {
+    if (!event?.idEvent || !event.strTimestamp) return null;
+    const utcDate = `${event.strTimestamp}Z`;
+    if (Number.isNaN(new Date(utcDate).getTime())) return null;
+
+    const homeTeam = code === 'VIETNAM' ? translateCountryName(event.strHomeTeam) : event.strHomeTeam;
+    const awayTeam = code === 'VIETNAM' ? translateCountryName(event.strAwayTeam) : event.strAwayTeam;
+    if (!homeTeam || !awayTeam) return null;
+
+    const homeScore = event.intHomeScore != null ? Number(event.intHomeScore) : null;
+    const awayScore = event.intAwayScore != null ? Number(event.intAwayScore) : null;
+    const round = Number(event.intRound);
+
     return {
-      id: -Math.abs(this.hashMatchId(`${code}:${utcDate}:${home.name}:${away.name}`)),
+      id: -Math.abs(Number(event.idEvent)),
       utcDate,
       competitionCode: code,
       competitionName: code === 'VLEAGUE' ? 'V-League 1' : 'Đội tuyển Việt Nam',
-      competitionEmblem: null,
-      homeTeam: home.name,
-      homeTeamCrest: home.crestUrl,
-      awayTeam: away.name,
-      awayTeamCrest: away.crestUrl,
-      status: 'TIMED',
+      competitionEmblem: event.strLeagueBadge || null,
+      homeTeam,
+      homeTeamCrest: event.strHomeTeamBadge || null,
+      awayTeam,
+      awayTeamCrest: event.strAwayTeamBadge || null,
+      status: this.mapSportsDbStatus(event.strStatus, homeScore !== null && awayScore !== null),
       detailAvailable: false,
-      matchday: null,
+      matchday: Number.isFinite(round) && round > 0 ? round : null,
       stage: null,
       group: null,
-      homeScore: null,
-      awayScore: null,
+      homeScore,
+      awayScore,
       homePenalties: null,
       awayPenalties: null,
     };
   }
 
-  private isLikelyVietnamScheduleLine(line: string, code: 'VLEAGUE' | 'VIETNAM') {
-    const normalized = line.toLowerCase();
-    if (!/(vs| v |đấu với|gặp| - | – )/i.test(line)) return false;
-    if (code === 'VIETNAM') return /việt nam|vietnam|u23|u22|đội tuyển/.test(normalized);
-    return /v-league|vleague|v\.league|vô địch quốc gia|công an hà nội|hà nội|hoàng anh gia lai|thép xanh nam định|nam định|thể công|viettel|sông lam nghệ an|bình dương|thanh hóa|hải phòng|đà nẵng|quảng nam|bình định|phù đổng|ninh bình|tp\.? hcm|hồ chí minh/i.test(line);
-  }
-
-  private parseVietnamMatchDate(line: string, dateFrom: string, dateTo: string) {
-    const from = new Date(`${dateFrom}T00:00:00.000Z`);
-    const to = new Date(`${dateTo}T23:59:59.999Z`);
-    const year = Number.parseInt(dateFrom.slice(0, 4), 10);
-    const iso = line.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
-    const dmy = line.match(/\b(?:ngày\s*)?(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/i);
-    const timeMatch = line.match(/\b(\d{1,2})[:h](\d{2})\b/i);
-    const time = timeMatch
-      ? { hour: Math.min(23, Number.parseInt(timeMatch[1], 10)), minute: Math.min(59, Number.parseInt(timeMatch[2], 10)) }
-      : { hour: 19, minute: 0 };
-
-    let date: Date | null = null;
-    if (iso) {
-      date = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
-    } else if (dmy) {
-      date = new Date(Date.UTC(Number(dmy[3] || year), Number(dmy[2]) - 1, Number(dmy[1])));
-    }
-    if (!date || Number.isNaN(date.getTime()) || date < from || date > to) return null;
-
-    return { dateKey: date.toISOString().slice(0, 10), time };
-  }
-
-  private buildVietnamMatchUtcDate(dateKey: string, time: { hour: number; minute: number }) {
-    const [year, month, day] = dateKey.split('-').map(Number);
-    return new Date(Date.UTC(year, month - 1, day, time.hour - 7, time.minute)).toISOString();
-  }
-
-  private parseMatchTeams(line: string) {
-    const cleaned = line
-      .replace(/\b(?:ngày\s*)?\d{1,2}[/-]\d{1,2}(?:[/-]20\d{2})?\b/gi, ' ')
-      .replace(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g, ' ')
-      .replace(/\b\d{1,2}[:h]\d{2}\b/gi, ' ')
-      .replace(/\b(vòng|round)\s+\d+\b/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const match = cleaned.match(/(.{2,80}?)\s+(?:vs|v|đấu với|gặp|[-–])\s+(.{2,80})/i);
-    if (!match) return null;
-    const home = this.cleanTeamName(match[1]);
-    const away = this.cleanTeamName(match[2]);
-    if (!home || !away || home === away) return null;
-    if (!this.isPlausibleTeamName(home) || !this.isPlausibleTeamName(away)) return null;
-    return { home, away };
-  }
-
-  private isPlausibleTeamName(name: string): boolean {
-    const trimmed = name.trim();
-    if (trimmed.length < 2 || trimmed.length > 60) return false;
-
-    const lower = trimmed.toLowerCase();
-    if (lower.includes('data:image') || lower.includes('base64') || lower.includes('http://') || lower.includes('https://')) {
-      return false;
-    }
-
-    const tokens = trimmed.split(/\s+/);
-    return tokens.every((token) => token.length <= 24 && /\p{L}/u.test(token));
-  }
-
-  private cleanTeamName(value: string) {
-    return value
-      .replace(/\b(lịch thi đấu|trực tiếp|link xem|nhận định|soi kèo|kết quả|highlights?)\b/gi, ' ')
-      .replace(/[()[\]{}]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .replace(/^[-–:,\s]+|[-–:,\s]+$/g, '')
-      .slice(0, 80)
-      .trim();
+  // Free-tier events don't cover every status TheSportsDB can emit, so a final score with
+  // an unrecognized status code (e.g. "PEN" for a penalty-shootout finish) still counts as
+  // finished rather than silently showing as upcoming.
+  private mapSportsDbStatus(status: string | null | undefined, hasFinalScore: boolean): string {
+    const normalized = (status || '').toUpperCase();
+    if (normalized === 'HT') return 'PAUSED';
+    if (['1H', '2H', 'ET', 'LIVE', 'IN PLAY'].includes(normalized)) return 'IN_PLAY';
+    if (['FT', 'AET', 'PEN', 'AP', 'AWD', 'WO'].includes(normalized)) return 'FINISHED';
+    if (['PST', 'POSTP', 'POSTPONED'].includes(normalized)) return 'POSTPONED';
+    if (['CANC', 'CANCELLED', 'CANCELED'].includes(normalized)) return 'CANCELLED';
+    if (normalized === 'NS' || !normalized) return 'TIMED';
+    return hasFinalScore ? 'FINISHED' : 'TIMED';
   }
 
   private dedupeMatches(matches: FootballMatch[]) {
@@ -846,14 +881,6 @@ export class FootballService {
       if (!byKey.has(key)) byKey.set(key, match);
     }
     return [...byKey.values()];
-  }
-
-  private hashMatchId(value: string) {
-    let hash = 0;
-    for (let index = 0; index < value.length; index += 1) {
-      hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
-    }
-    return hash || 1;
   }
 
   private normalizeLeagueCode(leagueCode: string) {
@@ -884,17 +911,5 @@ export class FootballService {
       homePenalties: m.score?.penalties?.home,
       awayPenalties: m.score?.penalties?.away,
     }));
-  }
-
-  private pickArray(...values: unknown[]) {
-    const picked: unknown[] = [];
-    for (const value of values) {
-      if (Array.isArray(value)) {
-        picked.push(...value);
-      } else if (value && typeof value === 'object') {
-        picked.push(value);
-      }
-    }
-    return picked;
   }
 }

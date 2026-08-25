@@ -500,7 +500,7 @@ export type FootballTeam = {
   }>;
 };
 
-export type FootballDeepFieldKey = 'events' | 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
+export type FootballDeepFieldKey = 'goals' | 'cards' | 'substitutions' | 'lineups' | 'statistics';
 
 export type FootballMatchEnrichment = {
   provider: 'tavily';
@@ -513,6 +513,44 @@ export type FootballMatchEnrichment = {
     sources: Array<{ title: string; url: string }>;
   }>>;
   notice: string;
+};
+
+export type FootballMatchSide = 'HOME' | 'AWAY' | null;
+
+export type FootballGoalEvent = {
+  minute: number | null;
+  injuryTime: number | null;
+  type: string | null;
+  side: FootballMatchSide;
+  scorer: string | null;
+  assist: string | null;
+};
+
+export type FootballBookingEvent = {
+  minute: number | null;
+  side: FootballMatchSide;
+  player: string | null;
+  card: string | null;
+};
+
+export type FootballSubstitutionEvent = {
+  minute: number | null;
+  side: FootballMatchSide;
+  playerOut: string | null;
+  playerIn: string | null;
+};
+
+export type FootballLineupPlayer = {
+  id: number | null;
+  name: string;
+  position: string | null;
+  shirtNumber: number | null;
+};
+
+export type FootballMatchOdds = {
+  homeWin: number;
+  draw: number;
+  awayWin: number;
 };
 
 export type FootballMatchDetail = {
@@ -535,14 +573,18 @@ export type FootballMatchDetail = {
   };
   deepDataNotice: string;
   deepData: {
-    goals: unknown[];
-    cards: unknown[];
-    substitutions: unknown[];
-    lineups: unknown[];
-    statistics: unknown[];
-    odds: unknown[];
-    rawEvents: unknown[];
-    rawAvailableKeys: string[];
+    goals: FootballGoalEvent[];
+    bookings: FootballBookingEvent[];
+    substitutions: FootballSubstitutionEvent[];
+    homeLineup: FootballLineupPlayer[];
+    awayLineup: FootballLineupPlayer[];
+    homeBench: FootballLineupPlayer[];
+    awayBench: FootballLineupPlayer[];
+    homeFormation: string | null;
+    awayFormation: string | null;
+    homeStatistics: Record<string, number> | null;
+    awayStatistics: Record<string, number> | null;
+    odds: FootballMatchOdds | null;
   };
   enrichment: FootballMatchEnrichment | null;
 };
