@@ -37,8 +37,17 @@ export class FootballSkill implements AiSkill {
 
   getSystemPrompt(_context: AiSkillContext): string {
     return `⚽ FOOTBALL ASSISTANT:
-- Keep output formatted EXACTLY like this:
-  - HH:mm DD/MM | League Name | Team A vs Team B (Highlight winner or show score if finished).
+- Always use the "vietnamTime" field (Vietnam local time ICT GMT+7, e.g. "20:00 26/08") for match kick-off time in the output. NEVER use raw "utcDate" directly.
+- Group matches cleanly by Competition/League (e.g. 🇻🇳 Đội tuyển Việt Nam, 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League, 🇪🇸 La Liga, 🇩🇪 Bundesliga, 🇮🇹 Serie A, 🇫🇷 Ligue 1, 🇪🇺 Champions League).
+- Format output clearly and beautifully with bold section headers and bullet points:
+
+<b>⚽ LỊCH THI ĐẤU BÓNG ĐÁ</b>
+
+<b>[League Emoji] [League Name]</b>
+• <b>HH:mm (DD/MM)</b>: [Team A] vs [Team B] <i>(Status/Score)</i>
+
+- Shorten long official team names for clean mobile readability (e.g. "Real Madrid" instead of "Real Madrid CF", "Barcelona" instead of "FC Barcelona", "Bayern Munich" instead of "FC Bayern München", "Man City" instead of "Manchester City FC", "Man United" instead of "Manchester United FC", "Tottenham" instead of "Tottenham Hotspur FC", "PSG" instead of "Paris Saint-Germain FC", "Atletico Madrid" instead of "Club Atlético de Madrid", "Real Sociedad" instead of "Real Sociedad de Fútbol").
+- Do NOT output long messy single lines separated by pipes (|). Always group by competition with clean line breaks.
 - If the user does not name a specific league or team (e.g. "lich thi dau bong da hom nay"), call get_matches with NO "league" argument — it returns matches across all top leagues plus V-League/Vietnam national team in ONE call. Never ask the user which league, and never call get_matches once per league to cover "all leagues" yourself.`;
   }
 
@@ -74,6 +83,19 @@ export class FootballSkill implements AiSkill {
     return !normalized || ['tat ca', 'all', 'toan bo', 'moi giai'].includes(normalized);
   }
 
+  private enrichMatchesWithVietnamTime(matches: any[]) {
+    if (!Array.isArray(matches)) return matches;
+    return matches.map((m) => {
+      if (!m || !m.utcDate) return m;
+      const localTime = this.getVietnamDateTimeParts(new Date(m.utcDate));
+      return {
+        ...m,
+        vietnamTime: `${localTime.hourText}:${localTime.minuteText} ${localTime.day}/${localTime.month}`,
+        vietnamDate: localTime.dateKey,
+      };
+    });
+  }
+
   async executeTool(toolName: string, args: any, context: AiSkillContext): Promise<any> {
     if (toolName !== 'get_matches') return undefined;
 
@@ -84,14 +106,14 @@ export class FootballSkill implements AiSkill {
 
       if (this.isAllLeaguesArg(args.league)) {
         const matches = await this.footballService.getAllFreeMatches(dateRange.dateFrom, dateRange.dateTo);
-        return toolSuccess(toolName, matches);
+        return toolSuccess(toolName, this.enrichMatchesWithVietnamTime(matches));
       }
 
       const leagueCode = this.resolveLeagueCode(args.league);
       if (!leagueCode) return toolError(toolName, `Không tìm thấy mã giải đấu cho "${args.league}".`);
 
       const matches = await this.footballService.getMatchesForLeague(leagueCode, dateRange.dateFrom, dateRange.dateTo);
-      return toolSuccess(toolName, matches);
+      return toolSuccess(toolName, this.enrichMatchesWithVietnamTime(matches));
     } catch (error: any) {
       return toolError(toolName, error.message);
     }
@@ -221,10 +243,12 @@ export class FootballSkill implements AiSkill {
     // 2. Sort matches chronologically
     filtered.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
 
-    // 3. Format lines
-    const lines = filtered.slice(0, 15).map((m) => {
+    // 3. Group by competition
+    const byComp = new Map<string, string[]>();
+    for (const m of filtered.slice(0, 18)) {
       const localTime = this.getVietnamDateTimeParts(new Date(m.utcDate));
-      const timeStr = `${localTime.hourText}:${localTime.minuteText} ${localTime.day}/${localTime.month}`;
+      const timeStr = `${localTime.hourText}:${localTime.minuteText} (${localTime.day}/${localTime.month})`;
+      const compName = m.competitionName || 'Bóng đá';
 
       let scoreStr = '';
       if (m.status === 'FINISHED') {
@@ -232,18 +256,26 @@ export class FootballSkill implements AiSkill {
         if (hasPens) {
           const regularHome = m.homeScore - m.homePenalties;
           const regularAway = m.awayScore - m.awayPenalties;
-          scoreStr = ` (${regularHome}-${regularAway}, pen: ${m.homePenalties}-${m.awayPenalties})`;
+          scoreStr = ` <b>(${regularHome}-${regularAway}, pen: ${m.homePenalties}-${m.awayPenalties})</b>`;
         } else {
-          scoreStr = ` (${m.homeScore}-${m.awayScore})`;
+          scoreStr = ` <b>(${m.homeScore}-${m.awayScore})</b>`;
         }
-      } else if (m.status === 'LIVE') {
-        scoreStr = ` (Đang đá: ${m.homeScore}-${m.awayScore})`;
+      } else if (m.status === 'LIVE' || m.status === 'IN_PLAY') {
+        scoreStr = ` <i>(Đang đá: ${m.homeScore}-${m.awayScore})</i>`;
       }
 
-      return `- ${timeStr} | ${m.competitionName} | ${m.homeTeam} vs ${m.awayTeam}${scoreStr}`;
-    });
+      const line = `• <b>${timeStr}</b>: ${m.homeTeam} vs ${m.awayTeam}${scoreStr}`;
+      byComp.set(compName, [...(byComp.get(compName) || []), line]);
+    }
 
-    return `Lịch thi đấu:\n${lines.join('\n')}`;
+    const outputLines = ['<b>⚽ LỊCH THI ĐẤU BÓNG ĐÁ</b>', ''];
+    for (const [comp, compLines] of byComp) {
+      outputLines.push(`<b>${comp}</b>`);
+      outputLines.push(...compLines);
+      outputLines.push('');
+    }
+
+    return outputLines.join('\n').trim();
   }
 
   private formatDateRangeLabel(dateRange: FootballDateRange) {

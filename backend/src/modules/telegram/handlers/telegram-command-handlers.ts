@@ -89,6 +89,17 @@ export class TelegramCommandHandlers {
 
     // stats
     bot.command('stats', (ctx) => this.handleStats(ctx));
+
+    // reply keyboard text listeners
+    bot.hears('⚽ Bóng Đá Hôm Nay', (ctx) => this.handleFootball(ctx));
+    bot.hears('🔮 Tử Vi Tuần Này', (ctx) => this.handleHoroscope(ctx));
+    bot.hears('👪 Xem Gia Đình', (ctx) => this.handleFamilies(ctx));
+    bot.hears('📊 Trạng Thái Kết Nối', (ctx) => this.handleStatus(ctx));
+    bot.hears('🟡 Giá Vàng Mới Nhất', (ctx) => this.handleGold(ctx));
+    bot.hears('🍜 Thực Đơn Hôm Nay', (ctx) => this.handleMenu(ctx));
+    bot.hears('📅 Lịch Trình Gia Đình', (ctx) => this.handleEvents(ctx));
+    bot.hears('🔍 Tìm Kiếm Internet', (ctx) => this.handleSearchMenu(ctx));
+    bot.hears('❓ Hướng Dẫn & Phím Tắt', (ctx) => this.handleHelp(ctx));
   }
 
   private async handleStart(ctx: Context) {
@@ -248,7 +259,8 @@ export class TelegramCommandHandlers {
   }
 
   private handleFootball(ctx: Context) {
-    const userText = (ctx.message as any).text.split(' ').slice(1).join(' ').trim();
+    const rawText = ((ctx.message as any)?.text || '').trim();
+    const userText = rawText.startsWith('/football') ? rawText.split(' ').slice(1).join(' ').trim() : '';
     return this.aiResponder.replyWithFootballCommand(ctx, userText);
   }
 
@@ -304,7 +316,8 @@ export class TelegramCommandHandlers {
   }
 
   private handleEvents(ctx: Context) {
-    const request = ((ctx.message as any)?.text || '').split(' ').slice(1).join(' ').trim();
+    const rawText = ((ctx.message as any)?.text || '').trim();
+    const request = rawText.startsWith('/events') ? rawText.split(' ').slice(1).join(' ').trim() : '';
     return this.aiResponder.replyWithAiCommand(
       ctx,
       request ? `lich ${request}` : 'lich thang nay',
@@ -321,12 +334,17 @@ export class TelegramCommandHandlers {
   }
 
   private handleHoroscope(ctx: Context) {
-    const question = ((ctx.message as any)?.text || '').split(' ').slice(1).join(' ').trim();
+    const rawText = ((ctx.message as any)?.text || '').trim();
+    const question = rawText.startsWith('/horoscope') ? rawText.split(' ').slice(1).join(' ').trim() : '';
     return this.aiResponder.replyWithAiCommand(
       ctx,
       question ? `tử vi cá nhân của tôi: ${question}` : 'tử vi cá nhân của tôi tuần này',
       'Không xem được tử vi lúc này. Hay thử lại sau.',
     );
+  }
+
+  private async handleSearchMenu(ctx: Context) {
+    await ctx.reply('🔍 Để tìm kiếm thông tin bằng AI trên Internet, hãy gõ lệnh:\n`/search <từ khóa cần tìm>`\nVí dụ: `/search thời tiết Hà Nội hôm nay`');
   }
 
   private async handleStats(ctx: Context) {
