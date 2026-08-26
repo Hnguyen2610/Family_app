@@ -478,11 +478,11 @@ export class CalendarSkill implements AiSkill {
   }
 
   private isPrivateOnlyEventQuery(normalizedMessage: string) {
-    return /\b(ca nhan|private|rieng toi)\b/.test(normalizedMessage);
+    return /\b(ca nhan|private|rieng toi|rieng tu|cua toi)\b/.test(normalizedMessage);
   }
 
   private hasCalendarObjectWord(normalizedMessage: string) {
-    return /\b(lich|su kien|event|birthday|sinh nhat|hen|anniversary|ky niem)\b/.test(normalizedMessage);
+    return /\b(su kien|event|birthday|sinh nhat|hen|anniversary|ky niem)\b/.test(normalizedMessage);
   }
 
   private looksLikeCalendarMutation(normalizedMessage: string) {

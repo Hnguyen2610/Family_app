@@ -134,6 +134,22 @@ describe('CalendarSkill', () => {
     expect(eventsService.getEventsByMonth).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['lich thi dau bong da hom nay', 'football fixtures'],
+    ['lich chieu phim hom nay', 'movie showtimes'],
+    ['lich bay hom nay', 'flight schedule'],
+  ])('tryDirectAnswer defers to the model for a non-calendar "lich" query (%s), since bare "lich" is not a reliable calendar-object word', async (userMessage) => {
+    const result = await skill.tryDirectAnswer({
+      userId: 'user-1',
+      familyId: 'family-a',
+      userMessage,
+      intent: 'general_chat',
+    });
+
+    expect(result).toBeUndefined();
+    expect(eventsService.getEventsByMonth).not.toHaveBeenCalled();
+  });
+
   it('tryDirectAnswer returns undefined for a message with no parseable date/month', async () => {
     const result = await skill.tryDirectAnswer({
       userId: 'user-1',
