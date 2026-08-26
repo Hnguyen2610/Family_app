@@ -38,7 +38,8 @@ export class FootballSkill implements AiSkill {
   getSystemPrompt(_context: AiSkillContext): string {
     return `⚽ FOOTBALL ASSISTANT:
 - Keep output formatted EXACTLY like this:
-  - HH:mm DD/MM | League Name | Team A vs Team B (Highlight winner or show score if finished).`;
+  - HH:mm DD/MM | League Name | Team A vs Team B (Highlight winner or show score if finished).
+- If the user does not name a specific league or team (e.g. "lich thi dau bong da hom nay"), call get_matches with NO "league" argument — it returns matches across all top leagues plus V-League/Vietnam national team in ONE call. Never ask the user which league, and never call get_matches once per league to cover "all leagues" yourself.`;
   }
 
   getTools(): AiSkillTool[] {
@@ -47,16 +48,16 @@ export class FootballSkill implements AiSkill {
         type: 'function',
         function: {
           name: 'get_matches',
-          description: 'Get football match schedules or results. Always call this for football/match questions — never guess or hallucinate matches from memory.',
+          description: 'Get football match schedules or results. Always call this for football/match questions — never guess or hallucinate matches from memory. Omit "league" to get matches across all top leagues (and Vietnam) in a single call.',
           parameters: {
             type: 'object',
             properties: {
-              league: { type: 'string', description: 'PL, PD, BL1, SA, FL1, DED, PPL, ELC, BSA, CL, WC, EC' },
+              league: { type: 'string', description: 'Optional. PL, PD, BL1, SA, FL1, DED, PPL, ELC, BSA, CL, WC, EC. Omit when the user did not name a specific league/team — the result already includes V-League/Vietnam national team matches.' },
               status: { type: 'string', description: 'SCHEDULED, LIVE, or FINISHED' },
               dateFrom: { type: 'string', description: 'YYYY-MM-DD' },
               dateTo: { type: 'string', description: 'YYYY-MM-DD' },
             },
-            required: ['league'],
+            required: [],
           },
         },
       },
@@ -68,18 +69,29 @@ export class FootballSkill implements AiSkill {
     return undefined;
   }
 
+  private isAllLeaguesArg(league: string) {
+    const normalized = normalizeSearchText(league || '');
+    return !normalized || ['tat ca', 'all', 'toan bo', 'moi giai'].includes(normalized);
+  }
+
   async executeTool(toolName: string, args: any, context: AiSkillContext): Promise<any> {
-    const leagueCode = this.resolveLeagueCode(args.league);
-    if (!leagueCode) return toolError(toolName, `Không tìm thấy mã giải đấu cho "${args.league}".`);
+    if (toolName !== 'get_matches') return undefined;
 
     try {
-      if (toolName === 'get_matches') {
-        const dateRange = args.dateFrom && args.dateTo
-          ? { dateFrom: args.dateFrom, dateTo: args.dateTo }
-          : this.resolveDefaultDateRange(normalizeSearchText(context.userMessage || ''));
-        const matches = await this.footballService.getMatchesForLeague(leagueCode, dateRange.dateFrom, dateRange.dateTo);
+      const dateRange = args.dateFrom && args.dateTo
+        ? { dateFrom: args.dateFrom, dateTo: args.dateTo }
+        : this.resolveDefaultDateRange(normalizeSearchText(context.userMessage || ''));
+
+      if (this.isAllLeaguesArg(args.league)) {
+        const matches = await this.footballService.getAllFreeMatches(dateRange.dateFrom, dateRange.dateTo);
         return toolSuccess(toolName, matches);
       }
+
+      const leagueCode = this.resolveLeagueCode(args.league);
+      if (!leagueCode) return toolError(toolName, `Không tìm thấy mã giải đấu cho "${args.league}".`);
+
+      const matches = await this.footballService.getMatchesForLeague(leagueCode, dateRange.dateFrom, dateRange.dateTo);
+      return toolSuccess(toolName, matches);
     } catch (error: any) {
       return toolError(toolName, error.message);
     }
