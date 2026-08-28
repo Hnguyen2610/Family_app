@@ -206,3 +206,69 @@ describe('RagService.searchFamilyKnowledge (hybrid)', () => {
     expect(results.map((r) => r.documentId)).toEqual(['doc-semantic']);
   });
 });
+
+describe('RagService.generateEmbedding timeout', () => {
+  const originalFetch = global.fetch;
+  const originalApiKey = process.env.GEMINI_API_KEY;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    process.env.GEMINI_API_KEY = 'test-key';
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    global.fetch = originalFetch;
+    process.env.GEMINI_API_KEY = originalApiKey;
+  });
+
+  it('không treo vô thời hạn khi Gemini API không phản hồi, mà tự hủy sau timeout và trả về undefined', async () => {
+    global.fetch = jest.fn((_url: any, options: any) => {
+      return new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          const err: any = new Error('This operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    }) as any;
+
+    const service = new RagService({} as any, {} as any);
+
+    const resultPromise = (service as any).generateEmbedding('nội dung cần tạo embedding');
+    await jest.advanceTimersByTimeAsync(20000);
+    const result = await resultPromise;
+
+    expect(result).toBeUndefined();
+  });
+});
+
+describe('RagService.backfillMissingEmbeddings', () => {
+  it('lấy các chunk chưa có embedding_vector và gọi lại embedDocumentChunks, trả về số lượng đã xử lý', async () => {
+    const service = new RagService({} as any, {} as any);
+    const pendingChunks = [
+      { id: 'chunk-1', content: 'nội dung 1' },
+      { id: 'chunk-2', content: 'nội dung 2' },
+    ];
+    const queryRawUnsafe = jest.fn().mockResolvedValue(pendingChunks);
+    (service as any).prisma = { $queryRawUnsafe: queryRawUnsafe };
+    const embedSpy = jest.spyOn(service as any, 'embedDocumentChunks').mockResolvedValue(undefined);
+
+    const result = await service.backfillMissingEmbeddings(50);
+
+    expect(queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('embedding_vector IS NULL'), 50);
+    expect(embedSpy).toHaveBeenCalledWith(pendingChunks);
+    expect(result).toEqual({ processed: 2 });
+  });
+
+  it('không gọi embedDocumentChunks khi không còn chunk nào thiếu embedding', async () => {
+    const service = new RagService({} as any, {} as any);
+    (service as any).prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) };
+    const embedSpy = jest.spyOn(service as any, 'embedDocumentChunks').mockResolvedValue(undefined);
+
+    const result = await service.backfillMissingEmbeddings();
+
+    expect(embedSpy).not.toHaveBeenCalled();
+    expect(result).toEqual({ processed: 0 });
+  });
+});

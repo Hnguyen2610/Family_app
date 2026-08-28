@@ -37,6 +37,7 @@ const RAG_SCAN_LIMIT = 200;
 const RAG_MAX_CANDIDATES = 8;
 const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
 const EMBEDDING_DIMENSION = Number.parseInt(process.env.AI_EMBEDDING_DIMENSION || '768', 10);
+const EMBEDDING_TIMEOUT_MS = 6000;
 const STOP_WORDS = new Set([
   'anh',
   'ban',
@@ -515,6 +516,18 @@ export class RagService {
     }
   }
 
+  async backfillMissingEmbeddings(limit = 200): Promise<{ processed: number }> {
+    const pending = await this.prisma.$queryRawUnsafe<Array<{ id: string; content: string }>>(
+      `SELECT id, content FROM "AiDocumentChunk" WHERE embedding_vector IS NULL LIMIT $1`,
+      limit,
+    );
+
+    if (pending.length === 0) return { processed: 0 };
+
+    await this.embedDocumentChunks(pending);
+    return { processed: pending.length };
+  }
+
   private async embedDocumentChunks(chunks: Array<{ id: string; content: string }>) {
     for (const chunk of chunks) {
       try {
@@ -558,6 +571,9 @@ export class RagService {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return undefined;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS);
+
     try {
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`,
@@ -569,6 +585,7 @@ export class RagService {
             content: { parts: [{ text }] },
             outputDimensionality: EMBEDDING_DIMENSION,
           }),
+          signal: controller.signal,
         },
       );
 
@@ -579,6 +596,8 @@ export class RagService {
       return values;
     } catch {
       return undefined;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

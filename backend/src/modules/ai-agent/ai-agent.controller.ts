@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Delete, Param, Res, Patch, Headers, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Delete, Param, Res, Patch, Headers, UseGuards, UnauthorizedException, Logger } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AiAgentService } from './services/ai-agent.service';
@@ -14,6 +14,8 @@ import { AdminAuthGuard } from '../auth/guards/admin-auth.guard';
 @Controller('api/chat')
 @Throttle({ default: { limit: 10, ttl: 60000 } })
 export class AiAgentController {
+  private readonly logger = new Logger(AiAgentController.name);
+
   constructor(
     private readonly aiAgentService: AiAgentService,
     private readonly chatService: ChatService,
@@ -162,6 +164,16 @@ export class AiAgentController {
     return this.ragService.checkDuplicateDocument(dto.familyId, dto.title, dto.content);
   }
 
+  @SkipThrottle()
+  @Get('knowledge/backfill-embeddings')
+  async backfillEmbeddings(
+    @Headers('x-vercel-cron-auth') customAuth: string,
+    @Headers('authorization') authHeader: string,
+  ) {
+    this.verifyCronAuth(customAuth, authHeader);
+    return this.ragService.backfillMissingEmbeddings();
+  }
+
   @Post('vision/drafts')
   async createVisionDraft(
     @Body() dto: { familyId: string; userId?: string; image?: string; imageUrl?: string; kind?: 'auto' | 'receipt' | 'medicine' | 'school_plan'; note?: string },
@@ -284,5 +296,25 @@ export class AiAgentController {
     @Query('hasRag') hasRag?: 'true' | 'false',
   ) {
     return this.aiStatsService.getSystemStats({ model, skill, status, familyId, hasRag });
+  }
+
+  private verifyCronAuth(customAuth: string, authHeader: string) {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      this.logger.warn('CRON_SECRET is not set — rejecting cron endpoint request');
+      throw new UnauthorizedException('Cron auth not configured');
+    }
+
+    if (customAuth === cronSecret) return;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      if (token === cronSecret) return;
+    }
+
+    if (authHeader === cronSecret) return;
+
+    this.logger.warn('Unauthorized attempt to trigger cron endpoint (missing or invalid credentials)');
+    throw new UnauthorizedException('Invalid cron secret');
   }
 }
