@@ -102,7 +102,10 @@ export class NotificationDeliveryService {
 
       if (!skipTelegram) {
         try {
-          await this.telegramService.sendMessageToUser(userId, `<b>${data.title}</b>\n${data.message}`);
+          const telegramText = data.telegramExtra
+            ? `<b>${data.title}</b>\n${data.message}\n\n${data.telegramExtra}`
+            : `<b>${data.title}</b>\n${data.message}`;
+          await this.telegramService.sendMessageToUser(userId, telegramText);
           await this.notificationLogService.record({
             userId,
             type: data.type,

@@ -27,6 +27,8 @@ export type NotificationPayload = {
   title: string;
   message: string;
   metadata?: any;
+  /** Extra line appended only to the Telegram delivery, not shown in-app or via web push. */
+  telegramExtra?: string;
 };
 
 export type CreateNotificationOptions = {

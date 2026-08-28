@@ -379,6 +379,8 @@ export const usersAPI = {
   create: (data: any) => apiClient.post('/api/users', data),
   update: (id: string, data: any) => apiClient.put(`/api/users/${id}`, data),
   delete: (id: string) => apiClient.delete(`/api/users/${id}`),
+  sendEmail: (id: string, data: { subject: string; message: string }) =>
+    apiClient.post(`/api/users/${id}/send-email`, data),
 };
 
 export const authAPI = {

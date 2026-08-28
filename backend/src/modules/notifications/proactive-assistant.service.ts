@@ -7,6 +7,7 @@ import { NotificationDeliveryService } from './notification-delivery.service';
 import { NotificationPayload, ProactiveAssistantSummary, ProactiveRunOptions } from './notification-types';
 import { ProactiveBriefingBuilder } from './proactive-briefing.builder';
 import {
+  getDailyBriefingSignatureLine,
   getProactiveDeliveryOptions,
   shouldRunProactiveAtConfiguredHour,
 } from './proactive-notification-settings';
@@ -44,6 +45,8 @@ export class ProactiveAssistantService {
     const users = await this.prisma.user.findMany({
       select: {
         id: true,
+        name: true,
+        globalRole: true,
         notificationSettings: true,
         familyId: true,
         family: { select: { id: true, name: true } },
@@ -103,10 +106,13 @@ export class ProactiveAssistantService {
     const dateKey = getIctDateKey(now);
     const title = `Tóm tắt gia đình ${formatIctDate(now)}`;
     const message = await this.proactiveBriefingBuilder.formatDailyBriefingMessage(briefing.items);
+    const isAdminUser = user.globalRole === 'ADMIN' || user.globalRole === 'SUPER_ADMIN';
+    const telegramExtra = isAdminUser ? undefined : (getDailyBriefingSignatureLine(settings, user.name) || undefined);
     const created = await this.createProactiveNotification(user.id, {
       type: 'PROACTIVE_DAILY_BRIEFING',
       title,
       message,
+      telegramExtra,
       metadata: {
         path: briefing.items[0]?.path || '/',
         source: 'proactive-assistant',

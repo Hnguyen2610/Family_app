@@ -10,7 +10,7 @@ import {
   Request,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { CreateUserDto, UpdateUserDto, SendUserEmailDto } from './dto/user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -45,6 +45,12 @@ export class UsersController {
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
+  }
+
+  @Post(':id/send-email')
+  @Roles('SUPER_ADMIN')
+  sendEmail(@Param('id') id: string, @Body() dto: SendUserEmailDto) {
+    return this.usersService.sendCustomEmail(id, dto.subject, dto.message);
   }
 
   @Delete(':id')

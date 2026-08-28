@@ -22,3 +22,13 @@ export function shouldRunProactiveAtConfiguredHour(settings: Record<string, any>
   if (!Number.isFinite(hour)) return now.getHours() === 7;
   return now.getHours() === Math.max(0, Math.min(23, hour));
 }
+
+const DEFAULT_DAILY_BRIEFING_FROM_NAME = 'Nguyên';
+
+export function getDailyBriefingSignatureLine(settings: Record<string, any>, recipientName: string): string {
+  const signature = (settings.dailyBriefingSignature || {}) as Record<string, any>;
+  const from = String(signature.fromName || '').trim() || DEFAULT_DAILY_BRIEFING_FROM_NAME;
+  const to = String(signature.toName || '').trim() || String(recipientName || '').trim();
+  if (!to) return '';
+  return `${from} yêu ${to}`;
+}

@@ -56,6 +56,20 @@ export class MailService {
     `;
   }
 
+  async sendCustomEmail(email: string, name: string, subject: string, message: string) {
+    const escape = (text: string) =>
+      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const bodyHtml = escape(message)
+      .split('\n')
+      .map((line) => `<p style="margin: 0 0 12px 0;">${line}</p>`)
+      .join('');
+    const html = this.wrapSimpleCardEmail(`
+        <h2 style="color: #e11d48;">Xin chào ${escape(name)},</h2>
+        ${bodyHtml}
+    `, '© 2026 Family Calendar Team.');
+    return this.sendMail(email, subject, html);
+  }
+
   async sendWelcomeEmail(email: string, name: string) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const subject = 'Chào mừng bạn đến với Family Calendar! 🏠';

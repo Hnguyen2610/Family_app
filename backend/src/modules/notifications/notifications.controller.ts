@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Patch, Delete, Param, Query, Headers, UnauthorizedException, Logger, Body } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Headers, UnauthorizedException, Logger, Body, Request, UseGuards } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationLogService } from './notification-log.service';
 import { getIctNow } from '../../utils/timezone.util';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('api/notifications')
 export class NotificationsController {
@@ -96,14 +97,25 @@ export class NotificationsController {
   }
 
   @SkipThrottle()
+  @UseGuards(JwtAuthGuard)
   @Get('delivery-logs')
   async getDeliveryLogs(
+    @Request() req: any,
     @Query('userId') userId?: string,
     @Query('familyId') familyId?: string,
     @Query('limit') limit?: string,
   ) {
+    const requester = req.user;
+    const globalRole = String(requester?.globalRole || '').toUpperCase();
+    const isAdmin = globalRole === 'ADMIN' || globalRole === 'SUPER_ADMIN';
+
+    // Non-admins can only ever see their own delivery history — never another
+    // user's or a whole family's, regardless of what query params they pass.
+    const scopedUserId = isAdmin ? userId : requester.id;
+    const scopedFamilyId = isAdmin ? familyId : undefined;
+
     const lim = limit ? parseInt(limit, 10) : 50;
-    return this.notificationLogService.getLogs({ userId, familyId, limit: lim });
+    return this.notificationLogService.getLogs({ userId: scopedUserId, familyId: scopedFamilyId, limit: lim });
   }
 
   @Get()

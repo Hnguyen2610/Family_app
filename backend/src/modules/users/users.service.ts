@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { MailService } from '../mail/mail.service';
@@ -37,6 +37,14 @@ export class UsersService {
     );
 
     return user;
+  }
+
+  async sendCustomEmail(userId: string, subject: string, message: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return this.mailService.sendCustomEmail(user.email, user.name, subject, message);
   }
 
   async findAllGlobal() {

@@ -44,6 +44,10 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
   const [isSaving, setIsSaving] = useState(false);
   const [deliveryLogs, setDeliveryLogs] = useState<any[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [signatureDraft, setSignatureDraft] = useState({
+    fromName: settings.dailyBriefingSignature?.fromName || '',
+    toName: settings.dailyBriefingSignature?.toName || '',
+  });
 
   useEffect(() => {
     if (user?.id) {
@@ -129,6 +133,31 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
     const newSettings = {
       ...settings,
       proactiveAssistantTime: time || '07:30',
+    };
+    setSettings(newSettings);
+
+    try {
+      setIsSaving(true);
+      await usersAPI.update(user!.id, { notificationSettings: newSettings });
+      await refreshUser();
+      toast.success(t('common.success'));
+    } catch (error) {
+      toast.error(t('common.error'));
+      setSettings(oldSettings);
+      console.error('NotificationSettings: Update failed', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveSignature = async () => {
+    const oldSettings = { ...settings };
+    const newSettings = {
+      ...settings,
+      dailyBriefingSignature: {
+        fromName: signatureDraft.fromName.trim(),
+        toName: signatureDraft.toName.trim(),
+      },
     };
     setSettings(newSettings);
 
@@ -269,6 +298,40 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
           language={language}
           disabled={isSaving}
         />
+      </div>
+
+      <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-3">
+        <div>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+            {language === 'vi' ? 'Chữ ký cuối bản tin hàng ngày' : 'Daily briefing signature'}
+          </p>
+          <p className="text-xs text-slate-400 font-bold mt-0.5">
+            {language === 'vi' ? 'Chỉ hiện trên Telegram' : 'Shown on Telegram only'}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            type="text"
+            value={signatureDraft.fromName}
+            onChange={(e) => setSignatureDraft((prev) => ({ ...prev, fromName: e.target.value }))}
+            onBlur={() => !isSaving && saveSignature()}
+            placeholder="Nguyên"
+            disabled={isSaving}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200"
+          />
+          <input
+            type="text"
+            value={signatureDraft.toName}
+            onChange={(e) => setSignatureDraft((prev) => ({ ...prev, toName: e.target.value }))}
+            onBlur={() => !isSaving && saveSignature()}
+            placeholder={user?.name || (language === 'vi' ? 'Tên bạn' : 'Your name')}
+            disabled={isSaving}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200"
+          />
+        </div>
+        <p className="text-xs text-slate-400 font-medium">
+          {(signatureDraft.fromName.trim() || 'Nguyên')} {language === 'vi' ? 'yêu' : 'loves'} {(signatureDraft.toName.trim() || user?.name || '...')}
+        </p>
       </div>
 
       {/* Delivery Log Section */}

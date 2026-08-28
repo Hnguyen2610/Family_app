@@ -71,3 +71,11 @@ export class UpdateUserDto {
   @IsString()
   aiProfileNotes?: string;
 }
+
+export class SendUserEmailDto {
+  @IsString()
+  subject!: string;
+
+  @IsString()
+  message!: string;
+}

@@ -10,6 +10,22 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+
+const NOTIFICATION_TYPE_OPTIONS = [
+  { id: 'BIRTHDAY', label: 'Sinh nhật' },
+  { id: 'ANNIVERSARY', label: 'Kỷ niệm' },
+  { id: 'HOLIDAY', label: 'Ngày lễ' },
+  { id: 'APPOINTMENT', label: 'Lịch hẹn' },
+  { id: 'TASK', label: 'Công việc' },
+  { id: 'GENERAL', label: 'Chung' },
+  { id: 'proactiveAssistant', label: 'Trợ lý chủ động' },
+];
+
+const NOTIFICATION_CHANNEL_OPTIONS = [
+  { id: 'webpush' as const, label: 'Web Push' },
+  { id: 'telegram' as const, label: 'Telegram' },
+];
 
 export default function UserManager() {
   const [users, setUsers] = useState<any[]>([]);
@@ -35,7 +51,17 @@ export default function UserManager() {
     globalRole: 'USER'
   });
   const [isUpdating, setIsUpdating] = useState(false);
-  
+
+  // Send email dialog state
+  const [emailTarget, setEmailTarget] = useState<any | null>(null);
+  const [emailForm, setEmailForm] = useState({ subject: '', message: '' });
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  // Notification settings dialog state
+  const [notifTarget, setNotifTarget] = useState<any | null>(null);
+  const [notifSettings, setNotifSettings] = useState<any>({});
+  const [isSavingNotif, setIsSavingNotif] = useState(false);
+
   const getButtonText = () => {
     if (editingUserId) return isUpdating ? 'Lưu...' : 'Lưu thay đổi';
     return isCreating ? 'Thêm...' : 'Thêm mới';
@@ -128,6 +154,65 @@ export default function UserManager() {
     } catch (error) {
       console.error('Error deleting user:', error);
       toast.error('Không thể xóa người dùng');
+    }
+  };
+
+  const openEmailDialog = (user: any) => {
+    setEmailTarget(user);
+    setEmailForm({ subject: '', message: '' });
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailTarget) return;
+    if (!emailForm.subject.trim() || !emailForm.message.trim()) {
+      toast.error('Vui lòng nhập đủ tiêu đề và nội dung');
+      return;
+    }
+    setIsSendingEmail(true);
+    try {
+      await usersAPI.sendEmail(emailTarget.id, emailForm);
+      toast.success(`Đã gửi email tới ${emailTarget.name}`);
+      setEmailTarget(null);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast.error('Không thể gửi email');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const openNotifDialog = (user: any) => {
+    setNotifTarget(user);
+    setNotifSettings(user.notificationSettings || {});
+  };
+
+  const toggleNotifType = (key: string) => {
+    setNotifSettings((prev: any) => ({ ...prev, [key]: !(prev[key] ?? true) }));
+  };
+
+  const toggleNotifChannel = (channel: 'webpush' | 'telegram') => {
+    setNotifSettings((prev: any) => ({
+      ...prev,
+      proactiveAssistantChannels: {
+        ...(prev.proactiveAssistantChannels || {}),
+        [channel]: !((prev.proactiveAssistantChannels || {})[channel] ?? true),
+      },
+    }));
+  };
+
+  const handleSaveNotif = async () => {
+    if (!notifTarget) return;
+    setIsSavingNotif(true);
+    try {
+      await usersAPI.update(notifTarget.id, { notificationSettings: notifSettings });
+      toast.success('Đã cập nhật cài đặt thông báo');
+      setNotifTarget(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating notification settings:', error);
+      toast.error('Không thể cập nhật cài đặt thông báo');
+    } finally {
+      setIsSavingNotif(false);
     }
   };
 
@@ -307,6 +392,20 @@ export default function UserManager() {
                   <td className="px-8 py-5 text-right">
                     <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all">
                         <button
+                          onClick={() => openEmailDialog(u)}
+                          className="p-2.5 bg-slate-50 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl transition-all active:scale-95"
+                          title="Gửi email"
+                        >
+                          📧
+                        </button>
+                        <button
+                          onClick={() => openNotifDialog(u)}
+                          className="p-2.5 bg-slate-50 text-slate-400 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all active:scale-95"
+                          title="Cài đặt thông báo"
+                        >
+                          🔔
+                        </button>
+                        <button
                           onClick={() => startEdit(u)}
                           className="p-2.5 bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all active:scale-95"
                           title="Chỉnh sửa"
@@ -328,6 +427,113 @@ export default function UserManager() {
           </table>
         </div>
       </div>
+
+      {/* Send Email Dialog */}
+      <Dialog open={!!emailTarget} onOpenChange={(open) => !open && setEmailTarget(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Gửi email tới {emailTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400 ml-1">Tiêu đề</p>
+              <Input
+                value={emailForm.subject}
+                onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                placeholder="Tiêu đề email"
+                disabled={isSendingEmail}
+              />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400 ml-1">Nội dung</p>
+              <textarea
+                value={emailForm.message}
+                onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+                placeholder="Nội dung email"
+                disabled={isSendingEmail}
+                className="w-full min-h-[160px] resize-y rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-slate-950/50 px-4 py-4 text-sm leading-relaxed outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailTarget(null)} disabled={isSendingEmail}>
+              Hủy
+            </Button>
+            <Button onClick={handleSendEmail} disabled={isSendingEmail}>
+              {isSendingEmail ? 'Đang gửi...' : 'Gửi email'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notification Settings Dialog */}
+      <Dialog open={!!notifTarget} onOpenChange={(open) => !open && setNotifTarget(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Cài đặt thông báo — {notifTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400">Loại thông báo</p>
+              <div className="grid grid-cols-2 gap-2">
+                {NOTIFICATION_TYPE_OPTIONS.map((type) => {
+                  const isActive = notifSettings[type.id] ?? true;
+                  return (
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() => toggleNotifType(type.id)}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-400 border border-transparent'
+                      }`}
+                    >
+                      {type.label}
+                      <span className={`w-8 h-4 rounded-full relative transition-all ${isActive ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${isActive ? 'left-4' : 'left-0.5'}`} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400">Kênh trợ lý chủ động</p>
+              <div className="grid grid-cols-2 gap-2">
+                {NOTIFICATION_CHANNEL_OPTIONS.map((channel) => {
+                  const isActive = notifSettings.proactiveAssistantChannels?.[channel.id] ?? true;
+                  return (
+                    <button
+                      key={channel.id}
+                      type="button"
+                      onClick={() => toggleNotifChannel(channel.id)}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-400 border border-transparent'
+                      }`}
+                    >
+                      {channel.label}
+                      <span className={`w-8 h-4 rounded-full relative transition-all ${isActive ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${isActive ? 'left-4' : 'left-0.5'}`} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotifTarget(null)} disabled={isSavingNotif}>
+              Hủy
+            </Button>
+            <Button onClick={handleSaveNotif} disabled={isSavingNotif}>
+              {isSavingNotif ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
