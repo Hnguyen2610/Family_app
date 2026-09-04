@@ -491,6 +491,21 @@ model NotificationDeliveryLog {
   @@index([status])
 }
 
+// Atomic "claim" a user's once-per-day football schedule send. NotificationDeliveryLog
+// alone can't prevent a double-send here: two near-simultaneous cron triggers (the Vercel
+// cron endpoint plus the in-process @Cron on a warm serverless instance both firing around
+// 07:00 ICT) can each pass a "was it already sent?" check before either has written a row.
+// Racing on this table's unique (userId, dateKey) instead makes the DB reject the loser
+// atomically, so only one caller ever proceeds to actually send the Telegram message.
+model FootballDailyNotificationClaim {
+  id        String   @id @default(cuid())
+  userId    String
+  dateKey   String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dateKey])
+}
+
 // ============================================
 // Family Knowledge Version History (Phase 7)
 // ============================================

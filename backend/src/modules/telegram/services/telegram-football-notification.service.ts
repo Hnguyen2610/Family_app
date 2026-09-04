@@ -110,17 +110,14 @@ export class TelegramFootballNotificationService {
     dateKey: string,
     matchCount: number,
   ) {
-    const alreadySent = await this.prisma.notificationDeliveryLog.findFirst({
-      where: {
-        userId,
-        type: FOOTBALL_DAILY_TELEGRAM_TYPE,
-        channel: 'telegram',
-        status: 'SENT',
-        title,
-      },
-      select: { id: true },
-    });
-    if (alreadySent) return false;
+    try {
+      await this.prisma.footballDailyNotificationClaim.create({
+        data: { userId, dateKey },
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') return false; // another concurrent run already claimed today's send for this user
+      throw error;
+    }
 
     const ok = await this.telegramService.sendMessageToUser(userId, message);
     await this.prisma.notificationDeliveryLog.create({

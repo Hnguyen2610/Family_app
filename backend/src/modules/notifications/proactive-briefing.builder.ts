@@ -187,24 +187,14 @@ Hãy giữ thông tin ngắn gọn, súc tích (khoảng 3-6 câu), có tính li
       });
   }
 
-  private isRainyForecast(forecast: WeatherForecastSummary): boolean {
-    return (
-      forecast.chanceOfRain >= 50 ||
-      forecast.totalPrecipMm >= 2 ||
-      /rain|mưa|drizzle|shower|storm|thunder/i.test(forecast.condition)
-    );
-  }
-
   private buildWeatherBriefingItem(
     forecast: WeatherForecastSummary | null,
     tomorrowForecast: WeatherForecastSummary | null,
   ): ProactiveBriefingItem | null {
-    const isToday = forecast && this.isRainyForecast(forecast);
-    const isTomorrow = !isToday && tomorrowForecast && this.isRainyForecast(tomorrowForecast);
+    const isToday = !!forecast;
+    const target = forecast || tomorrowForecast;
+    if (!target) return null;
 
-    if (!isToday && !isTomorrow) return null;
-
-    const target = isToday ? forecast! : tomorrowForecast!;
     const dayLabel = isToday ? 'Hôm nay' : 'Ngày mai';
 
     return {
@@ -212,7 +202,7 @@ Hãy giữ thông tin ngắn gọn, súc tích (khoảng 3-6 câu), có tính li
       title: `Thời tiết ${target.location}`,
       message: `${dayLabel} ${target.condition.toLowerCase()}, khả năng mưa ${target.chanceOfRain}%, ${Math.round(target.minTempC)}-${Math.round(target.maxTempC)}°C.`,
       path: '/calendar',
-      reason: isToday ? 'rain_or_bad_weather_today' : 'rain_or_bad_weather_tomorrow',
+      reason: 'daily_weather_forecast',
       metadata: {
         provider: process.env.WEATHER_PROVIDER || 'weatherapi',
         location: target.location,

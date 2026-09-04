@@ -29,10 +29,19 @@ function escapeRegex(value: string) {
 }
 
 function stripThoughtTags(content: string) {
-  return content
+  let result = content
     .replace(/<(think|thought)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(think|thought)[^>]*>[\s\S]*$/gi, '')
-    .trim();
+    .replace(/<(think|thought)[^>]*>[\s\S]*$/gi, '');
+
+  // The opening <think(thought)> tag can be dropped upstream (e.g. tool-calling loop
+  // reassembly) while the closing tag and the reasoning prose before it survive — leaking
+  // planning text and leaving an unrecognized tag that breaks Telegram's HTML parsing.
+  // Only apply when no opening tag remains, so a real closed pair elsewhere is untouched.
+  if (/<\/(think|thought)>/i.test(result) && !/<(think|thought)[^>]*>/i.test(result)) {
+    result = result.replace(/^[\s\S]*?<\/(think|thought)>/i, '');
+  }
+
+  return result.trim();
 }
 
 function compactContent(content: string) {

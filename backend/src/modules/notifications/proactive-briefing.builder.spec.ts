@@ -92,26 +92,28 @@ describe('ProactiveBriefingBuilder', () => {
       minTempC: 28,
     };
 
-    it('uses today forecast and "Hôm nay" wording when today is rainy', () => {
-      const item = (builder as any).buildWeatherBriefingItem(rainyForecast, clearForecast);
+    it('always includes today\'s forecast even when there is no rain', () => {
+      const item = (builder as any).buildWeatherBriefingItem(clearForecast, rainyForecast);
 
-      expect(item.reason).toBe('rain_or_bad_weather_today');
+      expect(item.reason).toBe('daily_weather_forecast');
       expect(item.message).toContain('Hôm nay');
       expect(item.metadata.forecastFor).toBe('today');
     });
 
-    it('falls back to tomorrow forecast and "Ngày mai" wording when today is clear but tomorrow is rainy', () => {
-      const item = (builder as any).buildWeatherBriefingItem(clearForecast, rainyForecast);
+    it('uses today\'s forecast when it happens to be rainy too', () => {
+      const item = (builder as any).buildWeatherBriefingItem(rainyForecast, clearForecast);
 
-      expect(item.reason).toBe('rain_or_bad_weather_tomorrow');
-      expect(item.message).toContain('Ngày mai');
-      expect(item.metadata.forecastFor).toBe('tomorrow');
+      expect(item.reason).toBe('daily_weather_forecast');
+      expect(item.message).toContain('Hôm nay');
+      expect(item.metadata.forecastFor).toBe('today');
     });
 
-    it('returns null when neither today nor tomorrow is rainy', () => {
-      const item = (builder as any).buildWeatherBriefingItem(clearForecast, clearForecast);
+    it('falls back to tomorrow\'s forecast when today\'s forecast is unavailable', () => {
+      const item = (builder as any).buildWeatherBriefingItem(null, clearForecast);
 
-      expect(item).toBeNull();
+      expect(item.reason).toBe('daily_weather_forecast');
+      expect(item.message).toContain('Ngày mai');
+      expect(item.metadata.forecastFor).toBe('tomorrow');
     });
 
     it('returns null when both forecasts are unavailable', () => {

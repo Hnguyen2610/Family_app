@@ -67,4 +67,20 @@ internetSearch({
     expect(result.content).toBe('Câu trả lời thật.');
     expect(result.content).not.toContain('internal reasoning');
   });
+
+  it('strips a stray </thought> closing tag with no matching opening tag, along with the reasoning prose before it', () => {
+    // Observed in production on /football replies: the opening <thought> tag never made it
+    // into the final content (dropped upstream), but the closing tag and the reasoning
+    // bullet points before it did — leaking planning prose and leaving Telegram's HTML
+    // parser choking on the unrecognized </thought> tag (which made it fall back to plain
+    // text and show every <b>/<i> tag literally instead of rendering them).
+    const result = sanitizeAiResponse(
+      '- Su dung tieng Viet hoan toan.\n- Nhom cac tran dau theo giai dau.\n</thought><b>⚽ Lịch thi đấu</b>\n- 20:00: Việt Nam vs Thái Lan',
+    );
+
+    expect(result.sanitized).toBe(true);
+    expect(result.content).toBe('<b>⚽ Lịch thi đấu</b>\n- 20:00: Việt Nam vs Thái Lan');
+    expect(result.content).not.toContain('</thought>');
+    expect(result.content).not.toContain('Nhom cac tran dau');
+  });
 });

@@ -477,8 +477,11 @@ export class CalendarSkill implements AiSkill {
     return shouldIncludePrivateEvents(normalizedMessage);
   }
 
+  // "cua toi" ("mine") is deliberately excluded: it's also how an all-family query asks
+  // for "my events across the whole family view" (see the all-family "cua toi" test below),
+  // which should still include shared FAMILY-scope events, not just PRIVATE ones.
   private isPrivateOnlyEventQuery(normalizedMessage: string) {
-    return /\b(ca nhan|private|rieng toi|rieng tu|cua toi)\b/.test(normalizedMessage);
+    return /\b(ca nhan|private|rieng toi|rieng tu)\b/.test(normalizedMessage);
   }
 
   private hasCalendarObjectWord(normalizedMessage: string) {
