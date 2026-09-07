@@ -25,6 +25,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
     APPOINTMENT: true,
     TASK: true,
     GENERAL: true,
+    FOOTBALL: true,
     proactiveAssistant: true,
     proactiveAssistantChannels: {
       webpush: true,
@@ -183,6 +184,7 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
     { id: 'TASK', label: t('settings.notificationsTask'), icon: '✅' },
     { id: 'GENERAL', label: t('settings.notificationsGeneral'), icon: '📢' },
     { id: 'proactiveAssistant', label: language === 'vi' ? 'Trợ lý chủ động' : 'Proactive Assistant', icon: '🤖' },
+    { id: 'FOOTBALL', label: language === 'vi' ? 'Lịch bóng đá hôm nay' : "Today's Football Schedule", icon: '⚽',},
   ];
 
   return (
@@ -219,7 +221,9 @@ export default function NotificationSettings({ onBack }: NotificationSettingsPro
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{type.label}</p>
-                  <p className="text-xs text-slate-400 font-bold mt-0.5">{language === 'vi' ? 'Thông báo qua Email' : 'Email Notification'}</p>
+                  <p className="text-xs text-slate-400 font-bold mt-0.5">
+                    {(type as any).sublabel || (language === 'vi' ? 'Thông báo qua Email' : 'Email Notification')}
+                  </p>
                 </div>
               </div>
               

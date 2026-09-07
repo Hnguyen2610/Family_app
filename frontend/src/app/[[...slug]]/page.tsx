@@ -432,7 +432,7 @@ export default function Home({ params }: { readonly params: { readonly slug?: re
               active={activeTab === 'football'}
               onClick={() => { setActiveTab('football'); setIsSidebarOpen(false); }}
               icon={<span>⚽</span>}
-              label={language === 'vi' ? 'Lịch đá bóng' : 'Football Schedule'}
+              label={language === 'vi' ? 'Lịch bóng đá' : 'Football Schedule'}
             />
             {user?.globalRole === 'SUPER_ADMIN' && (
               <SidebarItem
