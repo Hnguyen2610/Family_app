@@ -244,6 +244,11 @@ export class FootballService {
     matches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
     return matches;
   }
+  private async getFreeMatchesAcrossDefaultLeagues(dateFrom: string, dateTo: string): Promise<FootballMatch[]> {
+    const apiMatches = await this.getMatches(this.defaultLeagues, dateFrom, dateTo);
+    const vietnamMatches = await this.getAllVietnamFootballMatches(dateFrom, dateTo);
+    return this.sortMatchesByNotability([...apiMatches, ...vietnamMatches]);
+  }
 
   async getAllFreeMatches(dateFrom: string, dateTo: string): Promise<FootballMatch[]> {
     const cacheKey = `all:${dateFrom}:${dateTo}`;
@@ -255,24 +260,7 @@ export class FootballService {
       return cached?.matches || this.getAllVietnamFootballMatches(dateFrom, dateTo);
     }
 
-    const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
-      headers: { 'X-Auth-Token': this.apiKey },
-    });
-    if (!response.ok) {
-      const err = (await response.json().catch(() => ({}))) as any;
-      if (cached) {
-        this.logger.warn(`Football API failed for all matches; returning stale cache: ${err.message || response.status}`);
-        return cached.matches;
-      }
-      throw new Error(err.message || 'API Error');
-    }
-
-    const data = (await response.json()) as any;
-    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code).filter((code) => !this.isVietnamLeagueCode(code)));
-    const apiMatches = this.mapMatches(data.matches || [])
-      .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
-    const vietnamMatches = await this.getAllVietnamFootballMatches(dateFrom, dateTo);
-    const matches = this.sortMatchesByNotability([...apiMatches, ...vietnamMatches]);
+    const matches = await this.getFreeMatchesAcrossDefaultLeagues(dateFrom, dateTo);
     this.allMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
     return matches;
   }
@@ -287,25 +275,7 @@ export class FootballService {
       return cached?.matches || this.getAllVietnamFootballMatches(dateKey, dateKey);
     }
 
-    const response = await fetch(`${this.baseUrl}/matches?dateFrom=${dateKey}&dateTo=${dateKey}`, {
-      headers: { 'X-Auth-Token': this.apiKey },
-    });
-    if (!response.ok) {
-      const err = (await response.json().catch(() => ({}))) as any;
-      if (cached) {
-        this.logger.warn(`Football API failed for today matches; returning stale cache: ${err.message || response.status}`);
-        return cached.matches;
-      }
-      throw new Error(err.message || 'API Error');
-    }
-
-    const data = (await response.json()) as any;
-    const allowedCodes = new Set(this.freeLeagues.map((league) => league.code).filter((code) => !this.isVietnamLeagueCode(code)));
-    const apiMatches = this.mapMatches(data.matches || [])
-      .filter((match) => !match.competitionCode || allowedCodes.has(match.competitionCode));
-    const vietnamMatches = await this.getAllVietnamFootballMatches(dateKey, dateKey);
-    const matches = this.sortMatchesByNotability([...apiMatches, ...vietnamMatches]);
-
+    const matches = await this.getFreeMatchesAcrossDefaultLeagues(dateKey, dateKey);
     this.todayMatchesCache.set(cacheKey, { expiresAt: Date.now() + this.cacheTtlMs, matches });
     return matches;
   }
