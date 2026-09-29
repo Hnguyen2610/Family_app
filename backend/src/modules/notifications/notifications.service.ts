@@ -274,7 +274,7 @@ export class NotificationsService {
     const lunarNow = getLunarDateObject(now);
     const isMungMot = lunarNow.day === 1;
     const isRam = lunarNow.day === 15;
-    const lunarSpecialMsg = isMungMot ? "Hôm nay là Mùng 1 Âm lịch. Chúc gia đình tháng mới an lành!" : isRam ? "Hôm nay là ngày Rằm Âm lịch (15/12). Chúc gia đình vạn sự hanh thông!" : "";
+    const lunarSpecialMsg = isMungMot ? "Hôm nay là Mùng 1 Âm lịch. Chúc gia đình tháng mới an lành!" : isRam ? `Hôm nay là ngày Rằm Âm lịch (15/${lunarNow.month}). Chúc gia đình vạn sự hanh thông!` : "";
 
     const familyNameById = new Map(families.map((family) => [family.id, family.name]));
     const remindersByUser = new Map<string, {
